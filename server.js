@@ -107,13 +107,32 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'your-secret-key';
 
-// ミドルウェアの設定
+// 許可するオリジンのリスト
+const allowedOrigins = [
+  'https://kyudotaikai.vercel.app',
+  'http://localhost:3000',  // 開発用
+  'http://localhost:3001'   // 開発用（必要に応じて）
+];
+
+// CORS設定
 app.use(cors({
-  origin: '*',
+  origin: function(origin, callback) {
+    // オリジンが許可リストにあるか、または開発環境の場合
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn('ブロックされたオリジン:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  credentials: true,
+  optionsSuccessStatus: 200 // 一部の古いブラウザ対応
 }));
+
+// プリフライトリクエストの処理
+app.options('*', cors());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

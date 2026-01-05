@@ -3,7 +3,12 @@ import { Lock, LogOut, RotateCcw, Copy, Check, QrCode, Maximize2, Filter, X, Use
 import { QRCodeSVG } from 'qrcode.react';
 import './index.css';
 
-const API_URL = 'http://localhost:3001/api';
+// 環境に応じてAPIのベースURLを切り替え
+const API_BASE_URL = process.env.NODE_ENV === 'production'
+  ? 'https://kyudotaikai.vercel.app/api'  // 本番環境のバックエンドURLに置き換えてください
+  : 'http://localhost:3001/api';
+
+const API_URL = API_BASE_URL;
 
 const KyudoTournamentSystem = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
@@ -22,16 +27,32 @@ const KyudoTournamentSystem = () => {
 
   const fetchTournaments = async () => {
     try {
-      const response = await fetch(`${API_URL}/tournaments`);
+      const response = await fetch(`${API_URL}/tournaments`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include' // クレデンシャルを含める
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const result = await response.json();
+      
       if (result.success && result.data) {
         dispatch({
           type: 'LOAD_TOURNAMENTS',
           payload: result.data
         });
+      } else {
+        console.error('API response indicates failure:', result);
       }
     } catch (error) {
-      console.error('Error fetching tournaments:', error);
+      console.error('大会データの取得中にエラーが発生しました:', error);
+      // ユーザーにエラーを表示する場合
+      alert(`大会データの取得に失敗しました: ${error.message}`);
     } finally {
       setLoading(false);
     }
