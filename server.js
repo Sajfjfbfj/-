@@ -21,9 +21,18 @@ let globalState = {
   sessions: {}
 };
 
-// CORSを有効化（すべてのオリジンからのアクセスを許可）
+// CORSを有効化（環境に応じて設定）
+const allowedOrigins = [
+  'http://localhost:3000',  // ローカル開発環境
+  'https://kyudotaikai.vercel.app',  // Vercel本番環境
+  'https://kyudotaikai.vercel.app',  // 必要に応じて追加
+];
+
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.header('Access-Control-Allow-Credentials', 'true');
