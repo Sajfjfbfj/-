@@ -32,10 +32,10 @@ const mongoOptions = {
     strict: true,
     deprecationErrors: true,
   },
-  maxPoolSize: 10, // コネクションプールの最大サイズ
-  connectTimeoutMS: 5000, // 接続タイムアウト (5秒)
-  socketTimeoutMS: 45000, // ソケットタイムアウト (45秒)
-  serverSelectionTimeoutMS: 5000, // サーバー選択タイムアウト (5秒)
+  maxPoolSize: 10,
+  connectTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+  serverSelectionTimeoutMS: 5000,
 };
 
 // MongoDB接続クライアント
@@ -57,23 +57,20 @@ async function connectToMongoDB() {
     
     console.log('✅ MongoDBに接続しました');
     
-    // 接続エラー時のイベントハンドラ
     client.on('error', (error) => {
       console.error('❌ MongoDB接続エラー:', error);
       isConnected = false;
     });
     
-    // 接続が切れた場合の再試行
     client.on('close', () => {
       console.log('ℹ️ MongoDB接続が切れました。再接続を試みます...');
       isConnected = false;
-      setTimeout(connectToMongoDB, 5000); // 5秒後に再接続を試みる
+      setTimeout(connectToMongoDB, 5000);
     });
     
   } catch (error) {
     console.error('❌ MongoDB接続エラー:', error);
     isConnected = false;
-    // 接続に失敗した場合、5秒後に再試行
     setTimeout(connectToMongoDB, 5000);
   }
 }
@@ -82,6 +79,9 @@ async function connectToMongoDB() {
 async function getDb() {
   if (!isConnected) {
     await connectToMongoDB();
+  }
+  if (!db) {
+    throw new Error('データベースに接続されていません');
   }
   return db;
 }
@@ -110,11 +110,6 @@ async function closeConnection() {
   });
 });
 
-// 未処理のPromise拒否をキャッチ
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('未処理のPromise拒否:', reason);
-});
-
 const app = express();
 const PORT = process.env.PORT || 3001;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'your-secret-key';
@@ -129,7 +124,6 @@ const allowedOrigins = [
 // CORS設定
 app.use(cors({
   origin: function(origin, callback) {
-    // オリジンチェックを緩和（開発環境の場合）
     if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
       callback(null, true);
     } else {
@@ -140,12 +134,11 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  optionsSuccessStatus: 200 // 一部の古いブラウザ対応
+  optionsSuccessStatus: 200
 }));
 
 // プリフライトリクエストの処理
 app.options('*', (req, res) => {
-  // 許可するオリジンを設定（実際のオリジンに合わせて調整）
   const origin = req.headers.origin;
   if (allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
@@ -163,14 +156,13 @@ app.use(session({
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: true,
-  cookie: { secure: false } // HTTPSの場合はtrueに変更
+  cookie: { secure: false }
 }));
 
 // 静的ファイルの提供
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'dist')));
   
-  // SPA用のルーティング
   app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
   });
@@ -184,67 +176,18 @@ app.use((req, res, next) => {
   next();
 });
 
-// ===== データベース操作ユーティリティ =====
-
-// 大会データを取得
-async function getTournaments() {
-  try {
-    return await db.collection('tournaments').find({}).toArray();
-  } catch (error) {
-    console.error('大会データの取得中にエラーが発生しました:', error);
-    return [];
-  }
-}
-
-// 大会をIDで取得
-async function getTournamentById(id) {
-  try {
-    return await db.collection('tournaments').findOne({ _id: id });
-  } catch (error) {
-    console.error('大会データの取得中にエラーが発生しました:', error);
-    return null;
-  }
-}
-
-// 大会を保存または更新
-async function saveTournament(tournament) {
-  try {
-    const { _id, ...data } = tournament;
-    const result = await db.collection('tournaments').updateOne(
-      { _id: _id || new ObjectId() },
-      { $set: data },
-      { upsert: true }
-    );
-    return result.acknowledged;
-  } catch (error) {
-    console.error('大会の保存中にエラーが発生しました:', error);
-    return false;
-  }
-}
-
-// 大会を削除
-async function deleteTournament(id) {
-  try {
-    const result = await db.collection('tournaments').deleteOne({ _id: id });
-    return result.deletedCount > 0;
-  } catch (error) {
-    console.error('大会の削除中にエラーが発生しました:', error);
-    return false;
-  }
-}
-
-// ===== API エンドポイント =====
-
-// ヘルスチェックエンドポイント
+// ===== ヘルスチェックエンドポイント =====
 app.get('/api/health', async (req, res) => {
   try {
-    await db.command({ ping: 1 });
+    const database = await getDb();
+    await database.command({ ping: 1 });
     res.status(200).json({
       status: 'ok',
       database: 'connected',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    console.error('ヘルスチェックエラー:', error);
     res.status(500).json({
       status: 'error',
       database: 'disconnected',
@@ -254,15 +197,12 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// 全大会を取得
+// ===== 全大会を取得 =====
 app.get('/api/tournaments', async (req, res) => {
   try {
-    const db = await getDb();
-    if (!db) {
-      throw new Error('データベースに接続されていません');
-    }
+    const database = await getDb();
+    const tournaments = await database.collection('tournaments').find({}).toArray();
     
-    const tournaments = await db.collection('tournaments').find({}).toArray();
     res.status(200).json({ 
       success: true, 
       data: tournaments,
@@ -279,15 +219,12 @@ app.get('/api/tournaments', async (req, res) => {
   }
 });
 
-// 大会をIDで取得
+// ===== 大会をIDで取得 =====
 app.get('/api/tournaments/:id', async (req, res) => {
   try {
-    const db = await getDb();
-    if (!db) {
-      throw new Error('データベースに接続されていません');
-    }
+    const database = await getDb();
+    const tournament = await database.collection('tournaments').findOne({ _id: req.params.id });
     
-    const tournament = await db.collection('tournaments').findOne({ _id: req.params.id });
     if (tournament) {
       res.json({ 
         success: true, 
@@ -301,14 +238,16 @@ app.get('/api/tournaments/:id', async (req, res) => {
       });
     }
   } catch (error) {
+    console.error('大会データ取得エラー:', error);
     res.status(500).json({ 
       success: false, 
-      message: '大会の取得中にエラーが発生しました' 
+      message: '大会の取得中にエラーが発生しました',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
-// 大会を保存または更新
+// ===== 大会を保存または更新 =====
 app.post('/api/tournaments', async (req, res) => {
   try {
     const { id, data } = req.body;
@@ -320,39 +259,50 @@ app.post('/api/tournaments', async (req, res) => {
       });
     }
 
+    const database = await getDb();
+    
     const tournament = {
-      _id: id,
+      _id: id, // 文字列のまま保存
       ...data,
       updatedAt: new Date().toISOString()
     };
 
-    const success = await saveTournament(tournament);
+    const result = await database.collection('tournaments').updateOne(
+      { _id: id },
+      { $set: tournament },
+      { upsert: true }
+    );
     
-    if (success) {
-      res.json({ 
+    if (result.acknowledged) {
+      res.status(200).json({ 
         success: true, 
         message: '大会を保存しました',
         id,
         timestamp: new Date().toISOString()
       });
     } else {
-      throw new Error('保存に失敗しました');
+      throw new Error('データベース更新に失敗しました');
     }
   } catch (error) {
+    console.error('大会保存エラー:', error);
     res.status(500).json({ 
       success: false, 
-      message: '大会の保存中にエラーが発生しました' 
+      message: '大会の保存中にエラーが発生しました',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-// 大会を削除
+// ===== 大会を削除 =====
 app.delete('/api/tournaments/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const success = await deleteTournament(id);
+    const database = await getDb();
     
-    if (success) {
+    const result = await database.collection('tournaments').deleteOne({ _id: id });
+    
+    if (result.deletedCount > 0) {
       res.json({ 
         success: true, 
         message: '大会を削除しました',
@@ -365,6 +315,7 @@ app.delete('/api/tournaments/:id', async (req, res) => {
       });
     }
   } catch (error) {
+    console.error('大会削除エラー:', error);
     res.status(500).json({ 
       success: false, 
       message: '大会の削除中にエラーが発生しました',
@@ -374,16 +325,14 @@ app.delete('/api/tournaments/:id', async (req, res) => {
   }
 });
 
-// エラーハンドリングミドルウェア
+// ===== エラーハンドリング =====
 app.use((err, req, res, next) => {
   console.error('サーバーエラー:', err);
   
-  // 既にレスポンスが送信されている場合は何もしない
   if (res.headersSent) {
     return next(err);
   }
   
-  // エラーレスポンスを送信
   res.status(500).json({ 
     success: false, 
     message: 'サーバーでエラーが発生しました',
@@ -401,16 +350,15 @@ app.use((req, res) => {
   });
 });
 
-// サーバー起動
+// ===== サーバー起動 =====
 async function startServer() {
   try {
-    // MongoDBに接続
     await connectToMongoDB();
     
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server is running on http://localhost:${PORT}`);
+      console.log(`✅ Server is running on http://localhost:${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log('MongoDB connected:', isConnected);
+      console.log(`MongoDB connected: ${isConnected}`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
