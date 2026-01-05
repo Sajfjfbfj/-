@@ -165,15 +165,6 @@ app.use(session({
   cookie: { secure: false }
 }));
 
-// 静的ファイルの提供
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist')));
-  
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-  });
-}
-
 // セッションミドルウェア
 app.use((req, res, next) => {
   if (!req.session.id) {
@@ -331,6 +322,16 @@ app.delete('/api/tournaments/:id', async (req, res) => {
   }
 });
 
+// ===== 静的ファイルの提供とSPA用ルーティング（APIルートの後に配置） =====
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, 'dist')));
+  
+  // すべのAPE以外のリクエストをindex.htmlにマップ（SPA用）
+  app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
+}
+
 // ===== エラーハンドリング =====
 app.use((err, req, res, next) => {
   console.error('サーバーエラー:', err);
@@ -349,7 +350,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 存在しないルートのハンドリング
+// 存在しないルートのハンドリング（最後に配置）
 app.use((req, res) => {
   res.status(404).json({ 
     success: false, 
