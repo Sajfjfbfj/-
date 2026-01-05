@@ -9,9 +9,12 @@
     "dev:all": "concurrently \"npm run server\" \"npm run dev\"",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server.js",
+    "vercel-build": "vite build"
   },
   "dependencies": {
+    "@vercel/node": "^4.1.0",
     "cors": "^2.8.5",
     "express": "^5.2.1",
     "express-session": "^1.18.2",

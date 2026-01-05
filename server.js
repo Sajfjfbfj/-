@@ -10,9 +10,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3001;
-const DATA_FILE = path.join(__dirname, 'tournaments.json');
-const SESSION_SECRET = 'your-secret-key'; // 本番環境では環境変数から取得することを推奨
+const PORT = process.env.PORT || 3001;
+const IS_VERCEL = process.env.VERCEL === '1';
+const DATA_FILE = IS_VERCEL ? '/tmp/tournaments.json' : path.join(__dirname, 'tournaments.json');
+const SESSION_SECRET = process.env.SESSION_SECRET || 'your-secret-key';
 
 // グローバルデータストア
 let globalState = {
@@ -64,11 +65,21 @@ app.use((req, res, next) => {
 });
 
 // データファイルの初期化
-const initializeDataFile = () => {
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify({ tournaments: [] }, null, 2));
+function initializeDataFile() {
+  try {
+    if (!fs.existsSync(DATA_FILE)) {
+      // ディレクトリが存在することを確認
+      const dir = path.dirname(DATA_FILE);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(DATA_FILE, JSON.stringify({ tournaments: [] }, null, 2));
+      console.log('Created new data file at:', DATA_FILE);
+    }
+  } catch (error) {
+    console.error('Error initializing data file:', error);
   }
-};
+}
 
 // データの読み込みと同期
 const readTournaments = (forceFromFile = false) => {
@@ -502,9 +513,12 @@ app.use((req, res) => {
   });
 });
 
-// ========== サーバー起動 ==========
+// ========== サーバー起動（Vercel環境でない場合のみ）
+if (!IS_VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+  });
+}
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-  console.log(`Data file: ${DATA_FILE}`);
-});
+// Vercelでサーバーレス関数としてエクスポート
+export default app;
