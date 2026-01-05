@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { MongoClient, ObjectId } from 'mongodb';
@@ -5,6 +6,17 @@ import session from 'express-session';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import path from 'path';
+
+// 未処理の例外をキャッチ
+process.on('uncaughtException', (error) => {
+  console.error('未処理の例外:', error);
+  process.exit(1);
+});
+
+// 未処理のPromise拒否をキャッチ
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('未処理のPromise拒否:', reason);
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -213,19 +225,46 @@ async function deleteTournament(id) {
 
 // ===== API エンドポイント =====
 
+// ヘルスチェックエンドポイント
+app.get('/api/health', async (req, res) => {
+  try {
+    await db.command({ ping: 1 });
+    res.status(200).json({
+      status: 'ok',
+      database: 'connected',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      database: 'disconnected',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // 全大会を取得
 app.get('/api/tournaments', async (req, res) => {
   try {
-    const tournaments = await getTournaments();
-    res.json({ 
+    const db = await getDb();
+    if (!db) {
+      throw new Error('データベースに接続されていません');
+    }
+    
+    const tournaments = await db.collection('tournaments').find({}).toArray();
+    res.status(200).json({ 
       success: true, 
       data: tournaments,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    console.error('大会データの取得エラー:', error);
     res.status(500).json({ 
       success: false, 
-      message: '大会の取得中にエラーが発生しました' 
+      message: '大会の取得中にエラーが発生しました',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 });
@@ -233,7 +272,12 @@ app.get('/api/tournaments', async (req, res) => {
 // 大会をIDで取得
 app.get('/api/tournaments/:id', async (req, res) => {
   try {
-    const tournament = await getTournamentById(req.params.id);
+    const db = await getDb();
+    if (!db) {
+      throw new Error('データベースに接続されていません');
+    }
+    
+    const tournament = await db.collection('tournaments').findOne({ _id: req.params.id });
     if (tournament) {
       res.json({ 
         success: true, 
