@@ -10,11 +10,10 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "node server.js",
-    "vercel-build": "vite build"
+    "start": "set NODE_ENV=production && node server.js",
+    "heroku-postbuild": "npm install && npm run build"
   },
   "dependencies": {
-    "@vercel/node": "^4.1.0",
     "cors": "^2.8.5",
     "express": "^5.2.1",
     "express-session": "^1.18.2",

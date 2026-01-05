@@ -3,10 +3,7 @@ import { Lock, LogOut, RotateCcw, Copy, Check, QrCode, Maximize2, Filter, X, Use
 import { QRCodeSVG } from 'qrcode.react';
 import './index.css';
 
-// Use relative URL in production, absolute in development
-const API_URL = process.env.NODE_ENV === 'production' 
-  ? '/api' 
-  : 'http://localhost:3001/api';
+const API_URL = 'http://localhost:3001/api';
 
 const KyudoTournamentSystem = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);

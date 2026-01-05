@@ -5,15 +5,30 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import session from 'express-session';
 import { v4 as uuidv4 } from 'uuid';
+import { dirname, join } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = dirname(__filename);
+
+// Windows環境でのパス解決用ヘルパー
+const resolvePath = (...paths) => {
+  return path.join(...paths).replace(/\\/g, '/');
+};
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const IS_VERCEL = process.env.VERCEL === '1';
-const DATA_FILE = IS_VERCEL ? '/tmp/tournaments.json' : path.join(__dirname, 'tournaments.json');
+const DATA_FILE = resolvePath(__dirname, 'tournaments.json');
 const SESSION_SECRET = process.env.SESSION_SECRET || 'your-secret-key';
+
+// 本番環境では静的ファイルを提供
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(resolvePath(__dirname, 'dist')));
+  
+  // すべてのGETリクエストに対してindex.htmlを返す（SPA用）
+  app.get('*', (req, res) => {
+    res.sendFile(resolvePath(__dirname, 'dist', 'index.html'));
+  });
+}
 
 // グローバルデータストア
 let globalState = {
@@ -21,18 +36,9 @@ let globalState = {
   sessions: {}
 };
 
-// CORSを有効化（環境に応じて設定）
-const allowedOrigins = [
-  'http://localhost:3000',  // ローカル開発環境
-  'https://kyudotaikai.vercel.app',  // Vercel本番環境
-  'https://kyudotaikai.vercel.app',  // 必要に応じて追加
-];
-
+// CORSを有効化（すべてのオリジンからのアクセスを許可）
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
+  res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.header('Access-Control-Allow-Credentials', 'true');
@@ -74,21 +80,11 @@ app.use((req, res, next) => {
 });
 
 // データファイルの初期化
-function initializeDataFile() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) {
-      // ディレクトリが存在することを確認
-      const dir = path.dirname(DATA_FILE);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(DATA_FILE, JSON.stringify({ tournaments: [] }, null, 2));
-      console.log('Created new data file at:', DATA_FILE);
-    }
-  } catch (error) {
-    console.error('Error initializing data file:', error);
+const initializeDataFile = () => {
+  if (!fs.existsSync(DATA_FILE)) {
+    fs.writeFileSync(DATA_FILE, JSON.stringify({ tournaments: [] }, null, 2));
   }
-}
+};
 
 // データの読み込みと同期
 const readTournaments = (forceFromFile = false) => {
@@ -522,12 +518,11 @@ app.use((req, res) => {
   });
 });
 
-// ========== サーバー起動（Vercel環境でない場合のみ）
-if (!IS_VERCEL) {
-  app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-  });
-}
+// ========== サーバー起動 ==========
 
-// Vercelでサーバーレス関数としてエクスポート
-export default app;
+// サーバー起動
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Data file: ${DATA_FILE}`);
+});
