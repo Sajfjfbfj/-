@@ -5,7 +5,7 @@ import './index.css';
 
 // 環境に応じてAPIのベースURLを切り替え
 const API_BASE_URL = process.env.NODE_ENV === 'production'
-  ? 'https://kyudotaikai.vercel.app/api'  // 本番環境のバックエンドURLに置き換えてください
+  ? '/api' 
   : 'http://localhost:3001/api';
 
 const API_URL = API_BASE_URL;
