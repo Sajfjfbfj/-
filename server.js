@@ -39,55 +39,72 @@ const mongoOptions = {
 };
 
 // MongoDB接続クライアント
-let client;
-let db;
+let client = null;
+let db = null;
 let isConnected = false;
+let connectionPromise = null;
 
-// MongoDBに接続
+// MongoDBに接続（重複接続を防止）
 async function connectToMongoDB() {
-  if (isConnected) return;
+  // 既に接続中 or 接続済みの場合はそれを返す
+  if (connectionPromise) {
+    return connectionPromise;
+  }
 
-  try {
-    client = new MongoClient(MONGODB_URI, mongoOptions);
-    await client.connect();
-    await client.db('admin').command({ ping: 1 });
-    
-    db = client.db(DB_NAME);
-    isConnected = true;
-    
-    console.log('✅ MongoDBに接続しました');
-    
-    client.on('error', (error) => {
+  if (isConnected && db) {
+    return db;
+  }
+
+  connectionPromise = (async () => {
+    try {
+      console.log('🔄 MongoDBに接続中...');
+      client = new MongoClient(MONGODB_URI, mongoOptions);
+      await client.connect();
+      await client.db('admin').command({ ping: 1 });
+      
+      db = client.db(DB_NAME);
+      isConnected = true;
+      connectionPromise = null;
+      
+      console.log('✅ MongoDBに接続しました');
+      
+      // 接続エラー時のイベントハンドラ
+      client.on('error', (error) => {
+        console.error('❌ MongoDB接続エラー:', error);
+        isConnected = false;
+      });
+      
+      // 接続が切れた場合の再試行
+      client.on('close', () => {
+        console.log('ℹ️ MongoDB接続が切れました');
+        isConnected = false;
+        connectionPromise = null;
+      });
+      
+      return db;
+    } catch (error) {
       console.error('❌ MongoDB接続エラー:', error);
       isConnected = false;
-    });
-    
-    client.on('close', () => {
-      console.log('ℹ️ MongoDB接続が切れました。再接続を試みます...');
-      isConnected = false;
-      setTimeout(connectToMongoDB, 5000);
-    });
-    
-  } catch (error) {
-    console.error('❌ MongoDB接続エラー:', error);
-    isConnected = false;
-    setTimeout(connectToMongoDB, 5000);
-  }
+      connectionPromise = null;
+      throw error;
+    }
+  })();
+
+  return connectionPromise;
 }
 
 // 接続を安全に取得するヘルパー関数
 async function getDb() {
-  if (!isConnected) {
-    await connectToMongoDB();
-  }
-  if (!db) {
-    throw new Error('データベースに接続されていません');
+  if (!isConnected || !db) {
+    db = await connectToMongoDB();
   }
   return db;
 }
 
-// アプリケーション起動時にMongoDBに接続
-connectToMongoDB();
+// アプリケーション起動時にMongoDBに接続（非ブロッキング）
+connectToMongoDB().catch(err => {
+  console.error('初期接続に失敗しました:', err);
+});
 
 // アプリケーション終了時に接続を閉じる
 async function closeConnection() {
@@ -105,6 +122,7 @@ async function closeConnection() {
 // シグナルハンドリング
 ['SIGINT', 'SIGTERM', 'SIGQUIT'].forEach(signal => {
   process.on(signal, async () => {
+    console.log(`${signal}を受信しました`);
     await closeConnection();
     process.exit(0);
   });
@@ -188,7 +206,7 @@ app.get('/api/health', async (req, res) => {
     });
   } catch (error) {
     console.error('ヘルスチェックエラー:', error);
-    res.status(500).json({
+    res.status(503).json({
       status: 'error',
       database: 'disconnected',
       error: error.message,
@@ -262,7 +280,7 @@ app.post('/api/tournaments', async (req, res) => {
     const database = await getDb();
     
     const tournament = {
-      _id: id, // 文字列のまま保存
+      _id: id,
       ...data,
       updatedAt: new Date().toISOString()
     };
@@ -333,7 +351,8 @@ app.use((err, req, res, next) => {
     return next(err);
   }
   
-  res.status(500).json({ 
+  // 常にJSONレスポンスを返す
+  res.status(err.status || 500).json({ 
     success: false, 
     message: 'サーバーでエラーが発生しました',
     error: process.env.NODE_ENV === 'development' ? err.message : undefined,
@@ -353,12 +372,17 @@ app.use((req, res) => {
 // ===== サーバー起動 =====
 async function startServer() {
   try {
-    await connectToMongoDB();
-    
-    app.listen(PORT, '0.0.0.0', () => {
+    app.listen(PORT, '0.0.0.0', async () => {
       console.log(`✅ Server is running on http://localhost:${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`MongoDB connected: ${isConnected}`);
+      
+      // サーバー起動後に接続を確認
+      try {
+        await getDb();
+        console.log('✅ データベース接続確認完了');
+      } catch (err) {
+        console.warn('⚠️ データベース接続に失敗しました。後で再試行します:', err.message);
+      }
     });
   } catch (error) {
     console.error('Failed to start server:', error);
