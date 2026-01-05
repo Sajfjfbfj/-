@@ -1,0 +1,75 @@
+{
+  "tournaments": [
+    {
+      "id": "KYUDO_20260105_TFF6",
+      "data": {
+        "name": "しんねんしゃかい",
+        "datetime": "2026-01-10T08:00",
+        "location": "アルテンジャパン",
+        "organizer": "茨城県弓道連盟",
+        "coOrganizer": "茨城県弓道連盟",
+        "administrator": "茨城県弓道連盟",
+        "event": "弓道",
+        "type": "",
+        "category": "個人戦",
+        "description": "",
+        "competitionMethod": "一手+四つ矢",
+        "award": "１位から５位まで",
+        "qualifications": "２０２５年１２月現在で県連登録しているもの",
+        "applicableRules": "",
+        "applicationMethod": "申し込みはアプリ\n振り込みは各支部",
+        "remarks": "",
+        "applicants": [
+          {
+            "archerId": "KYUDO_20260105_TFF6_001",
+            "name": "鈴木咲",
+            "affiliation": "龍ヶ崎",
+            "rank": "四段",
+            "rankAcquiredDate": "2025-04-27",
+            "isStaff": false,
+            "isOfficialOnly": false,
+            "appliedAt": "2026-01-05T04:08:57.907Z",
+            "deviceId": "device_w2qoz9ntc",
+            "updatedAt": "2026-01-05T04:08:57.907Z"
+          },
+          {
+            "archerId": "KYUDO_20260105_TFF6_002",
+            "name": "鈴木真紀",
+            "affiliation": "龍ヶ崎",
+            "rank": "四段",
+            "rankAcquiredDate": "2025-05-25",
+            "isStaff": true,
+            "isOfficialOnly": false,
+            "appliedAt": "2026-01-05T04:09:43.441Z",
+            "deviceId": "device_w2qoz9ntc",
+            "updatedAt": "2026-01-05T04:09:43.441Z"
+          },
+          {
+            "archerId": "KYUDO_20260105_TFF6_003",
+            "name": "すずき",
+            "affiliation": "龍ヶ崎",
+            "rank": "初段",
+            "rankAcquiredDate": "2025-12-03",
+            "isStaff": true,
+            "isOfficialOnly": false,
+            "appliedAt": "2026-01-05T04:12:26.701Z",
+            "deviceId": "device_w2qoz9ntc",
+            "updatedAt": "2026-01-05T04:12:26.701Z"
+          }
+        ],
+        "checkIns": [
+          "KYUDO_20260105_TFF6_001",
+          "KYUDO_20260105_TFF6_002",
+          "KYUDO_20260105_TFF6_003"
+        ],
+        "checkedInAt": {
+          "KYUDO_20260105_TFF6_001": "2026-01-05T04:17:06.863Z",
+          "KYUDO_20260105_TFF6_002": "2026-01-05T04:17:25.317Z",
+          "KYUDO_20260105_TFF6_003": "2026-01-05T04:17:40.640Z"
+        }
+      },
+      "createdAt": "2026-01-05T04:07:38.671Z",
+      "updatedAt": "2026-01-05T04:17:40.640Z"
+    }
+  ]
+}

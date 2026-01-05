@@ -1,0 +1,746 @@
+import React, { useState, useReducer } from 'react';
+import { Lock, LogOut, RotateCcw, Copy, Check } from 'lucide-react';
+
+// --- 初期データとReducer (コンポーネントの外で定義) ---
+
+const initialTournamentState = {
+  tournament: {
+    id: 'KYUDO_2024_0001',
+    name: '第○回〇〇弓道大会',
+    date: '2024年12月29日',
+    stage: 'qualifiers',
+    passRule: 'all_four',
+    arrowsRound1: 2,
+    arrowsRound2: 4,
+    currentRound: 1,
+    archersPerStand: 12,
+  },
+  registeredTournaments: [],
+  applicants: [],
+  archers: [
+    { id: 1, qrCode: 'KYUDO_2024_0001_A001', name: '鈴木太郎', affiliation: '〇〇高校', segment: 1, checkIn: true, results: { stand1: ['o', 'o', 'x', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
+    { id: 2, qrCode: 'KYUDO_2024_0001_A002', name: '田中花子', affiliation: '△△大学', segment: 1, checkIn: true, results: { stand1: ['o', 'o', 'o', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
+    { id: 3, qrCode: 'KYUDO_2024_0001_A003', name: '佐藤次郎', affiliation: '□□弓道会', segment: 2, checkIn: true, results: { stand1: ['o', 'x', 'x', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
+    { id: 4, qrCode: 'KYUDO_2024_0001_A004', name: '小林美咲', affiliation: '〇〇高校', segment: 2, checkIn: true, results: { stand1: ['o', 'o', 'o', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
+    { id: 5, qrCode: 'KYUDO_2024_0001_A005', name: '石田健太', affiliation: '△△大学', segment: 3, checkIn: false, results: { stand1: [null, null, null, null], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
+    { id: 6, qrCode: 'KYUDO_2024_0001_A006', name: '望月由美', affiliation: '□□弓道会', segment: 3, checkIn: true, results: { stand1: ['o', 'o', 'x', 'x'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
+  ],
+};
+
+function tournamentReducer(state, action) {
+  switch (action.type) {
+    case 'RECORD_RESULT': {
+      const { archerId, stand, arrowIndex, result } = action.payload;
+      return { ...state, archers: state.archers.map(a => a.id === archerId ? { ...a, results: { ...a.results, [`stand${stand}`]: a.results[`stand${stand}`].map((r, i) => i === arrowIndex ? result : r) } } : a) };
+    }
+    case 'UNDO_RESULT': {
+      const { archerId, stand, arrowIndex } = action.payload;
+      return { ...state, archers: state.archers.map(a => a.id === archerId ? { ...a, results: { ...a.results, [`stand${stand}`]: a.results[`stand${stand}`].map((r, i) => i === arrowIndex ? null : r) } } : a) };
+    }
+    case 'CHECK_IN_ARCHER': {
+      return { ...state, archers: state.archers.map(a => a.id === action.payload ? { ...a, checkIn: true } : a) };
+    }
+    case 'UPDATE_PASS_RULE':
+      return { ...state, tournament: { ...state.tournament, passRule: action.payload } };
+    case 'UPDATE_ARROWS_ROUND1':
+      return { ...state, tournament: { ...state.tournament, arrowsRound1: parseInt(action.payload) } };
+    case 'UPDATE_ARROWS_ROUND2':
+      return { ...state, tournament: { ...state.tournament, arrowsRound2: parseInt(action.payload) } };
+    case 'UPDATE_CURRENT_ROUND':
+      return { ...state, tournament: { ...state.tournament, currentRound: action.payload } };
+    case 'UPDATE_ARCHERS_PER_STAND':
+      return { ...state, tournament: { ...state.tournament, archersPerStand: parseInt(action.payload) } };
+    case 'UPDATE_TOURNAMENT_INFO':
+      return { ...state, tournament: { ...state.tournament, ...action.payload } };
+    case 'SAVE_TOURNAMENT_TEMPLATE': {
+      const newTemplate = action.payload;
+      const updated = state.registeredTournaments.filter(t => t.id !== newTemplate.id);
+      return { ...state, registeredTournaments: [...updated, newTemplate] };
+    }
+    case 'DELETE_TOURNAMENT_TEMPLATE':
+      return { ...state, registeredTournaments: state.registeredTournaments.filter(t => t.id !== action.payload) };
+    case 'ADD_ARCHER_APPLICANT':
+      return { ...state, applicants: [...state.applicants, action.payload] };
+    case 'DELETE_ARCHER_APPLICANT':
+      return { ...state, applicants: state.applicants.filter(a => a.archerId !== action.payload) };
+    case 'RESET_ALL':
+      return initialTournamentState;
+    default:
+      return state;
+  }
+}
+
+// --- サブコンポーネント ---
+
+const AdminLoginView = ({ onLogin }) => {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleLogin = () => {
+    if (password === '1234') {
+      onLogin();
+    } else {
+      setError('パスワードが正しくありません');
+      setPassword('');
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="w-full max-w-sm">
+        <div className="bg-white border border-gray-200 rounded-lg p-8 space-y-6">
+          <div className="text-center">
+            <Lock size={32} className="mx-auto text-gray-800 mb-3" />
+            <h1 className="text-xl font-light text-gray-900">運営ログイン</h1>
+          </div>
+          <div>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} placeholder="パスワード" className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" />
+            {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+          </div>
+          <button onClick={handleLogin} className="w-full bg-gray-900 text-white py-3 rounded-lg font-light hover:bg-gray-800 transition">ログイン</button>
+          <p className="text-xs text-gray-400 text-center">デモ用パスワード: 1234</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const TournamentView = ({ state, stands, checkInCount }) => {
+  const tournament = state.tournament;
+  const archers = state.archers;
+  const arrowsPerStand = tournament.currentRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
+
+  const isPassed = (archer) => {
+    const stand1Results = archer.results.stand1;
+    if (!stand1Results || stand1Results.slice(0, arrowsPerStand).includes(null)) return null;
+    const count = stand1Results.slice(0, arrowsPerStand).filter(r => r === 'o').length;
+    switch (tournament.passRule) {
+      case 'all_four':
+        return count === arrowsPerStand;
+      case 'four_or_more':
+        return count >= 4;
+      case 'three_or_more':
+        return count >= Math.ceil(arrowsPerStand / 2);
+      case 'two_or_more':
+        return count >= 2;
+      default:
+        return false;
+    }
+  };
+
+  const passedArchers = archers.filter(a => isPassed(a));
+  const totalShots = checkInCount * arrowsPerStand;
+  const completedShots = archers.reduce((sum, a) => sum + Object.values(a.results).flat().filter(r => r !== null).length, 0);
+  const progressPercent = totalShots > 0 ? (completedShots / totalShots) * 100 : 0;
+
+  return (
+    <div className="pb-6">
+      <div className="border-b border-gray-200 p-4 sm:p-6 bg-gray-50">
+        <h1 className="text-xl sm:text-2xl font-light text-gray-900">{tournament.name}</h1>
+        <p className="text-xs sm:text-sm text-gray-500 mt-1">{tournament.date}</p>
+      </div>
+      <div className="p-4 sm:p-6 space-y-6">
+        <div className="bg-gray-50 rounded-lg p-4 sm:p-6 border border-gray-200">
+          <p className="text-xs text-gray-500 mb-4 uppercase tracking-wide">現在の設定</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-3 rounded"><p className="text-xs text-gray-500 mb-1">受付済み</p><p className="text-xl font-light text-gray-900">{checkInCount}名</p></div>
+            <div className="bg-white p-3 rounded"><p className="text-xs text-gray-500 mb-1">1立あたり</p><p className="text-xl font-light text-gray-900">{tournament.archersPerStand}人</p></div>
+            <div className="bg-white p-3 rounded"><p className="text-xs text-gray-500 mb-1">立数</p><p className="text-xl font-light text-gray-900">{stands}立</p></div>
+            <div className="bg-white p-3 rounded"><p className="text-xs text-gray-500 mb-1">矢数</p><p className="text-xl font-light text-gray-900">{arrowsPerStand}本</p></div>
+          </div>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm text-gray-600">進行状況</span>
+            <span className="text-sm text-gray-500">{Math.round(progressPercent)}%</span>
+          </div>
+          <div className="w-full h-2 bg-gray-300 rounded-full overflow-hidden">
+            <div className="h-full bg-gray-800 transition-all duration-500" style={{ width: `${progressPercent}%` }} />
+          </div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6">
+          <p className="text-xs text-gray-500 mb-3 uppercase tracking-wide">予選通過者</p>
+          <div className="space-y-2">
+            {passedArchers.length > 0 ? passedArchers.map(a => (
+              <div key={a.id} className="flex items-center justify-between p-3 border-l-4 border-gray-800 bg-gray-50">
+                <div>
+                  <p className="text-sm font-light text-gray-900">{a.name}</p>
+                  <p className="text-xs text-gray-500">{a.affiliation}</p>
+                </div>
+                <span className="text-xs text-gray-500">射順{a.segment}</span>
+              </div>
+            )) : <p className="text-xs text-gray-400 py-2">通過者はまだいません</p>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const RecordingView = ({ state, dispatch, stands }) => {
+  const [selectedStand, setSelectedStand] = useState(1);
+  const tournament = state.tournament;
+  const checkInArchers = state.archers.filter(a => a.checkIn);
+  const arrowsPerStand = tournament.currentRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
+
+  const getArchersForStand = (standNumber) => {
+    const archersPerStand = tournament.archersPerStand;
+    const startIdx = (standNumber - 1) * archersPerStand;
+    return checkInArchers.slice(startIdx, startIdx + archersPerStand);
+  };
+
+  const archers = getArchersForStand(selectedStand);
+
+  const handleRecord = (archerId, arrowIndex, result) => {
+    dispatch({ type: 'RECORD_RESULT', payload: { archerId, stand: selectedStand, arrowIndex, result } });
+  };
+
+  const handleUndo = (archerId, arrowIndex) => {
+    dispatch({ type: 'UNDO_RESULT', payload: { archerId, stand: selectedStand, arrowIndex } });
+  };
+
+  return (
+    <div className="pb-6">
+      <div className="border-b border-gray-200 p-4 sm:p-6 bg-gray-50">
+        <h1 className="text-xl font-light text-gray-900">記録入力</h1>
+        <p className="text-xs text-gray-500 mt-1">複数立からのリアルタイム入力に対応</p>
+      </div>
+      <div className="p-4 sm:p-6 space-y-6">
+        <div>
+          <p className="text-sm text-gray-600 mb-2">ラウンド選択</p>
+          <div className="flex gap-2">
+            <button onClick={() => dispatch({ type: 'UPDATE_CURRENT_ROUND', payload: 1 })} className={`px-4 py-2 rounded text-sm font-light transition ${tournament.currentRound === 1 ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>1回戦</button>
+            <button onClick={() => dispatch({ type: 'UPDATE_CURRENT_ROUND', payload: 2 })} className={`px-4 py-2 rounded text-sm font-light transition ${tournament.currentRound === 2 ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>2回戦</button>
+          </div>
+        </div>
+        <div className="flex gap-2 overflow-x-auto">
+          {Array.from({ length: stands }, (_, i) => i + 1).map(stand => (
+            <button key={stand} onClick={() => setSelectedStand(stand)} className={`px-4 py-2 rounded text-sm font-light whitespace-nowrap transition ${selectedStand === stand ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>立{stand}</button>
+          ))}
+        </div>
+        <div className="space-y-4">
+          {archers.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-sm">受付済みの選手がいません</div>
+          ) : (
+            archers.map(archer => (
+              <div key={archer.id} className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm sm:text-base font-light text-gray-900">{archer.name}</p>
+                    <p className="text-xs text-gray-500 mt-1">{archer.affiliation} | 射順{archer.segment}</p>
+                  </div>
+                  <span className={`text-xs px-2 py-1 rounded ${archer.results[`stand${selectedStand}`].slice(0, arrowsPerStand).includes(null) ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{archer.results[`stand${selectedStand}`].slice(0, arrowsPerStand).includes(null) ? '入力中' : '完了'}</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${arrowsPerStand}, 1fr)`, gap: '0.5rem' }}>
+                  {archer.results[`stand${selectedStand}`].slice(0, arrowsPerStand).map((result, arrowIdx) => (
+                    <div key={arrowIdx} className="space-y-2">
+                      <p className="text-xs text-center text-gray-500">{arrowIdx + 1}本</p>
+                      {result === null ? (
+                        <div className="flex gap-1">
+                          <button onClick={() => handleRecord(archer.id, arrowIdx, 'o')} className="flex-1 py-3 bg-gray-800 text-white rounded font-light text-lg hover:bg-gray-700 transition active:scale-95">◯</button>
+                          <button onClick={() => handleRecord(archer.id, arrowIdx, 'x')} className="flex-1 py-3 bg-gray-400 text-white rounded font-light text-lg hover:bg-gray-500 transition active:scale-95">×</button>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <button disabled className={`w-full py-4 rounded font-light text-lg text-white transition ${result === 'o' ? 'bg-gray-800' : 'bg-gray-400'}`}>{result === 'o' ? '◯' : '×'}</button>
+                          <button onClick={() => handleUndo(archer.id, arrowIdx)} className="w-full py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition">修正</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CheckInView = ({ state, dispatch }) => {
+  const [scannedQR, setScannedQR] = useState('');
+  const [message, setMessage] = useState('');
+  const checkInCount = state.archers.filter(a => a.checkIn).length;
+
+  const handleQRScan = () => {
+    const archer = state.archers.find(a => a.qrCode === scannedQR.trim());
+    if (!archer) {
+      setMessage('❌ QRコードが見つかりません');
+      return;
+    }
+    if (archer.checkIn) {
+      setMessage('⚠️ 既に受付済みです');
+      return;
+    }
+    dispatch({ type: 'CHECK_IN_ARCHER', payload: archer.id });
+    setMessage(`✅ ${archer.name}さんの受付が完了しました`);
+    setScannedQR('');
+    setTimeout(() => setMessage(''), 3000);
+  };
+
+  return (
+    <div className="pb-6">
+      <div className="border-b border-gray-200 p-4 sm:p-6 bg-gray-50">
+        <h1 className="text-xl font-light text-gray-900">受付</h1>
+        <div className="mt-4 space-y-1 text-sm font-light text-gray-600">
+          <p>• {state.tournament.name}</p>
+          <p>• {state.tournament.date}</p>
+          <p>• ID: {state.tournament.id}</p>
+        </div>
+      </div>
+      <div className="p-4 sm:p-6 space-y-6">
+        <div className="bg-gray-900 text-white rounded-lg p-8 text-center">
+          <p className="text-4xl font-light mb-2">{checkInCount}</p>
+          <p className="text-sm text-gray-300">受付済み</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
+          <div>
+            <label className="text-xs text-gray-600 block mb-2">QRコード（デモ用）</label>
+            <input type="text" value={scannedQR} onChange={(e) => setScannedQR(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleQRScan()} placeholder="QRコード番号を入力してEnter" className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" />
+            <p className="text-xs text-gray-400 mt-2">例: KYUDO_2024_0001_A001</p>
+          </div>
+          <button onClick={handleQRScan} className="w-full bg-gray-900 text-white py-4 rounded-lg font-light hover:bg-gray-800 transition">受付完了</button>
+          {message && <div className={`p-3 rounded text-sm text-center font-light ${message.startsWith('✅') ? 'bg-green-100 text-green-800' : message.startsWith('❌') ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>{message}</div>}
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6">
+          <p className="text-xs text-gray-600 mb-4 uppercase tracking-wide">受付済み選手</p>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {state.archers.filter(a => a.checkIn).map(a => (
+              <div key={a.id} className="flex items-center justify-between p-3 bg-gray-50 rounded text-sm">
+                <span className="text-gray-900 font-light">{a.name}</span>
+                <span className="text-xs text-gray-500">{a.qrCode}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AdminView = ({ state, dispatch, adminView, setAdminView, stands, onLogout }) => {
+  if (adminView === 'recording') {
+    return (
+      <div>
+        <div className="border-b border-gray-200 p-4 sm:p-6 flex justify-between items-center bg-gray-50">
+          <div className="flex gap-3">
+            <button onClick={() => setAdminView('recording')} className={`px-4 py-2 text-sm font-light rounded ${adminView === 'recording' ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700'}`}>記録入力</button>
+            <button onClick={() => setAdminView('settings')} className={`px-4 py-2 text-sm font-light rounded ${adminView === 'settings' ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700'}`}>設定</button>
+          </div>
+          <button onClick={onLogout} className="flex items-center gap-2 px-3 py-2 text-sm font-light text-gray-600 hover:bg-gray-200 rounded transition"><LogOut size={14} />ログアウト</button>
+        </div>
+        <RecordingView state={state} dispatch={dispatch} stands={stands} />
+      </div>
+    );
+  }
+  if (adminView === 'settings') {
+    return (
+      <div>
+        <div className="border-b border-gray-200 p-4 sm:p-6 flex justify-between items-center bg-gray-50">
+          <div className="flex gap-3">
+            <button onClick={() => setAdminView('recording')} className={`px-4 py-2 text-sm font-light rounded ${adminView === 'recording' ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700'}`}>記録入力</button>
+            <button onClick={() => setAdminView('settings')} className={`px-4 py-2 text-sm font-light rounded ${adminView === 'settings' ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-700'}`}>設定</button>
+          </div>
+          <button onClick={onLogout} className="flex items-center gap-2 px-3 py-2 text-sm font-light text-gray-600 hover:bg-gray-200 rounded transition"><LogOut size={14} />ログアウト</button>
+        </div>
+        <SettingsView state={state} dispatch={dispatch} />
+      </div>
+    );
+  }
+};
+
+const SettingsView = ({ state, dispatch }) => {
+  return (
+    <div className="pb-6">
+      <div className="p-4 sm:p-6 space-y-6">
+        <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-6">
+          <div>
+            <label className="text-sm text-gray-700 font-light block mb-3">通過判定ルール</label>
+            <div className="space-y-2">
+              {[{ value: 'all_four', label: '全て的中' }, { value: 'four_or_more', label: '4本以上的中' }, { value: 'three_or_more', label: '3本以上的中' }, { value: 'two_or_more', label: '2本以上的中' }].map(rule => (
+                <label key={rule.value} className="flex items-center gap-3 cursor-pointer p-2 hover:bg-gray-50 rounded">
+                  <input type="radio" name="passRule" value={rule.value} checked={state.tournament.passRule === rule.value} onChange={(e) => dispatch({ type: 'UPDATE_PASS_RULE', payload: e.target.value })} className="w-4 h-4" />
+                  <span className="text-sm font-light text-gray-900">{rule.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="pt-4 border-t border-gray-200">
+            <label className="text-sm text-gray-700 font-light block mb-3">予選1回戦の矢数</label>
+            <select value={state.tournament.arrowsRound1} onChange={(e) => dispatch({ type: 'UPDATE_ARROWS_ROUND1', payload: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none">
+              {[2, 3, 4].map(n => (<option key={n} value={n}>{n}本</option>))}
+            </select>
+          </div>
+          <div className="pt-4 border-t border-gray-200">
+            <label className="text-sm text-gray-700 font-light block mb-3">予選2回戦の矢数</label>
+            <select value={state.tournament.arrowsRound2} onChange={(e) => dispatch({ type: 'UPDATE_ARROWS_ROUND2', payload: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none">
+              {[2, 3, 4].map(n => (<option key={n} value={n}>{n}本</option>))}
+            </select>
+          </div>
+          <div className="pt-4 border-t border-gray-200">
+            <label className="text-sm text-gray-700 font-light block mb-3">1立あたりの人数</label>
+            <select value={state.tournament.archersPerStand} onChange={(e) => dispatch({ type: 'UPDATE_ARCHERS_PER_STAND', payload: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none">
+              {[6, 8, 10, 12].map(n => (<option key={n} value={n}>{n}人</option>))}
+            </select>
+            <p className="text-xs text-gray-400 mt-2">場所に応じて設定してください</p>
+          </div>
+        </div>
+        <button onClick={() => dispatch({ type: 'RESET_ALL' })} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-100 text-red-700 rounded-lg text-sm font-light hover:bg-red-200 transition"><RotateCcw size={16} />すべてリセット</button>
+      </div>
+    </div>
+  );
+};
+
+const TournamentSetupView = ({ state, dispatch, onLogout }) => {
+  const [copied, setCopied] = useState(false);
+  const [tournamentId, setTournamentId] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    datetime: '',
+    location: '',
+    organizer: '',
+    coOrganizer: '',
+    administrator: '',
+    event: '',
+    type: '',
+    category: '',
+    description: '',
+    competitionMethod: '',
+    award: '',
+    qualifications: '',
+    applicableRules: '',
+    applicationMethod: '',
+    remarks: '',
+  });
+
+  const generateTournamentId = () => {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `KYUDO_${dateStr}_${random}`;
+  };
+
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleLoadTemplate = (template) => {
+    setFormData(template.data);
+    setTournamentId(template.id);
+    setIsEditing(true);
+  };
+
+  const handleSaveTournament = () => {
+    if (!formData.name || !formData.datetime || !formData.location) {
+      alert('大会名、開催日時、開催場所は必須です');
+      return;
+    }
+
+    if (isEditing && tournamentId) {
+      dispatch({ type: 'SAVE_TOURNAMENT_TEMPLATE', payload: { id: tournamentId, data: formData } });
+      alert('大会情報を更新しました');
+    } else {
+      const newId = generateTournamentId();
+      setTournamentId(newId);
+      setIsEditing(true);
+      dispatch({ type: 'SAVE_TOURNAMENT_TEMPLATE', payload: { id: newId, data: formData } });
+      dispatch({ type: 'UPDATE_TOURNAMENT_INFO', payload: { id: newId, name: formData.name } });
+    }
+  };
+
+  const handleResetForm = () => {
+    setFormData({ name: '', datetime: '', location: '', organizer: '', coOrganizer: '', administrator: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '' });
+    setTournamentId(null);
+    setIsEditing(false);
+    setCopied(false);
+  };
+
+  const handleDeleteTemplate = (id) => {
+    if (window.confirm('この大会情報を削除してもよろしいですか？')) {
+      dispatch({ type: 'DELETE_TOURNAMENT_TEMPLATE', payload: id });
+      if (tournamentId === id) handleResetForm();
+    }
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(tournamentId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="pb-6">
+      <div className="border-b border-gray-200 p-4 sm:p-6 flex justify-between items-center bg-gray-50">
+        <h1 className="text-xl font-light text-gray-900">大会登録</h1>
+        <button onClick={onLogout} className="flex items-center gap-2 px-3 py-2 text-sm font-light text-gray-600 hover:bg-gray-200 rounded transition"><LogOut size={14} />ログアウト</button>
+      </div>
+      <div className="p-4 sm:p-6 space-y-6">
+        {state.registeredTournaments.length > 0 && (
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <p className="text-sm text-gray-700 font-light mb-4">登録済み大会</p>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {state.registeredTournaments.map(template => (
+                <div key={template.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100 transition">
+                  <button onClick={() => handleLoadTemplate(template)} className="flex-1 text-left">
+                    <p className="text-sm font-light text-gray-900">{template.data.name}</p>
+                    <p className="text-xs text-gray-500 mt-1">{template.data.location || '場所未設定'} | {template.data.datetime || '日時未設定'}</p>
+                  </button>
+                  <button onClick={() => handleDeleteTemplate(template.id)} className="ml-2 px-3 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition">削除</button>
+                </div>
+              ))}
+            </div>
+            <button onClick={handleResetForm} className="w-full mt-3 px-4 py-2 text-sm font-light bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition">新規大会登録</button>
+          </div>
+        )}
+
+        {tournamentId && (
+          <div className="bg-gray-900 text-white rounded-lg p-6 space-y-4">
+            <div>
+              <p className="text-xs text-gray-300 mb-1">大会ID</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-lg sm:text-xl font-light">{tournamentId}</p>
+                <button onClick={copyToClipboard} className="p-2 hover:bg-gray-800 rounded transition">{copied ? <Check size={20} /> : <Copy size={20} />}</button>
+              </div>
+            </div>
+            <div className="border-t border-gray-700 pt-4 space-y-2 text-sm font-light">
+              <div><p className="text-gray-400">大会名</p><p className="text-white">{formData.name}</p></div>
+              <div><p className="text-gray-400">開催日時</p><p className="text-white">{formData.datetime || '未設定'}</p></div>
+              <div><p className="text-gray-400">開催場所</p><p className="text-white">{formData.location}</p></div>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-6">
+          <div><label className="text-sm text-gray-700 font-light block mb-2">大会名 *</label><input type="text" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">開催日時 *</label><input type="datetime-local" value={formData.datetime} onChange={(e) => handleInputChange('datetime', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">開催場所 *</label><input type="text" value={formData.location} onChange={(e) => handleInputChange('location', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">主催</label><input type="text" value={formData.organizer} onChange={(e) => handleInputChange('organizer', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">後援</label><input type="text" value={formData.coOrganizer} onChange={(e) => handleInputChange('coOrganizer', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">主管</label><input type="text" value={formData.administrator} onChange={(e) => handleInputChange('administrator', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">種目</label><input type="text" value={formData.event} onChange={(e) => handleInputChange('event', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">種類</label><input type="text" value={formData.type} onChange={(e) => handleInputChange('type', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">種別</label><input type="text" value={formData.category} onChange={(e) => handleInputChange('category', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">内容</label><textarea value={formData.description} onChange={(e) => handleInputChange('description', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" rows="3" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">競技方法</label><textarea value={formData.competitionMethod} onChange={(e) => handleInputChange('competitionMethod', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" rows="3" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">表彰</label><textarea value={formData.award} onChange={(e) => handleInputChange('award', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" rows="3" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">参加資格</label><textarea value={formData.qualifications} onChange={(e) => handleInputChange('qualifications', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" rows="3" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">適用規則</label><textarea value={formData.applicableRules} onChange={(e) => handleInputChange('applicableRules', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" rows="3" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">申込方法</label><textarea value={formData.applicationMethod} onChange={(e) => handleInputChange('applicationMethod', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" rows="3" /></div>
+          <div><label className="text-sm text-gray-700 font-light block mb-2">その他必要事項</label><textarea value={formData.remarks} onChange={(e) => handleInputChange('remarks', e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none" rows="3" /></div>
+        </div>
+
+        <button onClick={handleSaveTournament} className="w-full bg-gray-900 text-white py-4 rounded-lg font-light hover:bg-gray-800 transition">{isEditing ? '大会情報を更新' : '大会登録を保存'}</button>
+      </div>
+    </div>
+  );
+};
+
+const ArcherSignupView = ({ state, dispatch }) => {
+  const [selectedTournamentId, setSelectedTournamentId] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    affiliation: '',
+    rank: '初段',
+    rankAcquiredDate: '',
+  });
+
+  const rankOrder = ['初段', '二段', '三段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
+
+  const calculateStandNumber = () => {
+    const tournamentApplicants = state.applicants.filter(a => a.tournamentId === selectedTournamentId);
+    const sorted = [...tournamentApplicants].sort((a, b) => {
+      const rankDiff = rankOrder.indexOf(b.rank) - rankOrder.indexOf(a.rank);
+      if (rankDiff !== 0) return rankDiff;
+      return new Date(a.rankAcquiredDate) - new Date(b.rankAcquiredDate);
+    });
+    return sorted.length + 1;
+  };
+
+  const generateArcherId = () => {
+    const standNumber = String(calculateStandNumber()).padStart(3, '0');
+    return `${selectedTournamentId}_${standNumber}`;
+  };
+
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleApply = () => {
+    if (!selectedTournamentId || !formData.name || !formData.affiliation || !formData.rankAcquiredDate) {
+      alert('すべての項目を入力してください');
+      return;
+    }
+
+    const archerId = generateArcherId();
+    const newApplicant = {
+      archerId,
+      tournamentId: selectedTournamentId,
+      name: formData.name,
+      affiliation: formData.affiliation,
+      rank: formData.rank,
+      rankAcquiredDate: formData.rankAcquiredDate,
+      appliedAt: new Date().toISOString(),
+    };
+
+    dispatch({ type: 'ADD_ARCHER_APPLICANT', payload: newApplicant });
+    setFormData({ name: '', affiliation: '', rank: '初段', rankAcquiredDate: '' });
+    alert(`申し込み完了！\n選手ID: ${archerId}`);
+  };
+
+  const tournamentApplicants = state.applicants.filter(a => a.tournamentId === selectedTournamentId);
+  const sortedApplicants = [...tournamentApplicants].sort((a, b) => {
+    const rankDiff = rankOrder.indexOf(b.rank) - rankOrder.indexOf(a.rank);
+    if (rankDiff !== 0) return rankDiff;
+    return new Date(a.rankAcquiredDate) - new Date(b.rankAcquiredDate);
+  });
+
+  return (
+    <div className="pb-6">
+      <div className="border-b border-gray-200 p-4 sm:p-6 bg-gray-50">
+        <h1 className="text-xl font-light text-gray-900">選手申し込み</h1>
+      </div>
+
+      <div className="p-4 sm:p-6 space-y-6">
+        <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <label className="text-sm text-gray-700 font-light block mb-3">大会を選択 *</label>
+          <select
+            value={selectedTournamentId}
+            onChange={(e) => {
+              setSelectedTournamentId(e.target.value);
+              setShowForm(e.target.value !== '');
+            }}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none"
+          >
+            <option value="">-- 大会を選択してください --</option>
+            {state.registeredTournaments.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.data.name} ({t.data.location})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {showForm && (
+          <div className="bg-white border border-gray-200 rounded-lg p-6 space-y-6">
+            <div>
+              <label className="text-sm text-gray-700 font-light block mb-2">氏名 *</label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => handleInputChange('name', e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-700 font-light block mb-2">所属 *</label>
+              <input
+                type="text"
+                value={formData.affiliation}
+                onChange={(e) => handleInputChange('affiliation', e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-700 font-light block mb-2">段位 *</label>
+              <select
+                value={formData.rank}
+                onChange={(e) => handleInputChange('rank', e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none"
+              >
+                {rankOrder.map(rank => (
+                  <option key={rank} value={rank}>{rank}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-700 font-light block mb-2">段位取得年月 *</label>
+              <input
+                type="month"
+                value={formData.rankAcquiredDate}
+                onChange={(e) => handleInputChange('rankAcquiredDate', e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm font-light focus:border-gray-800 focus:outline-none"
+              />
+            </div>
+
+            <button
+              onClick={handleApply}
+              className="w-full bg-gray-900 text-white py-3 rounded-lg font-light hover:bg-gray-800 transition"
+            >
+              申し込む
+            </button>
+          </div>
+        )}
+
+        {selectedTournamentId && sortedApplicants.length > 0 && (
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <p className="text-sm text-gray-700 font-light mb-4">申し込み者一覧（立ち順）</p>
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {sortedApplicants.map((applicant, idx) => (
+                <div key={applicant.archerId} className="p-4 bg-gray-50 rounded border border-gray-200">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="text-sm font-light text-gray-900">
+                        <span className="text-gray-500">#{idx + 1}</span> {applicant.name}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">{applicant.affiliation}</p>
+                    </div>
+                    <button
+                      onClick={() => dispatch({ type: 'DELETE_ARCHER_APPLICANT', payload: applicant.archerId })}
+                      className="text-xs text-red-600 hover:bg-red-50 px-2 py-1 rounded transition"
+                    >
+                      削除
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-gray-600">
+                    <span>{applicant.rank}</span>
+                    <span className="font-mono text-gray-800">{applicant.archerId}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- メインコンポーネント ---
+
+const KyudoTournamentSystem = () => {
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [adminView, setAdminView] = useState('recording');
+  const [mainView, setMainView] = useState('tournament');
+  const [tournamentState, dispatch] = useReducer(tournamentReducer, initialTournamentState);
+
+  const checkInCount = tournamentState.archers.filter(a => a.checkIn).length;
+  const dynamicStands = Math.max(1, Math.ceil(checkInCount / tournamentState.tournament.archersPerStand));
+
+  return (
+    <div className="min-h-screen bg-white">
+      <div className="sticky top-0 bg-white border-b border-gray-200 flex overflow-x-auto">
+        <button onClick={() => setMainView('tournament')} className={`px-4 py-3 text-sm font-light border-b-2 whitespace-nowrap ${mainView === 'tournament' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>大会進行</button>
+        <button onClick={() => setMainView('checkin')} className={`px-4 py-3 text-sm font-light border-b-2 whitespace-nowrap ${mainView === 'checkin' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>受付</button>
+        <button onClick={() => setMainView('admin')} className={`px-4 py-3 text-sm font-light border-b-2 whitespace-nowrap flex items-center gap-2 ${mainView === 'admin' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}><Lock size={14} />運営</button>
+        <button onClick={() => setMainView('tournament-setup')} className={`px-4 py-3 text-sm font-light border-b-2 whitespace-nowrap flex items-center gap-2 ${mainView === 'tournament-setup' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}><Lock size={14} />大会登録</button>
+        <button onClick={() => setMainView('archer-signup')} className={`px-4 py-3 text-sm font-light border-b-2 whitespace-nowrap ${mainView === 'archer-signup' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500'}`}>選手申し込み</button>
+      </div>
+
+      {mainView === 'tournament' && <TournamentView state={tournamentState} stands={dynamicStands} checkInCount={checkInCount} />}
+      {mainView === 'checkin' && <CheckInView state={tournamentState} dispatch={dispatch} />}
+      {mainView === 'admin' && !isAdminLoggedIn && <AdminLoginView onLogin={() => setIsAdminLoggedIn(true)} />}
+      {mainView === 'admin' && isAdminLoggedIn && <AdminView state={tournamentState} dispatch={dispatch} adminView={adminView} setAdminView={setAdminView} stands={dynamicStands} onLogout={() => setIsAdminLoggedIn(false)} />}
+      {mainView === 'tournament-setup' && !isAdminLoggedIn && <AdminLoginView onLogin={() => setIsAdminLoggedIn(true)} />}
+      {mainView === 'tournament-setup' && isAdminLoggedIn && <TournamentSetupView state={tournamentState} dispatch={dispatch} onLogout={() => setIsAdminLoggedIn(false)} />}
+      {mainView === 'archer-signup' && <ArcherSignupView state={tournamentState} dispatch={dispatch} />}
+    </div>
+  );
+};
+
+export default KyudoTournamentSystem;

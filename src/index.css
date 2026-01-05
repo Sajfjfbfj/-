@@ -1,0 +1,1033 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: #ffffff;
+  color: #1f2937;
+}
+
+.app-container {
+  min-height: 100vh;
+  background-color: #ffffff;
+}
+
+/* ナビゲーション */
+.nav-tabs {
+  position: sticky;
+  top: 0;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  overflow-x: auto;
+  z-index: 10;
+}
+
+.nav-tab {
+  padding: 1rem;
+  font-size: 0.875rem;
+  font-weight: 300;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  color: #6b7280;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: color 0.2s;
+}
+
+.nav-tab:hover {
+  color: #4b5563;
+}
+
+.nav-tab-active {
+  border-bottom-color: #111827;
+  color: #111827;
+}
+
+/* ログイン */
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f9fafb;
+  padding: 1rem;
+}
+
+.login-box {
+  width: 100%;
+  max-width: 384px;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.login-header {
+  text-align: center;
+}
+
+.login-header svg {
+  margin: 0 auto 0.75rem;
+  color: #111827;
+}
+
+.login-header h1 {
+  font-size: 1.25rem;
+  font-weight: 300;
+  color: #111827;
+}
+
+.login-hint {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  text-align: center;
+}
+
+/* フォーム */
+.input {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 300;
+  transition: border-color 0.2s;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #111827;
+}
+
+.input.textarea {
+  font-family: inherit;
+  resize: vertical;
+}
+
+/* ボタン */
+.btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 300;
+  cursor: pointer;
+  transition: all 0.2s;
+  background-color: #e5e7eb;
+  color: #374151;
+}
+
+.btn:hover {
+  background-color: #d1d5db;
+}
+
+.btn-active {
+  background-color: #111827;
+  color: #ffffff;
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 1rem;
+  background-color: #111827;
+  color: #ffffff;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 300;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-top: 1.5rem;
+}
+
+.btn-primary:hover {
+  background-color: #1f2937;
+}
+
+.btn-secondary {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  margin-top: 0.75rem;
+  background-color: #f3f4f6;
+  color: #374151;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 300;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-secondary:hover {
+  background-color: #e5e7eb;
+}
+
+.btn-danger {
+  width: 100%;
+  padding: 0.75rem;
+  margin-top: 1rem;
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 300;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: background-color 0.2s;
+}
+
+.btn-danger:hover {
+  background-color: #fecaca;
+}
+
+.btn-circle {
+  padding: 0.75rem;
+  border: none;
+  border-radius: 50%;
+  font-weight: 300;
+  font-size: 1.125rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-hit {
+  background-color: #111827;
+  color: #ffffff;
+}
+
+.btn-hit:hover {
+  background-color: #374151;
+}
+
+.btn-miss {
+  background-color: #9ca3af;
+  color: #ffffff;
+}
+
+.btn-miss:hover {
+  background-color: #6b7280;
+}
+
+.btn-fix {
+  width: 100%;
+  padding: 0.25rem;
+  font-size: 0.75rem;
+  background-color: #f3f4f6;
+  color: #4b5563;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-fix:hover {
+  background-color: #e5e7eb;
+}
+
+.btn-logout {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 300;
+  background: none;
+  border: none;
+  color: #4b5563;
+  cursor: pointer;
+  border-radius: 0.25rem;
+  transition: background-color 0.2s;
+}
+
+.btn-logout:hover {
+  background-color: #e5e7eb;
+}
+
+.btn-copy {
+  padding: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 0.25rem;
+  transition: background-color 0.2s;
+}
+
+.btn-copy:hover {
+  background-color: #374151;
+}
+
+.btn-delete {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  background: none;
+  border: none;
+  color: #dc2626;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-radius: 0.25rem;
+}
+
+.btn-delete:hover {
+  background-color: #fef2f2;
+}
+
+.btn-delete-small {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  background: none;
+  border: none;
+  color: #dc2626;
+  cursor: pointer;
+}
+
+.button-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ビューコンテナ */
+.view-container {
+  padding-bottom: 1.5rem;
+}
+
+.view-header {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 1rem;
+  background-color: #f9fafb;
+}
+
+.view-header h1 {
+  font-size: 1.25rem;
+  font-weight: 300;
+  color: #111827;
+}
+
+.view-header p {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+.tournament-info {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 300;
+  color: #4b5563;
+}
+
+.view-content {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* カード */
+.card {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.card-title {
+  font-size: 0.875rem;
+  color: #4b5563;
+  font-weight: 300;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* グリッド */
+.settings-grid {
+  background-color: #f9fafb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+}
+
+.settings-grid > div {
+  background-color: #ffffff;
+  padding: 0.75rem;
+  border-radius: 0.25rem;
+  text-align: center;
+}
+
+.label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 0.5rem;
+}
+
+.value {
+  font-size: 1.25rem;
+  font-weight: 300;
+  color: #111827;
+}
+
+/* 進行状況 */
+.progress-section {
+  background-color: #f9fafb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.progress-header span {
+  font-size: 0.875rem;
+  color: #4b5563;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 0.5rem;
+  background-color: #d1d5db;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #111827;
+  transition: width 0.5s ease;
+}
+
+/* 選手一覧 */
+.archer-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  border-left: 4px solid #111827;
+  background-color: #f9fafb;
+  border-radius: 0.25rem;
+}
+
+.archer-item p {
+  font-size: 0.875rem;
+  font-weight: 300;
+  color: #111827;
+}
+
+.archer-item span {
+  font-size: 0.75rem;
+  color: #4b5563;
+}
+
+.archer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.archer-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background-color: #f9fafb;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+}
+
+/* 受付 */
+.checkin-counter {
+  background-color: #111827;
+  color: #ffffff;
+  border-radius: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.counter-value {
+  font-size: 2.25rem;
+  font-weight: 300;
+  margin-bottom: 0.5rem;
+}
+
+.counter-label {
+  font-size: 0.875rem;
+  color: #d1d5db;
+}
+
+/* 記録入力 */
+.round-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.round-selector p {
+  font-size: 0.875rem;
+  color: #4b5563;
+}
+
+.stand-tabs {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+}
+
+.stand-tab {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 300;
+  background-color: #e5e7eb;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.stand-tab:hover {
+  background-color: #d1d5db;
+}
+
+.stand-tab-active {
+  background-color: #111827;
+  color: #ffffff;
+}
+
+.archer-records {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.archer-record {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.archer-info {
+  margin-bottom: 1rem;
+}
+
+.archer-info p {
+  font-size: 0.875rem;
+  font-weight: 300;
+  color: #111827;
+}
+
+.status {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.status-input {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.status-complete {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.arrows-grid {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.arrow-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.arrow-input p {
+  font-size: 0.75rem;
+  text-align: center;
+  color: #4b5563;
+}
+
+.arrow-buttons {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.arrow-buttons .btn-circle {
+  flex: 1;
+}
+
+.arrow-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.arrow-result .btn-circle {
+  padding: 1rem;
+}
+
+/* 大会登録 */
+.admin-header {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #f9fafb;
+}
+
+.admin-header h1 {
+  font-size: 1.25rem;
+  font-weight: 300;
+  color: #111827;
+}
+
+.tournament-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 16rem;
+  overflow-y: auto;
+  margin-bottom: 0.75rem;
+}
+
+.tournament-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.25rem;
+  transition: background-color 0.2s;
+}
+
+.tournament-item:hover {
+  background-color: #f3f4f6;
+}
+
+.tournament-button {
+  flex: 1;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.tournament-button p {
+  font-size: 0.875rem;
+  font-weight: 300;
+  color: #111827;
+}
+
+.tournament-button p:first-child {
+  margin-bottom: 0.25rem;
+}
+
+.tournament-id-box {
+  background-color: #111827;
+  color: #ffffff;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.id-label {
+  font-size: 0.75rem;
+  color: #d1d5db;
+  margin-bottom: 0.25rem;
+}
+
+.id-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.id-display p {
+  font-size: 1.125rem;
+  font-weight: 300;
+}
+
+.divider {
+  border-top: 1px solid #374151;
+}
+
+.id-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 300;
+}
+
+.id-sublabel {
+  color: #9ca3af;
+  margin-bottom: 0.25rem;
+}
+
+.id-info p {
+  color: #ffffff;
+}
+
+/* ラジオボタン */
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.radio-label:hover {
+  background-color: #f9fafb;
+}
+
+.radio-label input[type="radio"] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
+
+.radio-label span {
+  font-size: 0.875rem;
+  font-weight: 300;
+  color: #111827;
+}
+
+/* テキスト */
+.text-sm {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+.error-text {
+  font-size: 0.75rem;
+  color: #dc2626;
+  margin-top: 0.5rem;
+}
+
+.empty-text {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  padding: 0.5rem;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 0.5rem;
+}
+
+/* メッセージ */
+.message {
+  padding: 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  text-align: center;
+  font-weight: 300;
+}
+
+.message-success {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.message-error {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.message-warning {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+/* 選手申し込み */
+.applicant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 24rem;
+  overflow-y: auto;
+}
+
+.applicant-item {
+  padding: 1rem;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.25rem;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.applicant-item p {
+  font-size: 0.875rem;
+  font-weight: 300;
+  color: #111827;
+}
+
+.applicant-item p:last-child {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+.applicant-number {
+  color: #6b7280;
+}
+
+.pb-6 {
+  padding-bottom: 1.5rem;
+}
+
+/* QRコードモーダル */
+.qr-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.qr-modal-container {
+  background-color: #ffffff;
+  border-radius: 1rem;
+  max-width: 28rem;
+  width: 100%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.qr-modal-header {
+  background: linear-gradient(135deg, #111827 0%, #374151 100%);
+  color: #ffffff;
+  padding: 2rem;
+  border-radius: 1rem 1rem 0 0;
+  text-align: center;
+}
+
+.qr-modal-header h2 {
+  font-size: 1.5rem;
+  font-weight: 300;
+  margin-bottom: 0.5rem;
+}
+
+.qr-tournament-name {
+  font-size: 0.875rem;
+  color: #d1d5db;
+  font-weight: 300;
+}
+
+.qr-modal-body {
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.qr-code-wrapper {
+  background-color: #ffffff;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  border: 2px solid #e5e7eb;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.qr-info-box {
+  width: 100%;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.qr-name {
+  font-size: 1.25rem;
+  font-weight: 400;
+  color: #111827;
+  margin-bottom: 0.75rem;
+}
+
+.qr-details {
+  font-size: 0.875rem;
+  color: #4b5563;
+  margin-bottom: 0.25rem;
+}
+
+.qr-id-section {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.qr-id-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
+}
+
+.qr-id-value {
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: #111827;
+  font-weight: 500;
+  background-color: #ffffff;
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  display: inline-block;
+}
+
+.qr-timestamp {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 0.75rem;
+}
+
+.qr-instruction {
+  text-align: center;
+  background-color: #eff6ff;
+  border: 1px solid #dbeafe;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  width: 100%;
+}
+
+.qr-instruction p {
+  font-size: 0.875rem;
+  color: #1e40af;
+  font-weight: 400;
+}
+
+.qr-instruction-sub {
+  font-size: 0.75rem;
+  color: #3b82f6;
+  margin-top: 0.25rem;
+}
+
+.qr-modal-footer {
+  padding: 1.5rem 2rem;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  gap: 0.75rem;
+  border-radius: 0 0 1rem 1rem;
+}
+
+.qr-modal-footer .btn-primary,
+.qr-modal-footer .btn-secondary {
+  flex: 1;
+  margin-top: 0;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  
+  .qr-modal-overlay,
+  .qr-modal-overlay * {
+    visibility: visible;
+  }
+  
+  .qr-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    background-color: white;
+  }
+  
+  .qr-modal-container {
+    box-shadow: none;
+  }
+  
+  .qr-modal-footer {
+    display: none;
+  }
+}
