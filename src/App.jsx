@@ -32,10 +32,11 @@ const KyudoTournamentSystem = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include' // クレデンシャルを含める
       });
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error Response:', errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
@@ -47,11 +48,11 @@ const KyudoTournamentSystem = () => {
           payload: result.data
         });
       } else {
-        console.error('API response indicates failure:', result);
+        console.error('Unexpected API response:', result);
       }
     } catch (error) {
       console.error('大会データの取得中にエラーが発生しました:', error);
-      // ユーザーにエラーを表示する場合
+      // ユーザーにエラーを表示
       alert(`大会データの取得に失敗しました: ${error.message}`);
     } finally {
       setLoading(false);

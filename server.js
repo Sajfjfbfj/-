@@ -122,15 +122,15 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'your-secret-key';
 // 許可するオリジンのリスト
 const allowedOrigins = [
   'https://kyudotaikai.vercel.app',
-  'http://localhost:3000',  // 開発用
-  'http://localhost:3001'   // 開発用（必要に応じて）
+  'http://localhost:3000',
+  'http://localhost:3001'
 ];
 
 // CORS設定
 app.use(cors({
   origin: function(origin, callback) {
-    // オリジンが許可リストにあるか、または開発環境の場合
-    if (!origin || allowedOrigins.includes(origin)) {
+    // オリジンチェックを緩和（開発環境の場合）
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
       callback(null, true);
     } else {
       console.warn('ブロックされたオリジン:', origin);
@@ -357,7 +357,9 @@ app.delete('/api/tournaments/:id', async (req, res) => {
   } catch (error) {
     res.status(500).json({ 
       success: false, 
-      message: '大会の削除中にエラーが発生しました' 
+      message: '大会の削除中にエラーが発生しました',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 });
@@ -365,10 +367,19 @@ app.delete('/api/tournaments/:id', async (req, res) => {
 // エラーハンドリングミドルウェア
 app.use((err, req, res, next) => {
   console.error('サーバーエラー:', err);
+  
+  // 既にレスポンスが送信されている場合は何もしない
+  if (res.headersSent) {
+    return next(err);
+  }
+  
+  // エラーレスポンスを送信
   res.status(500).json({ 
     success: false, 
     message: 'サーバーでエラーが発生しました',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    timestamp: new Date().toISOString(),
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 });
 
@@ -381,7 +392,20 @@ app.use((req, res) => {
 });
 
 // サーバー起動
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+async function startServer() {
+  try {
+    // MongoDBに接続
+    await connectToMongoDB();
+    
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server is running on http://localhost:${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log('MongoDB connected:', isConnected);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
