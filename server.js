@@ -10,36 +10,97 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // MongoDB接続設定
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ibukisaki0513_db_user:<password>@kyodo.dntg64x.mongodb.net/kyudo-tournament?retryWrites=true&w=majority';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://ibukisaki0513_db_user:ibukisaki0513_db_user@kyudo.dntg64x.mongodb.net/kyudo-tournament?retryWrites=true&w=majority';
 const DB_NAME = 'kyudo-tournament';
+
+// MongoDB接続オプション
+const mongoOptions = {
+  serverApi: {
+    version: '1',
+    strict: true,
+    deprecationErrors: true,
+  },
+  maxPoolSize: 10, // コネクションプールの最大サイズ
+  connectTimeoutMS: 5000, // 接続タイムアウト (5秒)
+  socketTimeoutMS: 45000, // ソケットタイムアウト (45秒)
+  serverSelectionTimeoutMS: 5000, // サーバー選択タイムアウト (5秒)
+};
 
 // MongoDB接続クライアント
 let client;
 let db;
+let isConnected = false;
 
 // MongoDBに接続
 async function connectToMongoDB() {
+  if (isConnected) return;
+
   try {
-    client = new MongoClient(MONGODB_URI);
+    client = new MongoClient(MONGODB_URI, mongoOptions);
     await client.connect();
+    await client.db('admin').command({ ping: 1 });
+    
     db = client.db(DB_NAME);
-    console.log('MongoDBに接続しました');
+    isConnected = true;
+    
+    console.log('✅ MongoDBに接続しました');
+    
+    // 接続エラー時のイベントハンドラ
+    client.on('error', (error) => {
+      console.error('❌ MongoDB接続エラー:', error);
+      isConnected = false;
+    });
+    
+    // 接続が切れた場合の再試行
+    client.on('close', () => {
+      console.log('ℹ️ MongoDB接続が切れました。再接続を試みます...');
+      isConnected = false;
+      setTimeout(connectToMongoDB, 5000); // 5秒後に再接続を試みる
+    });
+    
   } catch (error) {
-    console.error('MongoDB接続エラー:', error);
-    process.exit(1);
+    console.error('❌ MongoDB接続エラー:', error);
+    isConnected = false;
+    // 接続に失敗した場合、5秒後に再試行
+    setTimeout(connectToMongoDB, 5000);
   }
+}
+
+// 接続を安全に取得するヘルパー関数
+async function getDb() {
+  if (!isConnected) {
+    await connectToMongoDB();
+  }
+  return db;
 }
 
 // アプリケーション起動時にMongoDBに接続
 connectToMongoDB();
 
 // アプリケーション終了時に接続を閉じる
-process.on('SIGINT', async () => {
-  if (client) {
-    await client.close();
-    console.log('MongoDB接続を閉じました');
+async function closeConnection() {
+  try {
+    if (client) {
+      await client.close();
+      isConnected = false;
+      console.log('ℹ️ MongoDB接続を閉じました');
+    }
+  } catch (error) {
+    console.error('MongoDB接続クローズエラー:', error);
   }
-  process.exit(0);
+}
+
+// シグナルハンドリング
+['SIGINT', 'SIGTERM', 'SIGQUIT'].forEach(signal => {
+  process.on(signal, async () => {
+    await closeConnection();
+    process.exit(0);
+  });
+});
+
+// 未処理のPromise拒否をキャッチ
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('未処理のPromise拒否:', reason);
 });
 
 const app = express();
