@@ -395,7 +395,14 @@ const CheckInView = ({ state, dispatch }) => {
   const [checkIns, setCheckIns] = useState([]);
   const [selectedTournamentId, setSelectedTournamentId] = useState('');
   const [showQRModal, setShowQRModal] = useState(false);
+  const [locationFilter, setLocationFilter] = useState('');
   const [currentQRCodeData, setCurrentQRCodeData] = useState(null); // オブジェクトでデータを保持
+  
+  // Filter tournaments by location
+  const filteredTournaments = state.registeredTournaments.filter(tournament => 
+    locationFilter === '' || 
+    (tournament.data.location && tournament.data.location.toLowerCase().includes(locationFilter.toLowerCase()))
+  );
   
   // 新機能用ステート
   const [currentUser, setCurrentUser] = useState(null);
@@ -656,18 +663,31 @@ const CheckInView = ({ state, dispatch }) => {
       <div className="view-content">
         <div className="card">
           <label>大会を選択 *</label>
-          <select 
-            value={selectedTournamentId} 
-            onChange={(e) => setSelectedTournamentId(e.target.value)}
-            className="input"
-          >
-            <option value="">-- 大会を選択してください --</option>
-            {state.registeredTournaments.map(tournament => (
-              <option key={tournament.id} value={tournament.id}>
-                {tournament.data.name} ({tournament.data.location})
-              </option>
-            ))}
-          </select>
+          <div className="mb-2">
+            <input 
+              type="text" 
+              value={locationFilter} 
+              onChange={(e) => setLocationFilter(e.target.value)} 
+              placeholder="開催地でフィルター" 
+              className="input w-full mb-2"
+            />
+            <select 
+              value={selectedTournamentId} 
+              onChange={(e) => setSelectedTournamentId(e.target.value)}
+              className="input w-full"
+            >
+              <option value="">-- 大会を選択してください --</option>
+              {filteredTournaments.length === 0 ? (
+                <option disabled>該当する大会が見つかりません</option>
+              ) : (
+                filteredTournaments.map(tournament => (
+                  <option key={tournament.id} value={tournament.id}>
+                    {tournament.data.name} ({tournament.data.location})
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
         </div>
 
         {selectedTournamentId && (
