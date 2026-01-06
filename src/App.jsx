@@ -1,6 +1,7 @@
 import React, { useState, useReducer, useEffect } from 'react';
-import { Lock, LogOut, RotateCcw, Copy, Check, QrCode, Maximize2, Filter, X, User } from 'lucide-react';
+import { Lock, LogOut, RotateCcw, Copy, Check, QrCode, Maximize2, Filter, X, User, Camera } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import QRCodeScanner from './components/QRCodeScanner';
 import './index.css';
 
 // 環境に応じてAPIのベースURLを切り替え
@@ -395,6 +396,7 @@ const CheckInView = ({ state, dispatch }) => {
   const [checkIns, setCheckIns] = useState([]);
   const [selectedTournamentId, setSelectedTournamentId] = useState('');
   const [showQRModal, setShowQRModal] = useState(false);
+  const [showQRScanner, setShowQRScanner] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
   const [currentQRCodeData, setCurrentQRCodeData] = useState(null); // オブジェクトでデータを保持
   
@@ -544,7 +546,26 @@ const CheckInView = ({ state, dispatch }) => {
     setShowQRModal(true);
   };
 
-  // 受付処理（変更なし、ただし変数はscannedQRを使用）
+  // QRコードスキャン成功時の処理
+  const handleQRCodeScanned = (qrCode) => {
+    setScannedQR(qrCode);
+    setShowQRScanner(false);
+    // 自動でチェックイン処理を実行
+    setTimeout(() => {
+      handleCheckIn();
+    }, 100);
+  };
+
+  // カメラでQRコードをスキャン
+  const openQRScanner = () => {
+    if (!selectedTournamentId) {
+      setMessage('❌ 大会を選択してください');
+      return;
+    }
+    setShowQRScanner(true);
+  };
+
+  // 受付処理
   const handleCheckIn = async () => {
     if (!selectedTournamentId) {
       setMessage('❌ 大会を選択してください');
@@ -808,18 +829,12 @@ const CheckInView = ({ state, dispatch }) => {
                     </div>
                     
                     <button
-                      onClick={() => {
-                        const scannedId = prompt('QRコードをスキャンするか、手動でIDを入力してください:');
-                        if (scannedId) {
-                          setScannedQR(scannedId);
-                          setTimeout(() => handleCheckIn(), 100);
-                        }
-                      }}
+                      onClick={openQRScanner}
                       className="btn-secondary"
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}
                     >
-                      <QrCode size={18} style={{ marginRight: '0.5rem' }} />
-                      カメラでスキャン
+                      <Camera size={18} style={{ marginRight: '0.5rem' }} />
+                      QRコードをスキャン
                     </button>
                   </div>
                 </div>
@@ -843,42 +858,59 @@ const CheckInView = ({ state, dispatch }) => {
                   更新
                 </button>
               </div>
-              <div className="archer-list">
-                {checkIns.length > 0 ? (
-                  checkIns.map(archer => (
-                    <tr key={archer.archerId} className={archer.isCheckedIn ? 'checked-in' : ''}>
-                      <td>
-                        {archer.archerId}
-                        {archer.isCheckedIn && (
-                          <span className="check-in-badge">受付済</span>
-                        )}
-                      </td>
-                      <td>{archer.name}</td>
-                      <td>{archer.affiliation}</td>
-                      <td>{archer.rank}</td>
-                      <td className="action-buttons">
-                        <button 
-                          onClick={() => showListQRCode(archer)}
-                          className="btn-secondary"
-                        >
-                          <QrCode size={16} /> QRコード表示
-                        </button>
-                        {archer.isCheckedIn && (
-                          <button 
-                            onClick={() => showScreenshotQRCode(archer)}
-                            className="btn-secondary"
-                            style={{ marginLeft: '8px' }}
-                            title="スクリーンショット用に表示"
-                          >
-                            <Maximize2 size={16} /> スクリーンショット
-                          </button>
-                        )}
-                      </td>
+              <div className="table-responsive">
+                <table className="archer-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>氏名</th>
+                      <th>所属</th>
+                      <th>段位</th>
+                      <th>操作</th>
                     </tr>
-                  ))
-                ) : (
-                  <p className="text-gray-500 text-center py-4">受付データがありません</p>
-                )}
+                  </thead>
+                  <tbody>
+                    {checkIns.length > 0 ? (
+                      checkIns.map(archer => (
+                        <tr key={archer.archerId} className={archer.isCheckedIn ? 'checked-in' : ''}>
+                          <td>
+                            {archer.archerId}
+                            {archer.isCheckedIn && (
+                              <span className="check-in-badge">受付済</span>
+                            )}
+                          </td>
+                          <td>{archer.name}</td>
+                          <td>{archer.affiliation}</td>
+                          <td>{archer.rank}</td>
+                          <td className="action-buttons">
+                            <button 
+                              onClick={() => showListQRCode(archer)}
+                              className="btn-secondary"
+                            >
+                              <QrCode size={16} /> QRコード表示
+                            </button>
+                            {archer.isCheckedIn && (
+                              <button 
+                                onClick={() => showScreenshotQRCode(archer)}
+                                className="btn-secondary"
+                                style={{ marginLeft: '8px' }}
+                                title="スクリーンショット用に表示"
+                              >
+                                <Maximize2 size={16} /> スクリーンショット
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="5" className="text-center py-4">
+                          <p className="text-gray-500">受付データがありません</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
               
               {/* QRコードモーダル（共通化） */}
@@ -1877,7 +1909,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
               <p className="text-gray-500 text-center py-4">
                 {currentUser 
                   ? '申し込みデータがありません。新しい申し込みを行ってください。' 
-                  : 'ログインしていません。申し込みを行うと、ここに表示されます。'}
+                  : '申し込みを行うと、ここに表示されます。'}
               </p>
             )}
           </div>
