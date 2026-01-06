@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "set NODE_ENV=production && node server.js",
-    "heroku-postbuild": "npm install && npm run build"
+    "heroku-postbuild": "npm install && npm run build",
+    "vercel-build": "npm run build"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -42,4 +43,5 @@
     "tailwindcss": "^4.1.18",
     "vite": "^7.2.4"
   }
+  
 }
