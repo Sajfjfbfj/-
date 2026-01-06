@@ -1031,3 +1031,88 @@ body {
     display: none;
   }
 }
+/* QR Scanner Modal Styles */
+.qr-scanner-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.qr-scanner-modal {
+  background-color: white;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.qr-scanner-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.qr-scanner-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.qr-scanner-close-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6c757d;
+  padding: 0.25rem;
+}
+.qr-scanner-close-button:hover {
+  color: #212529;
+}
+
+.camera-selector {
+  padding: 0.75rem 1rem;
+  background-color: #f8f9fa;
+}
+
+.camera-selector select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+}
+
+.qr-reader-view {
+  width: 100%;
+  /* アスペクト比を保つためのpadding-topハックは不要な場合が多い */
+  min-height: 300px; 
+  background-color: #000;
+}
+
+/* html5-qrcodeが生成するUIのスタイル調整 */
+.qr-reader-view video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+}
+
+.scanner-instructions {
+  text-align: center;
+  padding: 1rem;
+  color: #495057;
+  background-color: #f8f9fa;
+  border-top: 1px solid #dee2e6;
+}
