@@ -1,256 +1,124 @@
+// ./src/components/QRCodeScanner.js
+
 import { Html5Qrcode } from 'html5-qrcode';
 import { useEffect, useRef, useState } from 'react';
+import { X } from 'lucide-react'; // アイコンを利用
 
+// onScanSuccess, onError, onClose を props として受け取る
 export const QRCodeScanner = ({ onScanSuccess, onError, onClose }) => {
   const [isScanning, setIsScanning] = useState(false);
   const qrScannerRef = useRef(null);
   const [cameraId, setCameraId] = useState(null);
   const [availableCameras, setAvailableCameras] = useState([]);
-  const [isInitialized, setIsInitialized] = useState(false);
 
+  // このuseEffectはカメラの初期化とクリーンアップを担当
   useEffect(() => {
-    // カメラの初期化
     const initializeScanner = async () => {
       try {
-        // 利用可能なカメラを取得
         const devices = await Html5Qrcode.getCameras();
         if (devices && devices.length) {
           setAvailableCameras(devices);
-          setCameraId(devices[0].id);
-          setIsInitialized(true);
+          // 背面カメラがあれば優先的に選択
+          const rearCamera = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('背面'));
+          setCameraId(rearCamera ? rearCamera.id : devices[0].id);
         } else {
           onError('利用可能なカメラが見つかりませんでした');
         }
       } catch (err) {
         console.error('カメラの取得に失敗しました:', err);
-        onError('カメラへのアクセスに失敗しました。カメラの使用が許可されているか確認してください。');
+        onError('カメラへのアクセスに失敗しました。許可を確認してください。');
       }
     };
 
     initializeScanner();
 
+    // コンポーネントが閉じられる時にスキャナーを確実に停止
     return () => {
-      // コンポーネントのクリーンアップ時にスキャナーを停止
       if (qrScannerRef.current && qrScannerRef.current.isScanning) {
-        qrScannerRef.current.stop().catch(console.error);
+        qrScannerRef.current.stop().catch(err => console.error("Scanner stop failed on cleanup", err));
       }
     };
-  }, []);
+  }, [onError]); // onErrorが変更された場合のみ再実行
 
-  const startScanner = async () => {
-    if (!cameraId) {
+  // スキャンを開始する関数
+  const startScanner = async (selectedCameraId) => {
+    if (!selectedCameraId) {
       onError('カメラが選択されていません');
       return;
     }
 
+    // 既にスキャナーがあれば停止
+    if (qrScannerRef.current && qrScannerRef.current.isScanning) {
+      await qrScannerRef.current.stop();
+    }
+    
+    qrScannerRef.current = new Html5Qrcode('qr-reader-container');
+    
     try {
-      qrScannerRef.current = new Html5Qrcode('qr-reader');
-      
       await qrScannerRef.current.start(
-        cameraId,
-        {
-          fps: 10,          // 1秒あたりのフレーム数
-          qrbox: { width: 250, height: 250 }  // スキャンエリアのサイズ
-        },
+        selectedCameraId,
+        { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
-          // QRコードのスキャンに成功
+          // スキャン成功！ 親コンポーネントに通知
           onScanSuccess(decodedText);
-          // スキャン後に自動で停止
-          stopScanner();
         },
-        (errorMessage) => {
-          // スキャンエラー（無視しても良い）
-        }
+        (errorMessage) => { /* 失敗時は何もしない */ }
       );
-      
       setIsScanning(true);
     } catch (err) {
-      console.error('QRコードスキャナーの起動に失敗しました:', err);
-      onError('QRコードスキャナーの起動に失敗しました');
+      console.error('QRスキャナーの起動に失敗:', err);
+      onError(`QRスキャナーの起動に失敗しました: ${err.name}`);
     }
   };
 
-  const stopScanner = () => {
-    if (qrScannerRef.current && qrScannerRef.current.isScanning) {
-      qrScannerRef.current.stop()
-        .then(() => {
-          setIsScanning(false);
-        })
-        .catch(err => {
-          console.error('スキャナーの停止に失敗しました:', err);
-          onError('スキャナーの停止に失敗しました');
-        });
+  // カメラが選択されたら自動でスキャンを開始
+  useEffect(() => {
+    if (cameraId) {
+      startScanner(cameraId);
     }
-  };
+  }, [cameraId]);
 
+  // カメラ切り替えハンドラ
   const handleCameraChange = (e) => {
     const newCameraId = e.target.value;
-    setCameraId(newCameraId);
-    
-    // スキャン中であれば、新しいカメラで再起動
-    if (isScanning) {
-      stopScanner().then(() => {
-        startScanner();
-      });
-    }
-  };
-
-  const handleStartStopClick = () => {
-    if (isScanning) {
-      stopScanner();
-    } else {
-      startScanner();
-    }
+    setCameraId(newCameraId); // これにより上のuseEffectがトリガーされる
   };
 
   return (
-    <div className="qr-scanner-container">
-      <div className="qr-scanner-header">
-        <h3>QRコードスキャナー</h3>
-        <button onClick={onClose} className="close-button">
-          × 閉じる
-        </button>
-      </div>
-      
-      {availableCameras.length > 1 && (
-        <div className="camera-selector">
-          <label htmlFor="camera-select">カメラを選択: </label>
-          <select 
-            id="camera-select" 
-            value={cameraId || ''} 
-            onChange={handleCameraChange}
-            disabled={isScanning}
-          >
-            {availableCameras.map(camera => (
-              <option key={camera.id} value={camera.id}>
-                {camera.label || `カメラ ${camera.id}`}
-              </option>
-            ))}
-          </select>
+    // モーダルのオーバーレイ
+    <div className="qr-scanner-overlay">
+      {/* モーダルの本体 */}
+      <div className="qr-scanner-modal">
+        <div className="qr-scanner-header">
+          <h3>QRコード受付</h3>
+          <button onClick={onClose} className="qr-scanner-close-button">
+            <X size={24} />
+          </button>
         </div>
-      )}
-      
-      <div id="qr-reader" className="qr-reader"></div>
-      
-      <div className="scanner-controls">
-        <button 
-          onClick={handleStartStopClick}
-          className={`scan-button ${isScanning ? 'stop' : 'start'}`}
-          disabled={!cameraId}
-        >
-          {isScanning ? 'スキャン停止' : 'スキャン開始'}
-        </button>
-        
+
+        {/* カメラ選択UI */}
+        {availableCameras.length > 1 && (
+          <div className="camera-selector">
+            <select
+              value={cameraId || ''}
+              onChange={handleCameraChange}
+            >
+              {availableCameras.map(camera => (
+                <option key={camera.id} value={camera.id}>
+                  {camera.label || `カメラ ${camera.id.substring(0, 8)}`}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* スキャナーの描画領域 */}
+        <div id="qr-reader-container" className="qr-reader-view"></div>
+
         <div className="scanner-instructions">
-          <p>QRコードをカメラにかざしてください</p>
-          <p className="hint">※明るい場所で、コードがはっきり見えるようにしてください</p>
+          <p>選手のQRコードを枠内に収めてください</p>
         </div>
       </div>
-      
-      <style jsx>{`
-        .qr-scanner-container {
-          position: relative;
-          width: 100%;
-          max-width: 600px;
-          margin: 0 auto;
-          background: white;
-          border-radius: 8px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-          overflow: hidden;
-        }
-        
-        .qr-scanner-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px 16px;
-          background-color: #1a73e8;
-          color: white;
-        }
-        
-        .close-button {
-          background: none;
-          border: none;
-          color: white;
-          font-size: 16px;
-          cursor: pointer;
-          padding: 4px 8px;
-          border-radius: 4px;
-        }
-        
-        .close-button:hover {
-          background-color: rgba(255, 255, 255, 0.2);
-        }
-        
-        .camera-selector {
-          padding: 12px 16px;
-          background-color: #f5f5f5;
-          border-bottom: 1px solid #e0e0e0;
-        }
-        
-        #camera-select {
-          padding: 6px 8px;
-          border-radius: 4px;
-          border: 1px solid #ccc;
-          margin-left: 8px;
-        }
-        
-        .qr-reader {
-          width: 100%;
-          height: 300px;
-          position: relative;
-          overflow: hidden;
-          background-color: #000;
-        }
-        
-        .scanner-controls {
-          padding: 16px;
-          text-align: center;
-          background-color: #f9f9f9;
-          border-top: 1px solid #eee;
-        }
-        
-        .scan-button {
-          padding: 10px 24px;
-          font-size: 16px;
-          font-weight: bold;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          margin-bottom: 12px;
-          transition: background-color 0.2s;
-        }
-        
-        .scan-button.start {
-          background-color: #1a73e8;
-        }
-        
-        .scan-button.stop {
-          background-color: #d32f2f;
-        }
-        
-        .scan-button:disabled {
-          background-color: #9e9e9e;
-          cursor: not-allowed;
-        }
-        
-        .scan-button:not(:disabled):hover {
-          opacity: 0.9;
-        }
-        
-        .scanner-instructions {
-          color: #555;
-          font-size: 14px;
-          margin-top: 8px;
-        }
-        
-        .scanner-instructions .hint {
-          font-size: 12px;
-          color: #888;
-          margin-top: 4px;
-        }
-      `}</style>
     </div>
   );
 };
