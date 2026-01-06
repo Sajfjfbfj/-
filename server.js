@@ -266,7 +266,6 @@ app.delete('/api/applicants/:tournamentId/:archerId', async (req, res) => {
     console.log(`✅ Applicant deleted: ${req.params.archerId}`);
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error('❌ DELETE /api/applicants error:', error.message);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -281,17 +280,17 @@ app.post('/api/checkin', async (req, res) => {
     if (!tournamentId || !archerId) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Invalid request data' 
+        message: '大会IDと選手IDは必須です' 
       });
     }
 
-    const result = await db.collection('applicants').findOneAndUpdate(
-      { tournamentId, archerId },
-      { $set: { isCheckedIn: true, checkedInAt: new Date() } },
-      { returnDocument: 'after' }
-    );
+    // まず申込者が存在するか確認
+    const applicant = await db.collection('applicants').findOne({
+      tournamentId,
+      archerId
+    });
 
-    if (!result.value) {
+    if (!applicant) {
       console.log('❌ Applicant not found');
       return res.status(404).json({ 
         success: false, 
@@ -299,14 +298,42 @@ app.post('/api/checkin', async (req, res) => {
       });
     }
 
+    // 既にチェックイン済みかチェック
+    if (applicant.isCheckedIn) {
+      console.log(`ℹ️ Already checked in: ${archerId}`);
+      return res.status(200).json({ 
+        success: true, 
+        data: applicant,
+        message: `${applicant.name || '選手'}さんは既に受付済みです` 
+      });
+    }
+
+    // チェックイン処理
+    await db.collection('applicants').updateOne(
+      { tournamentId, archerId },
+      { $set: { isCheckedIn: true, checkedInAt: new Date() } }
+    );
+
+    // 更新後のデータを取得
+    const updatedApplicant = await db.collection('applicants').findOne({
+      tournamentId,
+      archerId
+    });
+
     console.log(`✅ Check-in completed: ${archerId}`);
     res.status(200).json({ 
       success: true, 
-      data: result.value 
+      data: updatedApplicant,
+      message: `${updatedApplicant.name || '選手'}さんの受付が完了しました`
     });
   } catch (error) {
     console.error('❌ POST /api/checkin error:', error.message);
-    res.status(500).json({ success: false, message: error.message });
+    console.error(error.stack);
+    res.status(500).json({ 
+      success: false, 
+      message: 'チェックイン処理中にエラーが発生しました',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
