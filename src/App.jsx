@@ -994,9 +994,15 @@ const TournamentSetupView = ({ state, dispatch }) => {
   const [copied, setCopied] = useState(false);
   const [tournamentId, setTournamentId] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [locationFilter, setLocationFilter] = useState('');
   const [formData, setFormData] = useState({
     name: '', datetime: '', location: '', organizer: '', coOrganizer: '', administrator: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '',
   });
+
+  const filteredTournaments = state.registeredTournaments.filter(tournament => 
+    locationFilter === '' || 
+    (tournament.data.location && tournament.data.location.toLowerCase().includes(locationFilter.toLowerCase()))
+  );
 
   const generateTournamentId = () => {
     const now = new Date();
@@ -1081,9 +1087,21 @@ const TournamentSetupView = ({ state, dispatch }) => {
       <div className="view-content">
         {state.registeredTournaments.length > 0 && (
           <div className="card">
-            <p className="card-title">登録済み大会</p>
+            <div className="flex justify-between items-center mb-4">
+              <p className="card-title">登録済み大会</p>
+              <input 
+                type="text" 
+                value={locationFilter} 
+                onChange={(e) => setLocationFilter(e.target.value)} 
+                placeholder="開催地でフィルター" 
+                className="input input-sm w-48"
+              />
+            </div>
             <div className="tournament-list">
-              {state.registeredTournaments.map(template => (
+              {filteredTournaments.length === 0 ? (
+                <p className="text-gray-500 text-center py-4">該当する大会が見つかりません</p>
+              ) : (
+                filteredTournaments.map(template => (
                 <div key={template.id} className="tournament-item">
                   <button onClick={() => handleLoadTemplate(template)} className="tournament-button">
                     <p>{template.data.name}</p>
@@ -1091,7 +1109,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
                   </button>
                   <button onClick={() => handleDeleteTemplate(template.id)} className="btn-delete">削除</button>
                 </div>
-              ))}
+              )))}
             </div>
             <button onClick={handleResetForm} className="btn-secondary">新規大会登録</button>
           </div>
@@ -1381,6 +1399,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
   const [selectedTournamentId, setSelectedTournamentId] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
+  const [locationFilter, setLocationFilter] = useState('');
   const [formData, setFormData] = useState({
     name: '', 
     affiliation: '', 
@@ -1391,6 +1410,12 @@ const ArcherSignupView = ({ state, dispatch }) => {
   const [applicants, setApplicants] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
+  
+  // Filter tournaments by location
+  const filteredTournaments = state.registeredTournaments.filter(tournament => 
+    locationFilter === '' || 
+    (tournament.data.location && tournament.data.location.toLowerCase().includes(locationFilter.toLowerCase()))
+  );
   const [qrCodeData, setQrCodeData] = useState({ 
     id: '', 
     name: '', 
@@ -1678,21 +1703,34 @@ const ArcherSignupView = ({ state, dispatch }) => {
       <div className="view-content">
         <div className="card">
           <label>大会を選択 *</label>
-          <select 
-            value={selectedTournamentId} 
-            onChange={(e) => { 
-              setSelectedTournamentId(e.target.value); 
-              setShowForm(e.target.value !== ''); 
-            }} 
-            className="input"
-          >
-            <option value="">-- 大会を選択してください --</option>
-            {state.registeredTournaments.map(t => (
-              <option key={t.id} value={t.id}>
-                {t.data.name} ({t.data.location}) - {new Date(t.data.datetime).toLocaleDateString()}
-              </option>
-            ))}
-          </select>
+          <div className="mb-2">
+            <input 
+              type="text" 
+              value={locationFilter} 
+              onChange={(e) => setLocationFilter(e.target.value)} 
+              placeholder="開催地でフィルター" 
+              className="input w-full mb-2"
+            />
+            <select 
+              value={selectedTournamentId} 
+              onChange={(e) => { 
+                setSelectedTournamentId(e.target.value); 
+                setShowForm(e.target.value !== ''); 
+              }} 
+              className="input w-full"
+            >
+              <option value="">-- 大会を選択してください --</option>
+              {filteredTournaments.length === 0 ? (
+                <option disabled>該当する大会が見つかりません</option>
+              ) : (
+                filteredTournaments.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.data.name} ({t.data.location}) - {new Date(t.data.datetime).toLocaleDateString()}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
           
           <div className="mt-4">
             <label className="flex items-center space-x-2">
