@@ -4,9 +4,9 @@ import { QRCodeSVG } from 'qrcode.react';
 import QRCodeScanner from './components/QRCodeScanner';
 import './index.css';
 
-const API_BASE_URL = process.env.NODE_ENV === 'production'
-  ? '/api' 
-  : 'http://localhost:3001/api';
+const API_BASE_URL = (() => {
+  return 'https://alluring-perfection-production-f96d.up.railway.app/api';
+})();
 
 const API_URL = API_BASE_URL;
 
@@ -93,7 +93,7 @@ const KyudoTournamentSystem = () => {
 const initialTournamentState = {
   tournament: {
     id: 'KYUDO_2024_0001',
-    name: '第○回○○弓道大会',
+    name: '第◯回◯◯弓道大会',
     date: '2024年12月29日',
     stage: 'qualifiers',
     passRule: 'all_four',
@@ -105,10 +105,10 @@ const initialTournamentState = {
   registeredTournaments: [],
   applicants: [],
   archers: [
-    { id: 1, qrCode: 'KYUDO_2024_0001_A001', name: '鈴木太郎', affiliation: '○○高校', segment: 1, checkIn: true, results: { stand1: ['o', 'o', 'x', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
+    { id: 1, qrCode: 'KYUDO_2024_0001_A001', name: '鈴木太郎', affiliation: '◯◯高校', segment: 1, checkIn: true, results: { stand1: ['o', 'o', 'x', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
     { id: 2, qrCode: 'KYUDO_2024_0001_A002', name: '田中花子', affiliation: '△△大学', segment: 1, checkIn: true, results: { stand1: ['o', 'o', 'o', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
     { id: 3, qrCode: 'KYUDO_2024_0001_A003', name: '佐藤次郎', affiliation: '□□弓道会', segment: 2, checkIn: true, results: { stand1: ['o', 'x', 'x', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
-    { id: 4, qrCode: 'KYUDO_2024_0001_A004', name: '小林美咲', affiliation: '○○高校', segment: 2, checkIn: true, results: { stand1: ['o', 'o', 'o', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
+    { id: 4, qrCode: 'KYUDO_2024_0001_A004', name: '小林美咲', affiliation: '◯◯高校', segment: 2, checkIn: true, results: { stand1: ['o', 'o', 'o', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
     { id: 5, qrCode: 'KYUDO_2024_0001_A005', name: '石田紅太', affiliation: '△△大学', segment: 3, checkIn: false, results: { stand1: [null, null, null, null], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
     { id: 6, qrCode: 'KYUDO_2024_0001_A006', name: '望月由美', affiliation: '□□弓道会', segment: 3, checkIn: true, results: { stand1: ['o', 'o', 'x', 'x'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
   ],
@@ -141,6 +141,7 @@ function tournamentReducer(state, action) {
     case 'CHECK_IN_ARCHER': return { ...state, archers: state.archers.map(a => a.id === action.payload ? { ...a, checkIn: true } : a) };
     case 'UPDATE_PASS_RULE': return { ...state, tournament: { ...state.tournament, passRule: action.payload } };
     case 'UPDATE_ARROWS_ROUND1': return { ...state, tournament: { ...state.tournament, arrowsRound1: parseInt(action.payload) } };
+    case 'UPDATE_ARROWS_ROUND2': return { ...state, tournament: { ...state.tournament, arrowsRound2: parseInt(action.payload) } };
     case 'UPDATE_CURRENT_ROUND': return { ...state, tournament: { ...state.tournament, currentRound: action.payload } };
     case 'UPDATE_ARCHERS_PER_STAND': return { ...state, tournament: { ...state.tournament, archersPerStand: parseInt(action.payload) } };
     case 'UPDATE_TOURNAMENT_INFO': return { ...state, tournament: { ...state.tournament, ...action.payload } };
@@ -528,13 +529,35 @@ const CheckInView = ({ state, dispatch }) => {
     setShowQRModal(true);
   };
 
+  // ★★★ 修正版：QRコード読込時のハンドラー ★★★
   const handleQRCodeScanned = (qrCode) => {
-    console.log('📱 QRコードをスキャンしました:', qrCode);
-    setScannedQR(qrCode);
-    setShowQRScanner(false);
-    setTimeout(() => {
-      handleCheckIn();
-    }, 100);
+    console.log('🔱 QRコードをスキャンしました:', qrCode);
+    
+    try {
+      let archerId = qrCode.trim();
+      
+      // QRコードがJSON形式の場合はパース
+      try {
+        const qrData = JSON.parse(qrCode);
+        if (qrData.id) {
+          archerId = qrData.id;  // JSONからIDを抽出
+          console.log('✅ JSONからIDを抽出:', archerId);
+        }
+      } catch (parseError) {
+        // JSON形式でない場合は、そのままの文字列を使用
+        console.log('ℹ️ JSONではなく、直接IDとして処理します:', archerId);
+      }
+      
+      setScannedQR(archerId);
+      setShowQRScanner(false);
+      
+      setTimeout(() => {
+        handleCheckIn(archerId);
+      }, 100);
+    } catch (error) {
+      console.error('QRコード処理エラー:', error);
+      setMessage('❌ QRコードの読み込みに失敗しました');
+    }
   };
 
   const openQRScanner = () => {
@@ -545,13 +568,16 @@ const CheckInView = ({ state, dispatch }) => {
     setShowQRScanner(true);
   };
 
-  const handleCheckIn = async () => {
+  // ★★★ 修正版：受付処理関数 ★★★
+  const handleCheckIn = async (scannedArcherId = null) => {
     if (!selectedTournamentId) {
       setMessage('❌ 大会を選択してください');
       return;
     }
 
-    const archerId = scannedQR.trim();
+    // 引数があればそれを使用、なければstateから取得
+    const archerId = (scannedArcherId || scannedQR).trim();
+    
     if (!archerId) {
       setMessage('❌ 選手IDを入力するか、QRコードをスキャンしてください');
       return;
@@ -577,10 +603,7 @@ const CheckInView = ({ state, dispatch }) => {
       const checkInResponse = await fetch(`${API_URL}/checkin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tournamentId: selectedTournamentId,
-          archerId: archerId
-        })
+        body: JSON.stringify({ tournamentId: selectedTournamentId, archerId: archerId })
       });
 
       const checkInResult = await checkInResponse.json();
@@ -717,7 +740,7 @@ const CheckInView = ({ state, dispatch }) => {
                           </div>
                         ))}
                       </div>
-                      <p className="hint" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>受付で表示したい選手の「表示」ボタンを押してQRコードを提示してください</p>
+                      <p className="hint" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>受付で表示したい選手の「表示」ボタンを押してQRコードを表示してください</p>
                     </>
                   ) : (
                     <>
@@ -737,7 +760,7 @@ const CheckInView = ({ state, dispatch }) => {
                         <QrCode size={24} style={{ marginRight: '0.5rem' }} />
                         🎫 自分のQRコードを表示
                       </button>
-                      <p className="hint" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>受付でこのボタンを押してQRコードを提示してください</p>
+                      <p className="hint" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>受付でこのボタンを押してQRコードを表示してください</p>
                     </>
                   )}
                   
@@ -746,7 +769,7 @@ const CheckInView = ({ state, dispatch }) => {
                       onClick={() => setShowManualInput(true)}
                       style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '0.875rem', textDecoration: 'underline' }}
                     >
-                      🔐 ID手動入力・スキャン（係員用）
+                      🔍 ID手動入力・スキャン（係員用）
                     </button>
                   ) : (
                     <button 
@@ -781,7 +804,7 @@ const CheckInView = ({ state, dispatch }) => {
                   <div className="space-y-2" style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     <div className="flex space-x-2" style={{ display: 'flex', gap: '0.5rem' }}>
                       <button 
-                        onClick={handleCheckIn} 
+                        onClick={() => handleCheckIn()} 
                         className="btn-secondary"
                         style={{ flex: 1 }}
                         disabled={isLoading || !scannedQR.trim()}
@@ -927,7 +950,7 @@ const CheckInView = ({ state, dispatch }) => {
                       </div>
                       
                       <div className="qr-instruction">
-                        <p>この画面を受付担当者に提示してください</p>
+                        <p>この画面を受付担当者に表示してください</p>
                       </div>
                     </div>
                     
