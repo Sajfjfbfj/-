@@ -251,13 +251,104 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
 };
 
 const TournamentView = ({ state, stands, checkInCount }) => {
+  const [selectedTournamentId, setSelectedTournamentId] = useState('');
+  const [archers, setArchers] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const filteredTournaments = state.registeredTournaments.filter(tournament => 
+    tournament.id
+  );
+
+  const rankOrder = ['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
+
+  const getRankCategory = (rankStr) => {
+    // 称号と段位に分離
+    const ceremonyRanks = ['錬士', '教士', '範士'];
+    let ceremony = '';
+    let rank = rankStr;
+
+    for (const c of ceremonyRanks) {
+      if (rankStr.includes(c)) {
+        ceremony = c;
+        rank = rankStr.replace(c, '');
+        break;
+      }
+    }
+
+    return { ceremony, rank };
+  };
+
+  const fetchAndSortArchers = async () => {
+    if (!selectedTournamentId) return;
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
+      const result = await response.json();
+
+      if (result.success) {
+        const checkedIn = result.data.filter(a => a.isCheckedIn);
+        
+        // ソート処理
+        const normalizeRank = (rank) => {
+          if (!rank) return '';
+          return rank
+            .replace('二段', '弐段')
+            .replace('三段', '参段')
+            .replace('二級', '弐級')
+            .replace('一級', '壱級');
+        };
+
+        const sortedArchers = [...checkedIn].sort((a, b) => {
+          // ランクを正規化
+          const aRank = normalizeRank(a.rank);
+          const bRank = normalizeRank(b.rank);
+
+          // インデックスを取得（見つからない場合は最後尾に配置）
+          const aIndex = rankOrder.indexOf(aRank);
+          const bIndex = rankOrder.indexOf(bRank);
+
+          // ランクが異なる場合はランク順でソート
+          if (aIndex !== bIndex) {
+            if (aIndex === -1 && bIndex === -1) return 0;
+            if (aIndex === -1) return 1;
+            if (bIndex === -1) return -1;
+            return aIndex - bIndex;
+          }
+
+          // ランクが同じ場合は取得日でソート（古い順）
+          const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
+          const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
+          return aDate.getTime() - bDate.getTime();
+        });
+
+        // 立ち順番号を付与
+        const archersWithOrder = sortedArchers.map((archer, index) => ({
+          ...archer,
+          standOrder: index + 1
+        }));
+
+        setArchers(archersWithOrder);
+      }
+    } catch (error) {
+      console.error('選手データの取得に失敗しました:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedTournamentId) {
+      fetchAndSortArchers();
+    }
+  }, [selectedTournamentId]);
+
   const tournament = state.tournament;
-  const archers = state.archers;
   const arrowsPerStand = tournament.currentRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
 
   const isPassed = (archer) => {
-    const stand1Results = archer.results.stand1;
-    if (!stand1Results || stand1Results.slice(0, arrowsPerStand).includes(null)) return null;
+    const stand1Results = archer.results?.stand1 || [null, null, null, null];
+    if (stand1Results.slice(0, arrowsPerStand).includes(null)) return null;
     const count = stand1Results.slice(0, arrowsPerStand).filter(r => r === 'o').length;
     switch (tournament.passRule) {
       case 'all_four': return count === arrowsPerStand;
@@ -269,119 +360,585 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   };
 
   const passedArchers = archers.filter(a => isPassed(a));
-  const totalShots = checkInCount * arrowsPerStand;
-  const completedShots = archers.reduce((sum, a) => sum + Object.values(a.results).flat().filter(r => r !== null).length, 0);
-  const progressPercent = totalShots > 0 ? (completedShots / totalShots) * 100 : 0;
+
+  const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
 
   return (
     <div className="view-container">
       <div className="view-header">
-        <h1>{tournament.name}</h1>
-        <p>{tournament.date}</p>
+        <h1>大会進行</h1>
+        <div style={{ marginTop: '1rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>大会を選択</label>
+          <select 
+            value={selectedTournamentId} 
+            onChange={(e) => setSelectedTournamentId(e.target.value)}
+            className="input w-full"
+            style={{ marginBottom: '1rem' }}
+          >
+            <option value="">-- 大会を選択してください --</option>
+            {filteredTournaments.map(t => (
+              <option key={t.id} value={t.id}>{t.data?.name || t.id}</option>
+            ))}
+          </select>
+        </div>
       </div>
       <div className="view-content">
-        <div className="settings-grid">
-          <div><p className="label">受付済み</p><p className="value">{checkInCount}人</p></div>
-          <div><p className="label">1立あたり</p><p className="value">{tournament.archersPerStand}人</p></div>
-          <div><p className="label">立数</p><p className="value">{stands}立</p></div>
-          <div><p className="label">矢数</p><p className="value">{arrowsPerStand}本</p></div>
-        </div>
-        <div className="progress-section">
-          <div className="progress-header"><span>進行状態</span><span>{Math.round(progressPercent)}%</span></div>
-          <div className="progress-bar"><div className="progress-fill" style={{ width: `${progressPercent}%` }}></div></div>
-        </div>
-        <div className="card">
-          <p className="card-title">予選通過者</p>
-          <div className="card-content">
-            {passedArchers.length > 0 ? passedArchers.map(a => (
-              <div key={a.id} className="archer-item">
-                <div><p>{a.name}</p><p className="text-sm">{a.affiliation}</p></div>
-                <span>射順{a.segment}</span>
+        {selectedTournamentId && (
+          <>
+            <div className="settings-grid">
+              <div><p className="label">受付済み</p><p className="value">{archers.length}人</p></div>
+              <div><p className="label">通過者</p><p className="value">{passedArchers.length}人</p></div>
+              <div><p className="label">通過ルール</p><p className="value" style={{ fontSize: '0.75rem' }}>
+                {tournament.passRule === 'all_four' ? '全て的中' :
+                 tournament.passRule === 'four_or_more' ? '4本以上的中' :
+                 tournament.passRule === 'three_or_more' ? '3本以上的中' :
+                 tournament.passRule === 'two_or_more' ? '2本以上的中' : '未設定'}
+              </p></div>
+              <div><p className="label">矢数</p><p className="value">{arrowsPerStand}本</p></div>
+            </div>
+
+            <div className="card">
+              <p className="card-title">立ち順表</p>
+              <div className="table-responsive">
+                <table className="archer-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                      <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem' }}>立ち順</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem' }}>氏名</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem' }}>支部</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem' }}>称号</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem' }}>段位</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem' }}>1立ち目</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem' }}>2立ち目</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isLoading ? (
+                      <tr>
+                        <td colSpan="7" style={{ textAlign: 'center', padding: '1rem', color: '#9ca3af' }}>
+                          読み込み中...
+                        </td>
+                      </tr>
+                    ) : archers.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" style={{ textAlign: 'center', padding: '1rem', color: '#9ca3af' }}>
+                          受付済みの選手がいません
+                        </td>
+                      </tr>
+                    ) : (
+                      archers.map((archer) => {
+                        const { ceremony, rank } = getRankCategory(archer.rank);
+                        const stand1Result = archer.results?.stand1?.slice(0, arrowsPerStand) || [];
+                        const stand2Result = archer.results?.stand2?.slice(0, arrowsPerStand) || [];
+                        
+                        return (
+                          <tr key={archer.archerId} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                            <td style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 500 }}>{archer.standOrder}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'left' }}>{archer.name}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', color: '#4b5563' }}>{archer.affiliation}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem' }}>{ceremony || '—'}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem' }}>{rank}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
+                                {stand1Result.map((result, idx) => (
+                                  <span key={idx} style={{
+                                    display: 'inline-block',
+                                    width: '1.5rem',
+                                    height: '1.5rem',
+                                    backgroundColor: result === 'o' ? '#111827' : result === 'x' ? '#9ca3af' : '#f3f4f6',
+                                    color: result ? '#ffffff' : '#9ca3af',
+                                    borderRadius: '0.25rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 500
+                                  }}>
+                                    {result === 'o' ? '◯' : result === 'x' ? '×' : ''}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
+                                {stand2Result.map((result, idx) => (
+                                  <span key={idx} style={{
+                                    display: 'inline-block',
+                                    width: '1.5rem',
+                                    height: '1.5rem',
+                                    backgroundColor: result === 'o' ? '#111827' : result === 'x' ? '#9ca3af' : '#f3f4f6',
+                                    color: result ? '#ffffff' : '#9ca3af',
+                                    borderRadius: '0.25rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 500
+                                  }}>
+                                    {result === 'o' ? '◯' : result === 'x' ? '×' : ''}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
-            )) : <p className="empty-text">通過者はまだいません</p>}
-          </div>
-        </div>
+            </div>
+
+            {passedArchers.length > 0 && (
+              <div className="card">
+                <p className="card-title">予選通過者</p>
+                <div className="card-content">
+                  {passedArchers.map(a => {
+                    const { ceremony, rank } = getRankCategory(a.rank);
+                    return (
+                      <div key={a.archerId} className="archer-item">
+                        <div><p>{a.standOrder}. {a.name}</p><p className="text-sm">{a.affiliation}</p></div>
+                        <span>{ceremony}{rank}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
 };
 
 const RecordingView = ({ state, dispatch, stands }) => {
+  const [selectedTournamentId, setSelectedTournamentId] = useState('');
+  const [selectedDivision, setSelectedDivision] = useState('');
   const [selectedStand, setSelectedStand] = useState(1);
-  const tournament = state.tournament;
-  const checkInArchers = state.archers.filter(a => a.checkIn);
-  const arrowsPerStand = tournament.currentRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
+  const [selectedRound, setSelectedRound] = useState(1); // 1: 1立ち目, 2: 2立ち目
+  const [archers, setArchers] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
 
+  const tournament = state.tournament;
+  const rankOrder = ['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
+  
+  // 現在のラウンドに応じた矢数を取得
+  const getCurrentArrowsPerStand = () => {
+    return selectedRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
+  };
+  
+  // 現在のラウンドに応じたスタンドの結果を取得
+  const getCurrentStandResults = (archer) => {
+    const standKey = `stand${selectedStand}`;
+    const currentArrows = getCurrentArrowsPerStand();
+    
+    // 結果が存在しないか、必要な長さに満たない場合は、現在のラウンドの矢数に合わせた配列を返す
+    if (!archer.results || !archer.results[standKey] || archer.results[standKey].length < currentArrows) {
+      return Array(currentArrows).fill(null);
+    }
+    
+    // 現在のラウンドの結果を取得（現在の矢数に合わせてスライス）
+    return archer.results[standKey].slice(0, currentArrows);
+  };
+  
+  // 現在のラウンドの完了状態をチェック
+  const isRoundComplete = (archer) => {
+    const results = getCurrentStandResults(archer);
+    return results.every(result => result !== null);
+  };
+
+  const getRankCategory = (rankStr) => {
+    const ceremonyRanks = ['錬士', '教士', '範士'];
+    let ceremony = '';
+    let rank = rankStr;
+
+    for (const c of ceremonyRanks) {
+      if (rankStr.includes(c)) {
+        ceremony = c;
+        rank = rankStr.replace(c, '');
+        break;
+      }
+    }
+
+    return { ceremony, rank };
+  };
+
+  const getDivision = (rank) => {
+    const { ceremony } = getRankCategory(rank);
+    
+    // 称号者の部
+    if (ceremony) return 'title';
+    
+    // 段位で分類
+    const levelIndex = rankOrder.indexOf(rank);
+    
+    // 級位～三段以下の部
+    if (levelIndex <= rankOrder.indexOf('参段')) return 'lower';
+    
+    // 四・五段の部
+    if (levelIndex <= rankOrder.indexOf('五段')) return 'middle';
+    
+    return 'lower';
+  };
+
+  // 選択中の大会に部門設定があればそれを使う。なければデフォルトを使用
+  const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+  const localDefaultDivisions = [
+    { id: 'lower', label: '級位～三段以下の部' },
+    { id: 'middle', label: '四・五段の部' },
+    { id: 'title', label: '称号者の部' }
+  ];
+  const divisions = (selectedTournament && selectedTournament.data && selectedTournament.data.divisions) ? selectedTournament.data.divisions : localDefaultDivisions;
+
+  const fetchAndSortArchers = async () => {
+    if (!selectedTournamentId) return;
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
+      const result = await response.json();
+
+      if (result.success) {
+        const checkedIn = result.data.filter(a => a.isCheckedIn);
+        
+        // 漢数字の表記揺れを吸収する関数
+        const normalizeRank = (rank) => {
+          if (!rank) return '';
+          return rank
+            .replace('二段', '弐段')
+            .replace('三段', '参段')
+            .replace('二級', '弐級')
+            .replace('一級', '壱級');
+        };
+
+        // ソート処理
+        const sortedArchers = [...checkedIn].sort((a, b) => {
+          // ランクを正規化
+          const aRank = normalizeRank(a.rank);
+          const bRank = normalizeRank(b.rank);
+          
+          // インデックスを取得（見つからない場合は最後尾に配置）
+          const aIndex = rankOrder.indexOf(aRank);
+          const bIndex = rankOrder.indexOf(bRank);
+          
+          // デバッグ用ログ
+          console.log('Sorting:', {
+            a: { name: a.name, originalRank: a.rank, normalizedRank: aRank, index: aIndex },
+            b: { name: b.name, originalRank: b.rank, normalizedRank: bRank, index: bIndex },
+            comparison: aIndex - bIndex
+          });
+
+          // ランクが異なる場合はランク順でソート
+          if (aIndex !== bIndex) {
+            // 両方見つからない場合は元の順序を保持
+            if (aIndex === -1 && bIndex === -1) return 0;
+            // aが見つからない場合は後ろに
+            if (aIndex === -1) return 1;
+            // bが見つからない場合は前に
+            if (bIndex === -1) return -1;
+            // 通常の比較
+            return aIndex - bIndex;
+          }
+
+          // ランクが同じ場合は取得日でソート（古い順）
+          const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
+          const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
+          return aDate.getTime() - bDate.getTime();
+        });
+
+        // 立ち順番号を付与
+        const archersWithOrder = sortedArchers.map((archer, index) => ({
+          ...archer,
+          standOrder: index + 1,
+          division: archer.division || getDivision(archer.rank),
+          results: archer.results || { stand1: [null, null, null, null], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] }
+        }));
+
+        setArchers(archersWithOrder);
+        
+        // 最初の部門を自動選択
+        const firstDivision = archersWithOrder.length > 0 ? archersWithOrder[0].division : '';
+        setSelectedDivision(firstDivision);
+      }
+    } catch (error) {
+      console.error('選手データの取得に失敗しました:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedTournamentId) {
+      fetchAndSortArchers();
+    }
+  }, [selectedTournamentId]);
+
+  const filteredTournaments = state.registeredTournaments;
+
+  const arrowsPerStand = tournament.arrowsRound1; // 1立ち目の矢数
+  const arrowsPerStand2 = tournament.arrowsRound2; // 2立ち目の矢数
+
+  // 選択された部門の選手を取得
+  const divisionArchers = archers.filter(a => a.division === selectedDivision);
+
+  // 立てごとに選手を割り当て
   const getArchersForStand = (standNumber) => {
     const archersPerStand = tournament.archersPerStand;
     const startIdx = (standNumber - 1) * archersPerStand;
-    return checkInArchers.slice(startIdx, startIdx + archersPerStand);
+    return divisionArchers.slice(startIdx, startIdx + archersPerStand);
   };
 
-  const archers = getArchersForStand(selectedStand);
+  const standArchers = getArchersForStand(selectedStand);
 
-  const handleRecord = (archerId, arrowIndex, result) => {
-    dispatch({ type: 'RECORD_RESULT', payload: { archerId, stand: selectedStand, arrowIndex, result } });
+  const handleRecord = (archerId, standNum, arrowIndex, result) => {
+    // アーチャーを検索
+    const archer = archers.find(a => a.archerId === archerId);
+    if (!archer) return;
+    
+    const standKey = `stand${standNum}`;
+    const currentArrows = getCurrentArrowsPerStand();
+    
+    // 現在の結果を取得（存在しない場合は空の配列）
+    const currentResults = archer.results?.[standKey] || [];
+    
+    // 新しい結果配列を作成（現在の矢数に合わせて初期化）
+    const newResults = Array(currentArrows).fill(null);
+    
+    // 既存の結果をコピー（現在の矢数を超えない範囲で）
+    currentResults.slice(0, currentArrows).forEach((r, i) => {
+      newResults[i] = r;
+    });
+    
+    // 現在の矢の結果を更新
+    if (arrowIndex < currentArrows) {
+      newResults[arrowIndex] = result;
+    }
+    
+    // アーチャーの状態を更新
+    const updatedArchers = archers.map(a => 
+      a.archerId === archerId 
+        ? { 
+            ...a, 
+            results: { 
+              ...a.results, 
+              [standKey]: newResults 
+            } 
+          } 
+        : a
+    );
+    
+    // 状態を更新
+    setArchers(updatedArchers);
   };
 
-  const handleUndo = (archerId, arrowIndex) => {
-    dispatch({ type: 'UNDO_RESULT', payload: { archerId, stand: selectedStand, arrowIndex } });
+  const handleUndo = (archerId, standNum, arrowIndex) => {
+    // アーチャーを検索
+    const archer = archers.find(a => a.archerId === archerId);
+    if (!archer) return;
+    
+    const standKey = `stand${standNum}`;
+    const currentArrows = getCurrentArrowsPerStand();
+    
+    // 現在の結果を取得（存在しない場合は空の配列）
+    const currentResults = archer.results?.[standKey] || [];
+    
+    // 新しい結果配列を作成（現在の矢数に合わせて初期化）
+    const newResults = Array(currentArrows).fill(null);
+    
+    // 既存の結果をコピー（現在の矢数を超えない範囲で）
+    currentResults.slice(0, currentArrows).forEach((r, i) => {
+      newResults[i] = r;
+    });
+    
+    // 指定されたインデックスの結果をnullに
+    if (arrowIndex < currentArrows) {
+      newResults[arrowIndex] = null;
+    }
+    
+    // アーチャーの状態を更新
+    const updatedArchers = archers.map(a => 
+      a.archerId === archerId 
+        ? { 
+            ...a, 
+            results: { 
+              ...a.results, 
+              [standKey]: newResults 
+            } 
+          } 
+        : a
+    );
+    
+    // 状態を更新
+    setArchers(updatedArchers);
   };
+
+  // 指定されたスタンドとラウンドの的中数を計算
+  const getHitCount = (archer, standNum, roundNum = null) => {
+    const results = archer.results?.[`stand${standNum}`] || [];
+    const currentArrows = roundNum === 2 ? tournament.arrowsRound2 : tournament.arrowsRound1;
+    return results.slice(0, currentArrows).filter(r => r === 'o').length;
+  };
+  
+  // 現在のラウンドの的中数を取得
+  const getCurrentRoundHitCount = (archer) => {
+    const results = getCurrentStandResults(archer);
+    return results.filter(r => r === 'o').length;
+  };
+  
+  // 合計的中数を計算（1立ち目と2立ち目の合計）
+  const getTotalHitCount = (archer) => {
+    const stand1Hits = getHitCount(archer, selectedStand, 1);
+    const stand2Hits = getHitCount(archer, selectedStand, 2);
+    return stand1Hits + stand2Hits;
+  };
+
+  // 部門内での順位を計算（1立ち目と2立ち目の合計で計算）
+  const calculateRanks = () => {
+    const hitCounts = divisionArchers.map(archer => ({
+      archerId: archer.archerId,
+      // 1立ち目と2立ち目の合計的中数を使用
+      hitCount: getHitCount(archer, selectedStand, 1) + getHitCount(archer, selectedStand, 2)
+    }));
+
+    // 的中数でソート（多い順）
+    const sorted = hitCounts.sort((a, b) => b.hitCount - a.hitCount);
+    
+    const ranks = {};
+    let currentRank = 1;
+    let prevHitCount = null;
+
+    sorted.forEach((item, index) => {
+      if (prevHitCount !== null && item.hitCount !== prevHitCount) {
+        currentRank = index + 1;
+      }
+      ranks[item.archerId] = currentRank;
+      prevHitCount = item.hitCount;
+    });
+
+    return ranks;
+  };
+
+  const ranks = calculateRanks();
 
   return (
     <div className="view-container">
       <div className="view-header">
         <h1>記録入力</h1>
-        <p>複数立からのリアルタイム入力に対応</p>
+        <p>部門ごとに立ち順を管理</p>
       </div>
       <div className="view-content">
-        <div className="round-selector">
-          <p>ラウンド選択</p>
-          <div className="button-group">
-            <button onClick={() => dispatch({ type: 'UPDATE_CURRENT_ROUND', payload: 1 })} className={`btn ${tournament.currentRound === 1 ? 'btn-active' : ''}`}>1回戦</button>
-            <button onClick={() => dispatch({ type: 'UPDATE_CURRENT_ROUND', payload: 2 })} className={`btn ${tournament.currentRound === 2 ? 'btn-active' : ''}`}>2回戦</button>
-          </div>
+        <div className="card">
+          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>大会を選択</label>
+          <select 
+            value={selectedTournamentId} 
+            onChange={(e) => {
+              setSelectedTournamentId(e.target.value);
+              setSelectedStand(1);
+            }}
+            className="input w-full"
+          >
+            <option value="">-- 大会を選択してください --</option>
+            {filteredTournaments.map(t => (
+              <option key={t.id} value={t.id}>{t.data?.name || t.id}</option>
+            ))}
+          </select>
         </div>
-        <div className="stand-tabs">
-          {Array.from({ length: stands }, (_, i) => i + 1).map(stand => (
-            <button key={stand} onClick={() => setSelectedStand(stand)} className={`stand-tab ${selectedStand === stand ? 'stand-tab-active' : ''}`}>立{stand}</button>
-          ))}
-        </div>
-        <div className="archer-records">
-          {archers.length === 0 ? (
-            <p className="empty-text">受付済みの選手がいません</p>
-          ) : (
-            archers.map(archer => (
-              <div key={archer.id} className="archer-record">
-                <div className="archer-info">
-                  <p>{archer.name}</p>
-                  <p className="text-sm">{archer.affiliation} | 射順{archer.segment}</p>
+
+        {selectedTournamentId && (
+          <>
+            <div className="card">
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>部門を選択</label>
+              <div className="button-group">
+                {divisions.map(div => (
+                  <button 
+                    key={div.id}
+                    onClick={() => setSelectedDivision(div.id)}
+                    className={`btn ${selectedDivision === div.id ? 'btn-active' : ''}`}
+                    style={{ flex: 1 }}
+                  >
+                    {div.label}
+                  </button>
+                ))}
+              </div>
+              <p className="hint" style={{ marginTop: '0.5rem' }}>この部門の選手数: {divisionArchers.length}人</p>
+            </div>
+
+
+
+            <div className="card">
+              <div className="round-selector">
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>ラウンド選択</label>
+                <div className="button-group" style={{ marginBottom: '1rem' }}>
+                  <button 
+                    onClick={() => setSelectedRound(1)}
+                    className={`btn ${selectedRound === 1 ? 'btn-active' : ''}`}
+                    style={{ flex: 1 }}
+                  >
+                    1立ち目 ({tournament.arrowsRound1}本)
+                  </button>
+                  <button 
+                    onClick={() => setSelectedRound(2)}
+                    className={`btn ${selectedRound === 2 ? 'btn-active' : ''}`}
+                    style={{ flex: 1 }}
+                  >
+                    2立ち目 ({tournament.arrowsRound2}本)
+                  </button>
                 </div>
-                <span className={`status ${archer.results[`stand${selectedStand}`].slice(0, arrowsPerStand).includes(null) ? 'status-input' : 'status-complete'}`}>
-                  {archer.results[`stand${selectedStand}`].slice(0, arrowsPerStand).includes(null) ? '入力中' : '完了'}
-                </span>
-                <div className="arrows-grid" style={{ gridTemplateColumns: `repeat(${arrowsPerStand}, 1fr)` }}>
-                  {archer.results[`stand${selectedStand}`].slice(0, arrowsPerStand).map((result, arrowIdx) => (
-                    <div key={arrowIdx} className="arrow-input">
-                      <p>{arrowIdx + 1}本</p>
-                      {result === null ? (
-                        <div className="arrow-buttons">
-                          <button onClick={() => handleRecord(archer.id, arrowIdx, 'o')} className="btn-circle btn-hit">◯</button>
-                          <button onClick={() => handleRecord(archer.id, arrowIdx, 'x')} className="btn-circle btn-miss">×</button>
-                        </div>
-                      ) : (
-                        <div className="arrow-result">
-                          <button disabled className={`btn-circle ${result === 'o' ? 'btn-hit' : 'btn-miss'}`}>{result === 'o' ? '◯' : '×'}</button>
-                          <button onClick={() => handleUndo(archer.id, arrowIdx)} className="btn-fix">修正</button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                <div style={{ fontSize: '0.875rem', color: '#4b5563', textAlign: 'center' }}>
+                  <p>現在のラウンド: {selectedRound}立ち目 ({getCurrentArrowsPerStand()}本)</p>
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            </div>
+
+            <div className="archer-records">
+              {standArchers.length === 0 ? (
+                <p className="empty-text">この立に割り当てられた選手がいません</p>
+              ) : (
+                standArchers.map(archer => {
+                  const currentArrows = getCurrentArrowsPerStand();
+                  const { ceremony, rank } = getRankCategory(archer.rank);
+                  const hitCount = getCurrentRoundHitCount(archer);
+                  const archerRank = ranks[archer.archerId];
+                  const roundComplete = isRoundComplete(archer);
+
+                  return (
+                    <div key={archer.archerId} className="archer-record">
+                      <div className="archer-info">
+                        <p><strong>{archer.standOrder}. {archer.name}</strong></p>
+                        <p className="text-sm">{archer.affiliation} | {ceremony}{rank}</p>
+                        <p className="text-sm" style={{ color: '#2563eb', fontWeight: 500, marginTop: '0.25rem' }}>
+                          的中: {getTotalHitCount(archer)}本 / 順位: {archerRank}位
+                        </p>
+                      </div>
+                      <span className={`status ${roundComplete ? 'status-complete' : 'status-input'}`}>
+                        {roundComplete ? '完了' : '入力中'}
+                      </span>
+                      <div className="arrows-grid" style={{ gridTemplateColumns: `repeat(${currentArrows}, 1fr)` }}>
+                        {getCurrentStandResults(archer).map((result, arrowIdx) => (
+                          <div key={arrowIdx} className="arrow-input">
+                            <p>{arrowIdx + 1}</p>
+                            {result === null ? (
+                              <div className="arrow-buttons">
+                                <button onClick={() => handleRecord(archer.archerId, selectedStand, arrowIdx, 'o')} className="btn-circle btn-hit" disabled={roundComplete}>◯</button>
+                                <button onClick={() => handleRecord(archer.archerId, selectedStand, arrowIdx, 'x')} className="btn-circle btn-miss" disabled={roundComplete}>×</button>
+                              </div>
+                            ) : (
+                              <div className="arrow-result">
+                                <button disabled className={`btn-circle ${result === 'o' ? 'btn-hit' : 'btn-miss'}`}>{result === 'o' ? '◯' : '×'}</button>
+                                <button onClick={() => handleUndo(archer.archerId, selectedStand, arrowIdx)} className="btn-fix" disabled={roundComplete}>修正</button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1074,15 +1631,17 @@ const SettingsView = ({ state, dispatch }) => {
           <div className="divider"></div>
           <p className="label">予選1回戦の矢数</p>
           <select value={state.tournament.arrowsRound1} onChange={(e) => dispatch({ type: 'UPDATE_ARROWS_ROUND1', payload: e.target.value })} className="input">
-            {[2, 3, 4].map(n => (<option key={n} value={n}>{n}本</option>))}
+            <option value={2}>2本</option>
+            <option value={4}>4本</option>
           </select>
           <div className="divider"></div>
           <p className="label">予選2回戦の矢数</p>
           <select value={state.tournament.arrowsRound2} onChange={(e) => dispatch({ type: 'UPDATE_ARROWS_ROUND2', payload: e.target.value })} className="input">
-            {[2, 3, 4].map(n => (<option key={n} value={n}>{n}本</option>))}
+            <option value={2}>2本</option>
+            <option value={4}>4本</option>
           </select>
           <div className="divider"></div>
-          <p className="label">1立あたりの人数</p>
+          <p className="label">道場に入る最大の人数</p>
           <select value={state.tournament.archersPerStand} onChange={(e) => dispatch({ type: 'UPDATE_ARCHERS_PER_STAND', payload: e.target.value })} className="input">
             {[6, 8, 10, 12].map(n => (<option key={n} value={n}>{n}人</option>))}
           </select>
@@ -1100,7 +1659,12 @@ const TournamentSetupView = ({ state, dispatch }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
   const [formData, setFormData] = useState({
-    name: '', datetime: '', location: '', organizer: '', coOrganizer: '', administrator: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '',
+    name: '', datetime: '', location: '', organizer: '', coOrganizer: '', administrator: '', purpose: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '',
+    divisions: [
+      { id: 'lower', label: '級位～三段以下の部' },
+      { id: 'middle', label: '四・五段の部' },
+      { id: 'title', label: '称号者の部' }
+    ]
   });
 
   const filteredTournaments = state.registeredTournaments.filter(tournament => 
@@ -1117,6 +1681,19 @@ const TournamentSetupView = ({ state, dispatch }) => {
 
   const handleInputChange = (field, value) => { setFormData(prev => ({ ...prev, [field]: value })); };
   const handleLoadTemplate = (template) => { setFormData(template.data); setTournamentId(template.id); setIsEditing(true); };
+  
+  const defaultDivisions = [
+    { id: 'lower', label: '級位～三段以下の部', minRank: '五級', maxRank: '参段' },
+    { id: 'middle', label: '四・五段の部', minRank: '四段', maxRank: '五段' },
+    { id: 'title', label: '称号者の部', minRank: '錬士五段', maxRank: '範士九段' }
+  ];
+
+  const handleLoadTemplateSafe = (template) => {
+    const data = template.data || {};
+    setFormData({ ...defaultDivisions && { divisions: defaultDivisions }, ...data, divisions: data.divisions || defaultDivisions });
+    setTournamentId(template.id);
+    setIsEditing(true);
+  };
   const handleSaveTournament = async () => {
     if (!formData.name || !formData.datetime || !formData.location) { 
       alert('大会名、開催日時、開催場所は必須です'); 
@@ -1153,7 +1730,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
   };
   
   const handleResetForm = () => {
-    setFormData({ name: '', datetime: '', location: '', organizer: '', coOrganizer: '', administrator: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '' });
+    setFormData({ name: '', datetime: '', location: '', organizer: '', coOrganizer: '', administrator: '', purpose: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '', divisions: defaultDivisions });
     setTournamentId(null);
     setIsEditing(false);
     setCopied(false);
@@ -1207,7 +1784,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
               ) : (
                 filteredTournaments.map(template => (
                 <div key={template.id} className="tournament-item">
-                  <button onClick={() => handleLoadTemplate(template)} className="tournament-button">
+                  <button onClick={() => handleLoadTemplateSafe(template)} className="tournament-button">
                     <p>{template.data.name}</p>
                     <p className="text-sm">{template.data.location || '場所未設定'} | {template.data.datetime || '日時未設定'}</p>
                   </button>
@@ -1246,6 +1823,64 @@ const TournamentSetupView = ({ state, dispatch }) => {
           <input type="text" value={formData.organizer} onChange={(e) => handleInputChange('organizer', e.target.value)} placeholder="主催" className="input" />
           <input type="text" value={formData.coOrganizer} onChange={(e) => handleInputChange('coOrganizer', e.target.value)} placeholder="後援" className="input" />
           <input type="text" value={formData.administrator} onChange={(e) => handleInputChange('administrator', e.target.value)} placeholder="主管" className="input" />
+          <div style={{ marginTop: '0.5rem' }}>
+            <p className="label">大会要項</p>
+            <input type="text" value={formData.purpose} onChange={(e) => handleInputChange('purpose', e.target.value)} placeholder="目的" className="input" />
+            <input type="text" value={formData.event} onChange={(e) => handleInputChange('event', e.target.value)} placeholder="種目" className="input" />
+            <input type="text" value={formData.type} onChange={(e) => handleInputChange('type', e.target.value)} placeholder="種類" className="input" />
+            <input type="text" value={formData.category} onChange={(e) => handleInputChange('category', e.target.value)} placeholder="種別" className="input" />
+            <textarea value={formData.description} onChange={(e) => handleInputChange('description', e.target.value)} placeholder="内容（大会の詳細）" className="input" style={{ minHeight: '4rem' }} />
+            <input type="text" value={formData.competitionMethod} onChange={(e) => handleInputChange('competitionMethod', e.target.value)} placeholder="競技方法" className="input" />
+            <input type="text" value={formData.award} onChange={(e) => handleInputChange('award', e.target.value)} placeholder="表彰" className="input" />
+            <input type="text" value={formData.qualifications} onChange={(e) => handleInputChange('qualifications', e.target.value)} placeholder="参加資格" className="input" />
+            <input type="text" value={formData.applicableRules} onChange={(e) => handleInputChange('applicableRules', e.target.value)} placeholder="適用規則" className="input" />
+            <input type="text" value={formData.applicationMethod} onChange={(e) => handleInputChange('applicationMethod', e.target.value)} placeholder="申込方法" className="input" />
+            <input type="text" value={formData.remarks} onChange={(e) => handleInputChange('remarks', e.target.value)} placeholder="その他必要事項（備考）" className="input" />
+
+            <div style={{ marginTop: '0.75rem' }}>
+              <p className="label">部門設定（最低3つ）</p>
+              {formData.divisions && (() => {
+                const rankOptions = ['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
+                return formData.divisions.map((d, idx) => (
+                  <div key={d.id} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={d.label}
+                      onChange={(e) => {
+                        const newDivs = (formData.divisions || []).map((dv, i) => i === idx ? { ...dv, label: e.target.value } : dv);
+                        setFormData(prev => ({ ...prev, divisions: newDivs }));
+                      }}
+                      className="input"
+                      style={{ flex: 1 }}
+                    />
+                    <select
+                      value={d.minRank || ''}
+                      onChange={(e) => {
+                        const newDivs = (formData.divisions || []).map((dv, i) => i === idx ? { ...dv, minRank: e.target.value } : dv);
+                        setFormData(prev => ({ ...prev, divisions: newDivs }));
+                      }}
+                      className="input"
+                      style={{ width: '10rem' }}
+                    >
+                      {rankOptions.map(r => (<option key={r} value={r}>{`from ${r}`}</option>))}
+                    </select>
+                    <select
+                      value={d.maxRank || ''}
+                      onChange={(e) => {
+                        const newDivs = (formData.divisions || []).map((dv, i) => i === idx ? { ...dv, maxRank: e.target.value } : dv);
+                        setFormData(prev => ({ ...prev, divisions: newDivs }));
+                      }}
+                      className="input"
+                      style={{ width: '10rem' }}
+                    >
+                      {rankOptions.map(r => (<option key={r} value={r}>{`to ${r}`}</option>))}
+                    </select>
+                    <span style={{ alignSelf: 'center', color: '#6b7280', width: '3rem' }}>{d.id}</span>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
         </div>
 
         <button onClick={handleSaveTournament} className="btn-primary">{isEditing ? '大会情報を更新' : '大会登録を保存'}</button>
@@ -1291,7 +1926,65 @@ const ArcherSignupView = ({ state, dispatch }) => {
     return savedUser ? JSON.parse(savedUser) : null;
   });
 
-  const rankOrder = ['初段', '二段', '三段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
+  const rankOrder = [
+    '五級', '四級', '三級', '弐級', '壱級',
+    '初段', '弐段', '参段', '四段', '五段',
+    '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'
+  ];
+
+  const normalizeRank = (rank) => {
+    if (!rank) return '';
+    return rank
+      .replace('二段', '弐段')
+      .replace('三段', '参段')
+      .replace('二級', '弐級')
+      .replace('一級', '壱級');
+  };
+
+  const getDivisionFromRank = (rank, tournamentDivisions) => {
+    const { ceremony } = (() => {
+      const ceremonyRanks = ['錬士', '教士', '範士'];
+      let ceremony = '';
+      let r = rank || '';
+      for (const c of ceremonyRanks) {
+        if (r.includes(c)) {
+          ceremony = c;
+          r = r.replace(c, '');
+          break;
+        }
+      }
+      return { ceremony, rank: r };
+    })();
+
+    if (ceremony) return 'title';
+
+    const normalized = normalizeRank(rank);
+    const idx = rankOrder.indexOf(normalized);
+
+    // 大会側に divisions 範囲指定がある場合はそれを優先して判定
+    if (Array.isArray(tournamentDivisions) && tournamentDivisions.length > 0) {
+      for (const d of tournamentDivisions) {
+        // title は称号で判定済み
+        if (!d) continue;
+        const minR = d.minRank || '';
+        const maxR = d.maxRank || '';
+        const minIdx = rankOrder.indexOf(normalizeRank(minR));
+        const maxIdx = rankOrder.indexOf(normalizeRank(maxR));
+        const effectiveMin = minIdx === -1 ? 0 : Math.min(minIdx, rankOrder.length - 1);
+        const effectiveMax = maxIdx === -1 ? rankOrder.length - 1 : Math.max(maxIdx, 0);
+        if (idx !== -1 && idx >= effectiveMin && idx <= effectiveMax) return d.id;
+      }
+    }
+
+    // 大会側の指定がない場合は既存の閾値で分類
+    const idx3 = rankOrder.indexOf('参段');
+    const idx5 = rankOrder.indexOf('五段');
+
+    if (idx !== -1 && idx <= idx3) return 'lower';
+    if (idx !== -1 && idx <= idx5) return 'middle';
+
+    return 'lower';
+  };
 
   const fetchApplicants = async () => {
     if (!selectedTournamentId) return;
@@ -1367,6 +2060,8 @@ const ArcherSignupView = ({ state, dispatch }) => {
       const archerId = `${selectedTournamentId}_${Date.now().toString(36).toUpperCase()}`;
       const deviceId = localStorage.getItem('kyudo_tournament_device_id') || `device_${Math.random().toString(36).substr(2, 9)}`;
       
+      const divisionForApplicant = getDivisionFromRank(formData.rank, tournament?.data?.divisions);
+
       const applicantData = {
         name: formData.name,
         affiliation: formData.affiliation,
@@ -1375,6 +2070,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
         isStaff: isStaff,
         isOfficialOnly: formData.isOfficialOnly,
         archerId: archerId,
+        division: divisionForApplicant,
         appliedAt: new Date().toISOString(),
         deviceId: deviceId
       };
