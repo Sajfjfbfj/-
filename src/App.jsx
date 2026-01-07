@@ -485,6 +485,7 @@ const CheckInView = ({ state, dispatch }) => {
 
   const showQRCodeFromMultiple = (applicant) => {
     setShowQRModal(true);
+    setAutoRefresh(true); // QRコード表示時に自動リロード開始
     const tournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     setCurrentQRCodeData({
       id: applicant.archerId,
@@ -504,6 +505,7 @@ const CheckInView = ({ state, dispatch }) => {
       return;
     }
     
+    setAutoRefresh(true); // QRコード表示時に自動リロード開始
     const tournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     setCurrentQRCodeData({
       id: myApplicantData.archerId,
@@ -518,6 +520,7 @@ const CheckInView = ({ state, dispatch }) => {
   };
 
   const showListQRCode = (archer) => {
+    setAutoRefresh(true); // QRコード表示時に自動リロード開始
     const tournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     setCurrentQRCodeData({
       id: archer.archerId,
@@ -533,6 +536,7 @@ const CheckInView = ({ state, dispatch }) => {
   };
 
   const showScreenshotQRCode = (archer) => {
+    setAutoRefresh(true); // QRコード表示時に自動リロード開始
     const tournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     setCurrentQRCodeData({
       id: archer.archerId,
@@ -990,12 +994,26 @@ const CheckInView = ({ state, dispatch }) => {
                     </div>
                     
                     <div className="qr-modal-footer">
-                      <button
-                        onClick={() => setShowQRModal(false)}
-                        className="btn-primary"
-                      >
-                        閉じる
-                      </button>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: '0' }}>
+                        <div>
+                          {autoRefresh && (
+                            <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                              <span style={{ display: 'inline-block', width: '0.5rem', height: '0.5rem', backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 1.5s ease-in-out infinite' }}></span>
+                              自動更新中
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowQRModal(false);
+                            setAutoRefresh(false);
+                          }}
+                          className="btn-primary"
+                          style={{ marginTop: 0, width: 'auto' }}
+                        >
+                          閉じる
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1251,6 +1269,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
   const [applicants, setApplicants] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(false);
   
   const filteredTournaments = state.registeredTournaments.filter(tournament => 
     locationFilter === '' || 
@@ -1300,6 +1319,17 @@ const ArcherSignupView = ({ state, dispatch }) => {
     }
   }, [selectedTournamentId]);
 
+  // QRモーダル表示時の自動リロード機能
+  useEffect(() => {
+    if (!autoRefresh || !selectedTournamentId) return;
+
+    const interval = setInterval(() => {
+      fetchApplicants();
+    }, 2000); // 2秒ごとにリロード
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, selectedTournamentId]);
+
   const handleInputChange = (field, value) => { setFormData(prev => ({ ...prev, [field]: value })); };
 
   const showQRCode = (id, name, type, tournamentName = '', affiliation = '', rank = '') => {
@@ -1313,6 +1343,12 @@ const ArcherSignupView = ({ state, dispatch }) => {
       registrationDate: new Date().toISOString()
     });
     setShowQRModal(true);
+    setAutoRefresh(true); // QRコード表示時に自動リロード開始
+  };
+
+  const handleCloseQRModal = () => {
+    setShowQRModal(false);
+    setAutoRefresh(false); // QRコード閉じる時に自動リロード停止
   };
 
   const handleApply = async () => {
@@ -1503,12 +1539,23 @@ const ArcherSignupView = ({ state, dispatch }) => {
               </div>
               
               <div className="qr-modal-footer">
-                <button
-                  onClick={() => setShowQRModal(false)}
-                  className="btn-primary"
-                >
-                  閉じる
-                </button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: '0' }}>
+                  <div>
+                    {autoRefresh && (
+                      <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <span style={{ display: 'inline-block', width: '0.5rem', height: '0.5rem', backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 1.5s ease-in-out infinite' }}></span>
+                        自動更新中
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleCloseQRModal}
+                    className="btn-primary"
+                    style={{ marginTop: 0, width: 'auto' }}
+                  >
+                    閉じる
+                  </button>
+                </div>
               </div>
             </div>
           </div>
