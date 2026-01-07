@@ -397,6 +397,7 @@ const CheckInView = ({ state, dispatch }) => {
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
   const [currentQRCodeData, setCurrentQRCodeData] = useState(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const checkinListRef = React.useRef(null);
   
   const filteredTournaments = state.registeredTournaments.filter(tournament => 
@@ -460,12 +461,25 @@ const CheckInView = ({ state, dispatch }) => {
     }
   };
 
+  // 自動リロード機能
+  useEffect(() => {
+    if (!autoRefresh || !selectedTournamentId) return;
+
+    const interval = setInterval(() => {
+      fetchTournamentData();
+    }, 2000); // 2秒ごとにリロード
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, selectedTournamentId]);
+
   useEffect(() => {
     if (selectedTournamentId) {
+      setAutoRefresh(false); // 大会を変更したら自動リロード停止
       fetchTournamentData();
     } else {
       setCheckIns([]);
       setMyApplicantData(null);
+      setAutoRefresh(false);
     }
   }, [selectedTournamentId]);
 
@@ -620,6 +634,7 @@ const CheckInView = ({ state, dispatch }) => {
         
         setMessage(successMessage);
         setScannedQR('');
+        setAutoRefresh(true); // 自動リロード開始
         await fetchTournamentData();
         
         // 受付済み一覧にスクロール
@@ -859,16 +874,24 @@ const CheckInView = ({ state, dispatch }) => {
               )}
             </div>
 
-            <div className="card">
+            <div className="card" ref={checkinListRef}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <p className="card-title">受付済み一覧</p>
-                <button 
-                  onClick={fetchTournamentData} 
-                  style={{ fontSize: '0.875rem', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer' }}
-                  disabled={isLoading}
-                >
-                  更新
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {autoRefresh && (
+                    <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ display: 'inline-block', width: '0.5rem', height: '0.5rem', backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 1.5s ease-in-out infinite' }}></span>
+                      自動更新中
+                    </div>
+                  )}
+                  <button 
+                    onClick={fetchTournamentData} 
+                    style={{ fontSize: '0.875rem', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer' }}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? '更新中...' : '更新'}
+                  </button>
+                </div>
               </div>
               <div className="table-responsive">
                 <table className="archer-table">
