@@ -1,3 +1,66 @@
+/* Responsive adjustments */
+.table-responsive {
+  display: block;
+}
+
+/* Ensure horizontal scroll when table is wider than viewport */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .view-content { padding: 0.75rem; }
+  .card { padding: 1rem; }
+  .login-box { max-width: 360px; padding: 1.5rem; }
+  .archer-list, .tournament-list, .applicant-list { max-height: 28vh; }
+  .archer-table { font-size: 0.75rem; }
+  .archer-table th, .archer-table td { padding: 0.5rem; }
+  .button-group { flex-wrap: wrap; }
+  .btn { padding: 0.5rem; }
+}
+
+@media (max-width: 640px) {
+  .nav-tabs { padding: 0.5rem; }
+  .nav-tab { padding: 0.5rem; font-size: 0.75rem; }
+  .view-header h1 { font-size: 1rem; }
+  .card { padding: 0.75rem; }
+  .input { padding: 0.5rem; }
+  .card-title { font-size: 0.75rem; }
+  .archer-records { gap: 0.5rem; }
+  .qr-modal-container { max-width: 95%; padding: 1rem; }
+
+  /* Make wide tables stack into cards for small screens */
+  .archer-table thead { display: none; }
+  .archer-table, .archer-table tbody, .archer-table tr, .archer-table td { display: block; width: 100%; }
+  .archer-table tr { margin-bottom: 0.75rem; border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem; }
+  .archer-table td { text-align: left; padding: 0.5rem; position: relative; }
+  .archer-table td:before { content: attr(data-label); font-weight: 600; display: block; color: #6b7280; margin-bottom: 0.25rem; font-size: 0.75rem; }
+
+  .button-group { gap: 0.25rem; }
+
+  /* Tournament item stacks vertically */
+  .tournament-item { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+}
+
+/* Division row layout */
+.division-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .division-row { flex-direction: column; align-items: stretch; }
+  .division-row .input { width: 100% !important; }
+  .division-actions { display: flex; justify-content: flex-end; }
+}
+
+@media (min-width: 1025px) {
+  /* Desktop tweaks */
+  .tournament-list { max-height: 36rem; }
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -1694,6 +1694,28 @@ const TournamentSetupView = ({ state, dispatch }) => {
     setTournamentId(template.id);
     setIsEditing(true);
   };
+  
+  const handleAddDivision = () => {
+    const newId = `div_${Date.now().toString(36).toUpperCase()}`;
+    const newDiv = { id: newId, label: '新しい部門', minRank: '', maxRank: '' };
+    setFormData(prev => ({ ...prev, divisions: [...(prev.divisions || []), newDiv] }));
+  };
+
+  const handleRemoveDivision = (index) => {
+    setFormData(prev => {
+      const ds = (prev.divisions || []).slice();
+      if (ds.length <= 3) return prev; // 最低3つは維持
+      ds.splice(index, 1);
+      return { ...prev, divisions: ds };
+    });
+  };
+
+  const handleDivisionChange = (index, field, value) => {
+    setFormData(prev => {
+      const ds = (prev.divisions || []).map((d, i) => i === index ? { ...d, [field]: value } : d);
+      return { ...prev, divisions: ds };
+    });
+  };
   const handleSaveTournament = async () => {
     if (!formData.name || !formData.datetime || !formData.location) { 
       alert('大会名、開催日時、開催場所は必須です'); 
@@ -1841,43 +1863,46 @@ const TournamentSetupView = ({ state, dispatch }) => {
               <p className="label">部門設定（最低3つ）</p>
               {formData.divisions && (() => {
                 const rankOptions = ['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
-                return formData.divisions.map((d, idx) => (
-                  <div key={d.id} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="text"
-                      value={d.label}
-                      onChange={(e) => {
-                        const newDivs = (formData.divisions || []).map((dv, i) => i === idx ? { ...dv, label: e.target.value } : dv);
-                        setFormData(prev => ({ ...prev, divisions: newDivs }));
-                      }}
-                      className="input"
-                      style={{ flex: 1 }}
-                    />
-                    <select
-                      value={d.minRank || ''}
-                      onChange={(e) => {
-                        const newDivs = (formData.divisions || []).map((dv, i) => i === idx ? { ...dv, minRank: e.target.value } : dv);
-                        setFormData(prev => ({ ...prev, divisions: newDivs }));
-                      }}
-                      className="input"
-                      style={{ width: '10rem' }}
-                    >
-                      {rankOptions.map(r => (<option key={r} value={r}>{`from ${r}`}</option>))}
-                    </select>
-                    <select
-                      value={d.maxRank || ''}
-                      onChange={(e) => {
-                        const newDivs = (formData.divisions || []).map((dv, i) => i === idx ? { ...dv, maxRank: e.target.value } : dv);
-                        setFormData(prev => ({ ...prev, divisions: newDivs }));
-                      }}
-                      className="input"
-                      style={{ width: '10rem' }}
-                    >
-                      {rankOptions.map(r => (<option key={r} value={r}>{`to ${r}`}</option>))}
-                    </select>
-                    <span style={{ alignSelf: 'center', color: '#6b7280', width: '3rem' }}>{d.id}</span>
-                  </div>
-                ));
+                return (
+                  <>
+                    {formData.divisions.map((d, idx) => (
+                      <div key={d.id} className="division-row" style={{ marginBottom: '0.5rem', alignItems: 'center' }}>
+                        <input
+                          type="text"
+                          value={d.label}
+                          onChange={(e) => handleDivisionChange(idx, 'label', e.target.value)}
+                          className="input"
+                          style={{ flex: 1 }}
+                        />
+                        <select
+                          value={d.minRank || ''}
+                          onChange={(e) => handleDivisionChange(idx, 'minRank', e.target.value)}
+                          className="input"
+                          style={{ width: '10rem' }}
+                        >
+                          <option value="">from</option>
+                          {rankOptions.map(r => (<option key={r} value={r}>{r}</option>))}
+                        </select>
+                        <select
+                          value={d.maxRank || ''}
+                          onChange={(e) => handleDivisionChange(idx, 'maxRank', e.target.value)}
+                          className="input"
+                          style={{ width: '10rem' }}
+                        >
+                          <option value="">to</option>
+                          {rankOptions.map(r => (<option key={r} value={r}>{r}</option>))}
+                        </select>
+                        <div className="division-actions" style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.5rem' }}>
+                          <button type="button" className="btn-fix" onClick={() => handleRemoveDivision(idx)} disabled={(formData.divisions || []).length <= 3}>削除</button>
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', marginTop: '0.5rem', gap: '0.5rem' }}>
+                      <button type="button" className="btn-secondary" onClick={handleAddDivision}>部門を追加</button>
+                      <p style={{ alignSelf: 'center', color: '#6b7280', fontSize: '0.875rem' }}>最小3部門は必須</p>
+                    </div>
+                  </>
+                );
               })()}
             </div>
           </div>
