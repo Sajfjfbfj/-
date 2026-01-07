@@ -397,6 +397,7 @@ const CheckInView = ({ state, dispatch }) => {
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
   const [currentQRCodeData, setCurrentQRCodeData] = useState(null);
+  const checkinListRef = React.useRef(null);
   
   const filteredTournaments = state.registeredTournaments.filter(tournament => 
     locationFilter === '' || 
@@ -405,10 +406,11 @@ const CheckInView = ({ state, dispatch }) => {
   
   const [currentUser, setCurrentUser] = useState(null);
   const [myApplicantData, setMyApplicantData] = useState(null);
-  const [showManualInput, setShowManualInput] = useState(false);
+  const [showManualInput, setShowManualInput] = useState(true);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('kyudo_tournament_user');
+    const savedDeviceId = localStorage.getItem('kyudo_tournament_device_id');
     if (savedUser) {
       setCurrentUser(JSON.parse(savedUser));
     }
@@ -426,11 +428,12 @@ const CheckInView = ({ state, dispatch }) => {
         const checkedIn = result.data.filter(a => a.isCheckedIn);
         setCheckIns(checkedIn);
         
-        if (currentUser) {
+        const savedDeviceId = localStorage.getItem('kyudo_tournament_device_id');
+        
+        // deviceIdが一致した場合のみ「自分の申し込み」として表示
+        if (savedDeviceId) {
           const myRegistrations = result.data.filter(a => 
-            (a.archerId === currentUser.archerId) || 
-            (a.deviceId && currentUser.deviceId && a.deviceId === currentUser.deviceId) ||
-            (a.name === currentUser.name && a.affiliation === currentUser.affiliation)
+            a.deviceId === savedDeviceId
           );
           
           if (myRegistrations.length > 0) {
@@ -444,6 +447,8 @@ const CheckInView = ({ state, dispatch }) => {
             setShowManualInput(true);
           }
         } else {
+          // deviceIdがない場合（受付用端末など）は常に手動入力フォームを表示
+          setMyApplicantData(null);
           setShowManualInput(true);
         }
       }
@@ -616,6 +621,13 @@ const CheckInView = ({ state, dispatch }) => {
         setMessage(successMessage);
         setScannedQR('');
         await fetchTournamentData();
+        
+        // 受付済み一覧にスクロール
+        setTimeout(() => {
+          if (checkinListRef.current) {
+            checkinListRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 300);
       } else {
         setMessage(`❌ ${checkInResult.message || '受付に失敗しました'}`);
       }
