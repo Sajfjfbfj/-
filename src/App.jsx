@@ -1,5 +1,5 @@
-import React, { useState, useReducer, useEffect } from 'react';
-import { Lock, LogOut, RotateCcw, Copy, Check, QrCode, Maximize2, Filter, X, User, Camera } from 'lucide-react';
+import React, { useState, useReducer, useEffect, useRef } from 'react';
+import { Lock, LogOut, RotateCcw, Copy, Check, QrCode, Maximize2, Filter, X, User, Camera, RefreshCw } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import QRCodeScanner from './components/QRCodeScanner';
 import './index.css';
@@ -13,16 +13,40 @@ const API_URL = API_BASE_URL;
 const KyudoTournamentSystem = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminPassword, setAdminPassword] = useState(null);
-  const [selectedTournamentId, setSelectedTournamentId] = useState(null);
+  const [selectedTournamentId, setSelectedTournamentId] = useState(() => {
+    return localStorage.getItem('selectedTournamentId') || null;
+  });
   const [adminLoginStep, setAdminLoginStep] = useState('password_setup');
   const [adminView, setAdminView] = useState('recording');
   const [mainView, setMainView] = useState('tournament');
+
+  useEffect(() => {
+    if (selectedTournamentId) {
+      localStorage.setItem('selectedTournamentId', selectedTournamentId);
+    } else {
+      localStorage.removeItem('selectedTournamentId');
+    }
+  }, [selectedTournamentId]);
   const [tournamentState, dispatch] = useReducer(tournamentReducer, initialTournamentState);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchTournaments();
   }, []);
+
+  // selectedTournamentId が変わったら、登録済み大会テンプレートの設定を tournamentState.tournament に反映する
+  useEffect(() => {
+    if (!selectedTournamentId) return;
+    const tpl = tournamentState.registeredTournaments.find(t => t.id === selectedTournamentId);
+    if (tpl && tpl.data) {
+      const allowedKeys = ['passRule', 'arrowsRound1', 'arrowsRound2', 'archersPerStand', 'name', 'date', 'id'];
+      const payload = {};
+      allowedKeys.forEach(k => { if (typeof tpl.data[k] !== 'undefined') payload[k] = tpl.data[k]; });
+      if (Object.keys(payload).length > 0) {
+        dispatch({ type: 'UPDATE_TOURNAMENT_INFO', payload });
+      }
+    }
+  }, [selectedTournamentId, tournamentState.registeredTournaments]);
 
   const fetchTournaments = async () => {
     try {
@@ -34,8 +58,6 @@ const KyudoTournamentSystem = () => {
       });
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API Error Response:', errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
@@ -46,12 +68,9 @@ const KyudoTournamentSystem = () => {
           type: 'LOAD_TOURNAMENTS',
           payload: result.data
         });
-      } else {
-        console.error('Unexpected API response:', result);
       }
     } catch (error) {
       console.error('大会データの取得中にエラーが発生しました:', error);
-      alert(`大会データの取得に失敗しました: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -81,7 +100,7 @@ const KyudoTournamentSystem = () => {
           {mainView === 'tournament' && <TournamentView state={tournamentState} stands={dynamicStands} checkInCount={checkInCount} />}
           {mainView === 'checkin' && <CheckInView state={tournamentState} dispatch={dispatch} />}
           {mainView === 'admin' && !isAdminLoggedIn && <AdminLoginView adminPassword={adminPassword} setAdminPassword={setAdminPassword} adminLoginStep={adminLoginStep} setAdminLoginStep={setAdminLoginStep} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} state={tournamentState} onLogin={() => setIsAdminLoggedIn(true)} />}
-          {mainView === 'admin' && isAdminLoggedIn && <AdminView state={tournamentState} dispatch={dispatch} adminView={adminView} setAdminView={setAdminView} stands={dynamicStands} onLogout={() => { setIsAdminLoggedIn(false); setAdminLoginStep('password_setup'); setSelectedTournamentId(null); }} />}
+          {mainView === 'admin' && isAdminLoggedIn && <AdminView state={tournamentState} dispatch={dispatch} adminView={adminView} setAdminView={setAdminView} stands={dynamicStands} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} onLogout={() => { setIsAdminLoggedIn(false); setAdminLoginStep('password_setup'); setSelectedTournamentId(null); }} />}
           {mainView === 'tournament-setup' && <TournamentSetupView state={tournamentState} dispatch={dispatch} />}
           {mainView === 'archer-signup' && <ArcherSignupView state={tournamentState} dispatch={dispatch} />}
         </>
@@ -90,6 +109,7 @@ const KyudoTournamentSystem = () => {
   );
 };
 
+// Reducer State (Local fallback)
 const initialTournamentState = {
   tournament: {
     id: 'KYUDO_2024_0001',
@@ -104,14 +124,7 @@ const initialTournamentState = {
   },
   registeredTournaments: [],
   applicants: [],
-  archers: [
-    { id: 1, qrCode: 'KYUDO_2024_0001_A001', name: '鈴木太郎', affiliation: '◯◯高校', segment: 1, checkIn: true, results: { stand1: ['o', 'o', 'x', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
-    { id: 2, qrCode: 'KYUDO_2024_0001_A002', name: '田中花子', affiliation: '△△大学', segment: 1, checkIn: true, results: { stand1: ['o', 'o', 'o', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
-    { id: 3, qrCode: 'KYUDO_2024_0001_A003', name: '佐藤次郎', affiliation: '□□弓道会', segment: 2, checkIn: true, results: { stand1: ['o', 'x', 'x', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
-    { id: 4, qrCode: 'KYUDO_2024_0001_A004', name: '小林美咲', affiliation: '◯◯高校', segment: 2, checkIn: true, results: { stand1: ['o', 'o', 'o', 'o'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
-    { id: 5, qrCode: 'KYUDO_2024_0001_A005', name: '石田紅太', affiliation: '△△大学', segment: 3, checkIn: false, results: { stand1: [null, null, null, null], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
-    { id: 6, qrCode: 'KYUDO_2024_0001_A006', name: '望月由美', affiliation: '□□弓道会', segment: 3, checkIn: true, results: { stand1: ['o', 'o', 'x', 'x'], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] } },
-  ],
+  archers: [], // Now managed via API mainly
 };
 
 function tournamentReducer(state, action) {
@@ -119,31 +132,6 @@ function tournamentReducer(state, action) {
     case 'LOAD_TOURNAMENTS': {
       return { ...state, registeredTournaments: action.payload.map(t => ({ id: t.id, data: t.data })) };
     }
-    case 'LOAD_APPLICANTS': {
-      return { ...state, applicants: action.payload };
-    }
-    case 'UPDATE_ARCHER_APPLICANT': {
-      const updatedApplicants = [...state.applicants];
-      updatedApplicants[action.payload.index] = {
-        ...updatedApplicants[action.payload.index],
-        ...action.payload.updates
-      };
-      return { ...state, applicants: updatedApplicants };
-    }
-    case 'RECORD_RESULT': {
-      const { archerId, stand, arrowIndex, result } = action.payload;
-      return { ...state, archers: state.archers.map(a => a.id === archerId ? { ...a, results: { ...a.results, [`stand${stand}`]: a.results[`stand${stand}`].map((r, i) => i === arrowIndex ? result : r) } } : a) };
-    }
-    case 'UNDO_RESULT': {
-      const { archerId, stand, arrowIndex } = action.payload;
-      return { ...state, archers: state.archers.map(a => a.id === archerId ? { ...a, results: { ...a.results, [`stand${stand}`]: a.results[`stand${stand}`].map((r, i) => i === arrowIndex ? null : r) } } : a) };
-    }
-    case 'CHECK_IN_ARCHER': return { ...state, archers: state.archers.map(a => a.id === action.payload ? { ...a, checkIn: true } : a) };
-    case 'UPDATE_PASS_RULE': return { ...state, tournament: { ...state.tournament, passRule: action.payload } };
-    case 'UPDATE_ARROWS_ROUND1': return { ...state, tournament: { ...state.tournament, arrowsRound1: parseInt(action.payload) } };
-    case 'UPDATE_ARROWS_ROUND2': return { ...state, tournament: { ...state.tournament, arrowsRound2: parseInt(action.payload) } };
-    case 'UPDATE_CURRENT_ROUND': return { ...state, tournament: { ...state.tournament, currentRound: action.payload } };
-    case 'UPDATE_ARCHERS_PER_STAND': return { ...state, tournament: { ...state.tournament, archersPerStand: parseInt(action.payload) } };
     case 'UPDATE_TOURNAMENT_INFO': return { ...state, tournament: { ...state.tournament, ...action.payload } };
     case 'SAVE_TOURNAMENT_TEMPLATE': {
       const updated = state.registeredTournaments.filter(t => t.id !== action.payload.id);
@@ -251,9 +239,20 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
 };
 
 const TournamentView = ({ state, stands, checkInCount }) => {
-  const [selectedTournamentId, setSelectedTournamentId] = useState('');
+  const [selectedTournamentId, setSelectedTournamentId] = useState(() => {
+    return localStorage.getItem('selectedTournamentId') || '';
+  });
   const [archers, setArchers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+
+  useEffect(() => {
+    if (selectedTournamentId) {
+      localStorage.setItem('selectedTournamentId', selectedTournamentId);
+    } else {
+      localStorage.removeItem('selectedTournamentId');
+    }
+  }, [selectedTournamentId]);
 
   const filteredTournaments = state.registeredTournaments.filter(tournament => 
     tournament.id
@@ -262,26 +261,25 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   const rankOrder = ['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
 
   const getRankCategory = (rankStr) => {
-    // 称号と段位に分離
     const ceremonyRanks = ['錬士', '教士', '範士'];
     let ceremony = '';
     let rank = rankStr;
 
     for (const c of ceremonyRanks) {
-      if (rankStr.includes(c)) {
+      if (rankStr && rankStr.includes(c)) {
         ceremony = c;
         rank = rankStr.replace(c, '');
         break;
       }
     }
-
     return { ceremony, rank };
   };
 
   const fetchAndSortArchers = async () => {
     if (!selectedTournamentId) return;
 
-    setIsLoading(true);
+    // ローディング表示は初回のみ、または手動更新時のみにする
+    // setIsLoading(true); 
     try {
       const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
       const result = await response.json();
@@ -289,7 +287,6 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       if (result.success) {
         const checkedIn = result.data.filter(a => a.isCheckedIn);
         
-        // ソート処理
         const normalizeRank = (rank) => {
           if (!rank) return '';
           return rank
@@ -300,15 +297,11 @@ const TournamentView = ({ state, stands, checkInCount }) => {
         };
 
         const sortedArchers = [...checkedIn].sort((a, b) => {
-          // ランクを正規化
           const aRank = normalizeRank(a.rank);
           const bRank = normalizeRank(b.rank);
-
-          // インデックスを取得（見つからない場合は最後尾に配置）
           const aIndex = rankOrder.indexOf(aRank);
           const bIndex = rankOrder.indexOf(bRank);
 
-          // ランクが異なる場合はランク順でソート
           if (aIndex !== bIndex) {
             if (aIndex === -1 && bIndex === -1) return 0;
             if (aIndex === -1) return 1;
@@ -316,13 +309,11 @@ const TournamentView = ({ state, stands, checkInCount }) => {
             return aIndex - bIndex;
           }
 
-          // ランクが同じ場合は取得日でソート（古い順）
           const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
           const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
           return aDate.getTime() - bDate.getTime();
         });
 
-        // 立ち順番号を付与
         const archersWithOrder = sortedArchers.map((archer, index) => ({
           ...archer,
           standOrder: index + 1
@@ -339,17 +330,31 @@ const TournamentView = ({ state, stands, checkInCount }) => {
 
   useEffect(() => {
     if (selectedTournamentId) {
+      setIsLoading(true);
       fetchAndSortArchers();
     }
   }, [selectedTournamentId]);
+
+  // 自動更新 (リアルタイム表示用) - 5秒ごと
+  useEffect(() => {
+    if (!selectedTournamentId || !autoRefresh) return;
+    const interval = setInterval(() => {
+      fetchAndSortArchers();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [selectedTournamentId, autoRefresh]);
 
   const tournament = state.tournament;
   const arrowsPerStand = tournament.currentRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
 
   const isPassed = (archer) => {
     const stand1Results = archer.results?.stand1 || [null, null, null, null];
-    if (stand1Results.slice(0, arrowsPerStand).includes(null)) return null;
-    const count = stand1Results.slice(0, arrowsPerStand).filter(r => r === 'o').length;
+    // 有効な結果部分だけ切り出す
+    const validResults = stand1Results.slice(0, arrowsPerStand);
+    // null がある（未入力）場合は判定保留
+    if (validResults.includes(null)) return null;
+
+    const count = validResults.filter(r => r === 'o').length;
     switch (tournament.passRule) {
       case 'all_four': return count === arrowsPerStand;
       case 'four_or_more': return count >= 4;
@@ -359,27 +364,34 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     }
   };
 
-  const passedArchers = archers.filter(a => isPassed(a));
-
-  const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+  const passedArchers = archers.filter(a => isPassed(a) === true);
 
   return (
     <div className="view-container">
       <div className="view-header">
-        <h1>大会進行</h1>
+        <h1>大会進行 (リアルタイム)</h1>
         <div style={{ marginTop: '1rem' }}>
           <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>大会を選択</label>
-          <select 
-            value={selectedTournamentId} 
-            onChange={(e) => setSelectedTournamentId(e.target.value)}
-            className="input w-full"
-            style={{ marginBottom: '1rem' }}
-          >
-            <option value="">-- 大会を選択してください --</option>
-            {filteredTournaments.map(t => (
-              <option key={t.id} value={t.id}>{t.data?.name || t.id}</option>
-            ))}
-          </select>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <select 
+              value={selectedTournamentId} 
+              onChange={(e) => setSelectedTournamentId(e.target.value)}
+              className="input w-full"
+            >
+              <option value="">-- 大会を選択してください --</option>
+              {filteredTournaments.map(t => (
+                <option key={t.id} value={t.id}>{t.data?.name || t.id}</option>
+              ))}
+            </select>
+            <button 
+              onClick={fetchAndSortArchers} 
+              className="btn-secondary"
+              style={{ padding: '0 1rem' }}
+              title="更新"
+            >
+              <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
+            </button>
+          </div>
         </div>
       </div>
       <div className="view-content">
@@ -398,7 +410,15 @@ const TournamentView = ({ state, stands, checkInCount }) => {
             </div>
 
             <div className="card">
-              <p className="card-title">立ち順表</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <p className="card-title">立ち順表</p>
+                {autoRefresh && (
+                    <span style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ display: 'inline-block', width: '0.5rem', height: '0.5rem', backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 1.5s ease-in-out infinite' }}></span>
+                      Live
+                    </span>
+                  )}
+              </div>
               <div className="table-responsive">
                 <table className="archer-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
@@ -413,7 +433,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {isLoading ? (
+                    {isLoading && archers.length === 0 ? (
                       <tr>
                         <td colSpan="7" style={{ textAlign: 'center', padding: '1rem', color: '#9ca3af' }}>
                           読み込み中...
@@ -428,8 +448,8 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                     ) : (
                       archers.map((archer) => {
                         const { ceremony, rank } = getRankCategory(archer.rank);
-                        const stand1Result = archer.results?.stand1?.slice(0, arrowsPerStand) || [];
-                        const stand2Result = archer.results?.stand2?.slice(0, arrowsPerStand) || [];
+                        const stand1Result = archer.results?.stand1?.slice(0, arrowsPerStand) || Array(arrowsPerStand).fill(null);
+                        const stand2Result = archer.results?.stand2?.slice(0, arrowsPerStand) || Array(arrowsPerStand).fill(null);
                         
                         return (
                           <tr key={archer.archerId} style={{ borderBottom: '1px solid #e5e7eb' }}>
@@ -513,36 +533,43 @@ const TournamentView = ({ state, stands, checkInCount }) => {
 };
 
 const RecordingView = ({ state, dispatch, stands }) => {
-  const [selectedTournamentId, setSelectedTournamentId] = useState('');
-  const [selectedDivision, setSelectedDivision] = useState('');
-  const [selectedStand, setSelectedStand] = useState(1);
-  const [selectedRound, setSelectedRound] = useState(1); // 1: 1立ち目, 2: 2立ち目
+  const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
+  const [selectedDivision, setSelectedDivision] = useState(() => localStorage.getItem('recording_selectedDivision') || '');
+  const [selectedStand, setSelectedStand] = useState(() => parseInt(localStorage.getItem('recording_selectedStand')) || 1);
+  const [selectedRound, setSelectedRound] = useState(() => parseInt(localStorage.getItem('recording_selectedRound')) || 1); // 1: 1立ち目, 2: 2立ち目
   const [archers, setArchers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    if (selectedTournamentId) localStorage.setItem('selectedTournamentId', selectedTournamentId);
+    else localStorage.removeItem('selectedTournamentId');
+  }, [selectedTournamentId]);
+
+  useEffect(() => { localStorage.setItem('recording_selectedDivision', selectedDivision || ''); }, [selectedDivision]);
+  useEffect(() => { localStorage.setItem('recording_selectedStand', selectedStand); }, [selectedStand]);
+  useEffect(() => { localStorage.setItem('recording_selectedRound', selectedRound); }, [selectedRound]);
 
   const tournament = state.tournament;
   const rankOrder = ['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
   
-  // 現在のラウンドに応じた矢数を取得
   const getCurrentArrowsPerStand = () => {
     return selectedRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
   };
   
-  // 現在のラウンドに応じたスタンドの結果を取得
   const getCurrentStandResults = (archer) => {
     const standKey = `stand${selectedStand}`;
     const currentArrows = getCurrentArrowsPerStand();
-    
-    // 結果が存在しないか、必要な長さに満たない場合は、現在のラウンドの矢数に合わせた配列を返す
-    if (!archer.results || !archer.results[standKey] || archer.results[standKey].length < currentArrows) {
-      return Array(currentArrows).fill(null);
-    }
-    
-    // 現在のラウンドの結果を取得（現在の矢数に合わせてスライス）
-    return archer.results[standKey].slice(0, currentArrows);
+    const offset = selectedRound === 1 ? 0 : tournament.arrowsRound1;
+
+    // DBから取得した results を優先
+    const totalNeeded = tournament.arrowsRound1 + tournament.arrowsRound2;
+    const existing = (archer.results && archer.results[standKey]) ? [...archer.results[standKey]] : Array(totalNeeded).fill(null);
+    while (existing.length < totalNeeded) existing.push(null);
+
+    return existing.slice(offset, offset + currentArrows);
   };
-  
-  // 現在のラウンドの完了状態をチェック
+
   const isRoundComplete = (archer) => {
     const results = getCurrentStandResults(archer);
     return results.every(result => result !== null);
@@ -554,35 +581,24 @@ const RecordingView = ({ state, dispatch, stands }) => {
     let rank = rankStr;
 
     for (const c of ceremonyRanks) {
-      if (rankStr.includes(c)) {
+      if (rankStr && rankStr.includes(c)) {
         ceremony = c;
         rank = rankStr.replace(c, '');
         break;
       }
     }
-
     return { ceremony, rank };
   };
 
   const getDivision = (rank) => {
     const { ceremony } = getRankCategory(rank);
-    
-    // 称号者の部
     if (ceremony) return 'title';
-    
-    // 段位で分類
     const levelIndex = rankOrder.indexOf(rank);
-    
-    // 級位～三段以下の部
     if (levelIndex <= rankOrder.indexOf('参段')) return 'lower';
-    
-    // 四・五段の部
     if (levelIndex <= rankOrder.indexOf('五段')) return 'middle';
-    
     return 'lower';
   };
 
-  // 選択中の大会に部門設定があればそれを使う。なければデフォルトを使用
   const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
   const localDefaultDivisions = [
     { id: 'lower', label: '級位～三段以下の部' },
@@ -591,10 +607,12 @@ const RecordingView = ({ state, dispatch, stands }) => {
   ];
   const divisions = (selectedTournament && selectedTournament.data && selectedTournament.data.divisions) ? selectedTournament.data.divisions : localDefaultDivisions;
 
-  const fetchAndSortArchers = async () => {
+  const fetchAndSortArchers = async (background = false) => {
     if (!selectedTournamentId) return;
 
-    setIsLoading(true);
+    if (!background) setIsLoading(true);
+    else setIsSyncing(true);
+
     try {
       const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
       const result = await response.json();
@@ -602,7 +620,6 @@ const RecordingView = ({ state, dispatch, stands }) => {
       if (result.success) {
         const checkedIn = result.data.filter(a => a.isCheckedIn);
         
-        // 漢数字の表記揺れを吸収する関数
         const normalizeRank = (rank) => {
           if (!rank) return '';
           return rank
@@ -612,59 +629,47 @@ const RecordingView = ({ state, dispatch, stands }) => {
             .replace('一級', '壱級');
         };
 
-        // ソート処理
         const sortedArchers = [...checkedIn].sort((a, b) => {
-          // ランクを正規化
           const aRank = normalizeRank(a.rank);
           const bRank = normalizeRank(b.rank);
-          
-          // インデックスを取得（見つからない場合は最後尾に配置）
           const aIndex = rankOrder.indexOf(aRank);
           const bIndex = rankOrder.indexOf(bRank);
-          
-          // デバッグ用ログ
-          console.log('Sorting:', {
-            a: { name: a.name, originalRank: a.rank, normalizedRank: aRank, index: aIndex },
-            b: { name: b.name, originalRank: b.rank, normalizedRank: bRank, index: bIndex },
-            comparison: aIndex - bIndex
-          });
 
-          // ランクが異なる場合はランク順でソート
           if (aIndex !== bIndex) {
-            // 両方見つからない場合は元の順序を保持
             if (aIndex === -1 && bIndex === -1) return 0;
-            // aが見つからない場合は後ろに
             if (aIndex === -1) return 1;
-            // bが見つからない場合は前に
             if (bIndex === -1) return -1;
-            // 通常の比較
             return aIndex - bIndex;
           }
 
-          // ランクが同じ場合は取得日でソート（古い順）
           const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
           const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
           return aDate.getTime() - bDate.getTime();
         });
 
         // 立ち順番号を付与
+        const totalNeeded = tournament.arrowsRound1 + tournament.arrowsRound2;
+        const defaultResults = {};
+        for (let i = 1; i <= 6; i++) defaultResults[`stand${i}`] = Array(totalNeeded).fill(null);
+
         const archersWithOrder = sortedArchers.map((archer, index) => ({
           ...archer,
           standOrder: index + 1,
           division: archer.division || getDivision(archer.rank),
-          results: archer.results || { stand1: [null, null, null, null], stand2: [null, null, null, null], stand3: [null, null, null, null], stand4: [null, null, null, null], stand5: [null, null, null, null], stand6: [null, null, null, null] }
+          results: Object.assign({}, defaultResults, archer.results || {})
         }));
 
         setArchers(archersWithOrder);
         
-        // 最初の部門を自動選択
-        const firstDivision = archersWithOrder.length > 0 ? archersWithOrder[0].division : '';
-        setSelectedDivision(firstDivision);
+        if (!selectedDivision && archersWithOrder.length > 0) {
+          setSelectedDivision(archersWithOrder[0].division);
+        }
       }
     } catch (error) {
       console.error('選手データの取得に失敗しました:', error);
     } finally {
       setIsLoading(false);
+      setIsSyncing(false);
     }
   };
 
@@ -674,15 +679,18 @@ const RecordingView = ({ state, dispatch, stands }) => {
     }
   }, [selectedTournamentId]);
 
+  // リアルタイム同期（3秒ごとに他の端末の入力を反映）
+  useEffect(() => {
+    if (!selectedTournamentId) return;
+    const interval = setInterval(() => {
+      fetchAndSortArchers(true);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [selectedTournamentId]);
+
   const filteredTournaments = state.registeredTournaments;
-
-  const arrowsPerStand = tournament.arrowsRound1; // 1立ち目の矢数
-  const arrowsPerStand2 = tournament.arrowsRound2; // 2立ち目の矢数
-
-  // 選択された部門の選手を取得
   const divisionArchers = archers.filter(a => a.division === selectedDivision);
 
-  // 立てごとに選手を割り当て
   const getArchersForStand = (standNumber) => {
     const archersPerStand = tournament.archersPerStand;
     const startIdx = (standNumber - 1) * archersPerStand;
@@ -691,123 +699,99 @@ const RecordingView = ({ state, dispatch, stands }) => {
 
   const standArchers = getArchersForStand(selectedStand);
 
+  // API経由で記録を保存
+  const saveResultToApi = async (archerId, stand, arrowIndex, result) => {
+    try {
+      const offset = selectedRound === 1 ? 0 : tournament.arrowsRound1;
+      const actualIndex = offset + arrowIndex;
+
+      await fetch(`${API_URL}/results`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournamentId: selectedTournamentId,
+          archerId,
+          stand,
+          arrowIndex: actualIndex,
+          result
+        })
+      });
+      // 更新後にデータを再取得（同期）
+      fetchAndSortArchers(true);
+    } catch (error) {
+      console.error('記録保存エラー:', error);
+      alert('ネットワークエラーにより保存できませんでした');
+    }
+  };
+
   const handleRecord = (archerId, standNum, arrowIndex, result) => {
-    // アーチャーを検索
+    // 楽観的UI更新（即時反映）
     const archer = archers.find(a => a.archerId === archerId);
     if (!archer) return;
-    
+
     const standKey = `stand${standNum}`;
-    const currentArrows = getCurrentArrowsPerStand();
-    
-    // 現在の結果を取得（存在しない場合は空の配列）
-    const currentResults = archer.results?.[standKey] || [];
-    
-    // 新しい結果配列を作成（現在の矢数に合わせて初期化）
-    const newResults = Array(currentArrows).fill(null);
-    
-    // 既存の結果をコピー（現在の矢数を超えない範囲で）
-    currentResults.slice(0, currentArrows).forEach((r, i) => {
-      newResults[i] = r;
-    });
-    
-    // 現在の矢の結果を更新
-    if (arrowIndex < currentArrows) {
-      newResults[arrowIndex] = result;
-    }
-    
-    // アーチャーの状態を更新
-    const updatedArchers = archers.map(a => 
-      a.archerId === archerId 
-        ? { 
-            ...a, 
-            results: { 
-              ...a.results, 
-              [standKey]: newResults 
-            } 
-          } 
-        : a
-    );
-    
-    // 状態を更新
+    const offset = selectedRound === 1 ? 0 : tournament.arrowsRound1;
+    const totalNeeded = tournament.arrowsRound1 + tournament.arrowsRound2;
+    const existing = (archer.results && archer.results[standKey]) ? [...archer.results[standKey]] : Array(totalNeeded).fill(null);
+    while (existing.length < totalNeeded) existing.push(null);
+
+    const targetIndex = offset + arrowIndex;
+    existing[targetIndex] = result;
+
+    const updatedArchers = archers.map(a => a.archerId === archerId ? { ...a, results: { ...a.results, [standKey]: existing } } : a);
     setArchers(updatedArchers);
+
+    // APIへ送信
+    saveResultToApi(archerId, standNum, arrowIndex, result);
   };
 
   const handleUndo = (archerId, standNum, arrowIndex) => {
-    // アーチャーを検索
+    // 楽観的UI更新
     const archer = archers.find(a => a.archerId === archerId);
     if (!archer) return;
-    
+
     const standKey = `stand${standNum}`;
-    const currentArrows = getCurrentArrowsPerStand();
+    const offset = selectedRound === 1 ? 0 : tournament.arrowsRound1;
+    const totalNeeded = tournament.arrowsRound1 + tournament.arrowsRound2;
+    const existing = (archer.results && archer.results[standKey]) ? [...archer.results[standKey]] : Array(totalNeeded).fill(null);
     
-    // 現在の結果を取得（存在しない場合は空の配列）
-    const currentResults = archer.results?.[standKey] || [];
-    
-    // 新しい結果配列を作成（現在の矢数に合わせて初期化）
-    const newResults = Array(currentArrows).fill(null);
-    
-    // 既存の結果をコピー（現在の矢数を超えない範囲で）
-    currentResults.slice(0, currentArrows).forEach((r, i) => {
-      newResults[i] = r;
-    });
-    
-    // 指定されたインデックスの結果をnullに
-    if (arrowIndex < currentArrows) {
-      newResults[arrowIndex] = null;
-    }
-    
-    // アーチャーの状態を更新
-    const updatedArchers = archers.map(a => 
-      a.archerId === archerId 
-        ? { 
-            ...a, 
-            results: { 
-              ...a.results, 
-              [standKey]: newResults 
-            } 
-          } 
-        : a
-    );
-    
-    // 状態を更新
+    const targetIndex = offset + arrowIndex;
+    existing[targetIndex] = null;
+
+    const updatedArchers = archers.map(a => a.archerId === archerId ? { ...a, results: { ...a.results, [standKey]: existing } } : a);
     setArchers(updatedArchers);
+
+    // APIへ送信 (nullを送る)
+    saveResultToApi(archerId, standNum, arrowIndex, null);
   };
 
-  // 指定されたスタンドとラウンドの的中数を計算
   const getHitCount = (archer, standNum, roundNum = null) => {
     const results = archer.results?.[`stand${standNum}`] || [];
-    const currentArrows = roundNum === 2 ? tournament.arrowsRound2 : tournament.arrowsRound1;
-    return results.slice(0, currentArrows).filter(r => r === 'o').length;
+    const start = roundNum === 2 ? tournament.arrowsRound1 : 0;
+    const length = roundNum === 2 ? tournament.arrowsRound2 : tournament.arrowsRound1;
+    return (results.slice(start, start + length) || []).filter(r => r === 'o').length;
   };
   
-  // 現在のラウンドの的中数を取得
   const getCurrentRoundHitCount = (archer) => {
     const results = getCurrentStandResults(archer);
     return results.filter(r => r === 'o').length;
   };
   
-  // 合計的中数を計算（1立ち目と2立ち目の合計）
   const getTotalHitCount = (archer) => {
     const stand1Hits = getHitCount(archer, selectedStand, 1);
     const stand2Hits = getHitCount(archer, selectedStand, 2);
     return stand1Hits + stand2Hits;
   };
 
-  // 部門内での順位を計算（1立ち目と2立ち目の合計で計算）
   const calculateRanks = () => {
     const hitCounts = divisionArchers.map(archer => ({
       archerId: archer.archerId,
-      // 1立ち目と2立ち目の合計的中数を使用
       hitCount: getHitCount(archer, selectedStand, 1) + getHitCount(archer, selectedStand, 2)
     }));
-
-    // 的中数でソート（多い順）
     const sorted = hitCounts.sort((a, b) => b.hitCount - a.hitCount);
-    
     const ranks = {};
     let currentRank = 1;
     let prevHitCount = null;
-
     sorted.forEach((item, index) => {
       if (prevHitCount !== null && item.hitCount !== prevHitCount) {
         currentRank = index + 1;
@@ -815,7 +799,6 @@ const RecordingView = ({ state, dispatch, stands }) => {
       ranks[item.archerId] = currentRank;
       prevHitCount = item.hitCount;
     });
-
     return ranks;
   };
 
@@ -824,8 +807,11 @@ const RecordingView = ({ state, dispatch, stands }) => {
   return (
     <div className="view-container">
       <div className="view-header">
-        <h1>記録入力</h1>
-        <p>部門ごとに立ち順を管理</p>
+        <div style={{display:'flex', alignItems:'center', gap:'0.5rem'}}>
+          <h1>記録入力</h1>
+          {isSyncing && <RefreshCw size={16} className="animate-spin text-blue-500" />}
+        </div>
+        <p>部門ごとに立ち順を管理 (自動保存)</p>
       </div>
       <div className="view-content">
         <div className="card">
@@ -864,8 +850,6 @@ const RecordingView = ({ state, dispatch, stands }) => {
               <p className="hint" style={{ marginTop: '0.5rem' }}>この部門の選手数: {divisionArchers.length}人</p>
             </div>
 
-
-
             <div className="card">
               <div className="round-selector">
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>ラウンド選択</label>
@@ -898,7 +882,6 @@ const RecordingView = ({ state, dispatch, stands }) => {
                 standArchers.map(archer => {
                   const currentArrows = getCurrentArrowsPerStand();
                   const { ceremony, rank } = getRankCategory(archer.rank);
-                  const hitCount = getCurrentRoundHitCount(archer);
                   const archerRank = ranks[archer.archerId];
                   const roundComplete = isRoundComplete(archer);
 
@@ -949,8 +932,16 @@ const CheckInView = ({ state, dispatch }) => {
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [checkIns, setCheckIns] = useState([]);
-  const [selectedTournamentId, setSelectedTournamentId] = useState('');
+  const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
   const [showQRModal, setShowQRModal] = useState(false);
+
+  useEffect(() => {
+    if (selectedTournamentId) {
+      localStorage.setItem('selectedTournamentId', selectedTournamentId);
+    } else {
+      localStorage.removeItem('selectedTournamentId');
+    }
+  }, [selectedTournamentId]);
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
   const [currentQRCodeData, setCurrentQRCodeData] = useState(null);
@@ -988,7 +979,6 @@ const CheckInView = ({ state, dispatch }) => {
         
         const savedDeviceId = localStorage.getItem('kyudo_tournament_device_id');
         
-        // deviceIdが一致した場合のみ「自分の申し込み」として表示
         if (savedDeviceId) {
           const myRegistrations = result.data.filter(a => 
             a.deviceId === savedDeviceId
@@ -1005,7 +995,6 @@ const CheckInView = ({ state, dispatch }) => {
             setShowManualInput(true);
           }
         } else {
-          // deviceIdがない場合（受付用端末など）は常に手動入力フォームを表示
           setMyApplicantData(null);
           setShowManualInput(true);
         }
@@ -1018,20 +1007,17 @@ const CheckInView = ({ state, dispatch }) => {
     }
   };
 
-  // 自動リロード機能
   useEffect(() => {
     if (!autoRefresh || !selectedTournamentId) return;
-
     const interval = setInterval(() => {
       fetchTournamentData();
-    }, 2000); // 2秒ごとにリロード
-
+    }, 2000); 
     return () => clearInterval(interval);
   }, [autoRefresh, selectedTournamentId]);
 
   useEffect(() => {
     if (selectedTournamentId) {
-      setAutoRefresh(false); // 大会を変更したら自動リロード停止
+      setAutoRefresh(false); 
       fetchTournamentData();
     } else {
       setCheckIns([]);
@@ -1042,7 +1028,7 @@ const CheckInView = ({ state, dispatch }) => {
 
   const showQRCodeFromMultiple = (applicant) => {
     setShowQRModal(true);
-    setAutoRefresh(true); // QRコード表示時に自動リロード開始
+    setAutoRefresh(true); 
     const tournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     setCurrentQRCodeData({
       id: applicant.archerId,
@@ -1057,12 +1043,10 @@ const CheckInView = ({ state, dispatch }) => {
 
   const showMyQRCode = () => {
     if (!myApplicantData) return;
-    
     if (Array.isArray(myApplicantData)) {
       return;
     }
-    
-    setAutoRefresh(true); // QRコード表示時に自動リロード開始
+    setAutoRefresh(true);
     const tournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     setCurrentQRCodeData({
       id: myApplicantData.archerId,
@@ -1077,7 +1061,7 @@ const CheckInView = ({ state, dispatch }) => {
   };
 
   const showListQRCode = (archer) => {
-    setAutoRefresh(true); // QRコード表示時に自動リロード開始
+    setAutoRefresh(true);
     const tournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     setCurrentQRCodeData({
       id: archer.archerId,
@@ -1093,7 +1077,7 @@ const CheckInView = ({ state, dispatch }) => {
   };
 
   const showScreenshotQRCode = (archer) => {
-    setAutoRefresh(true); // QRコード表示時に自動リロード開始
+    setAutoRefresh(true);
     const tournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     setCurrentQRCodeData({
       id: archer.archerId,
@@ -1109,24 +1093,15 @@ const CheckInView = ({ state, dispatch }) => {
     setShowQRModal(true);
   };
 
-  // ★★★ 修正版：QRコード読込時のハンドラー ★★★
   const handleQRCodeScanned = (qrCode) => {
-    console.log('🔱 QRコードをスキャンしました:', qrCode);
-    
     try {
       let archerId = qrCode.trim();
-      
-      // QRコードがJSON形式の場合はパース
       try {
         const qrData = JSON.parse(qrCode);
         if (qrData.id) {
-          archerId = qrData.id;  // JSONからIDを抽出
-          console.log('✅ JSONからIDを抽出:', archerId);
+          archerId = qrData.id;
         }
-      } catch (parseError) {
-        // JSON形式でない場合は、そのままの文字列を使用
-        console.log('ℹ️ JSONではなく、直接IDとして処理します:', archerId);
-      }
+      } catch (parseError) {}
       
       setScannedQR(archerId);
       setShowQRScanner(false);
@@ -1135,7 +1110,6 @@ const CheckInView = ({ state, dispatch }) => {
         handleCheckIn(archerId);
       }, 100);
     } catch (error) {
-      console.error('QRコード処理エラー:', error);
       setMessage('❌ QRコードの読み込みに失敗しました');
     }
   };
@@ -1148,16 +1122,13 @@ const CheckInView = ({ state, dispatch }) => {
     setShowQRScanner(true);
   };
 
-  // ★★★ 修正版：受付処理関数 ★★★
   const handleCheckIn = async (scannedArcherId = null) => {
     if (!selectedTournamentId) {
       setMessage('❌ 大会を選択してください');
       return;
     }
 
-    // 引数があればそれを使用、なければstateから取得
     const archerId = (scannedArcherId || scannedQR).trim();
-    
     if (!archerId) {
       setMessage('❌ 選手IDを入力するか、QRコードをスキャンしてください');
       return;
@@ -1195,10 +1166,9 @@ const CheckInView = ({ state, dispatch }) => {
         
         setMessage(successMessage);
         setScannedQR('');
-        setAutoRefresh(true); // 自動リロード開始
+        setAutoRefresh(true);
         await fetchTournamentData();
         
-        // 受付済み一覧にスクロール
         setTimeout(() => {
           if (checkinListRef.current) {
             checkinListRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1208,7 +1178,6 @@ const CheckInView = ({ state, dispatch }) => {
         setMessage(`❌ ${checkInResult.message || '受付に失敗しました'}`);
       }
     } catch (error) {
-      console.error('受付処理でエラーが発生しました:', error);
       setMessage(`❌ エラーが発生しました: ${error.message}`);
     } finally {
       setIsLoading(false);
@@ -1220,26 +1189,20 @@ const CheckInView = ({ state, dispatch }) => {
   
   const formatTournamentDate = (tournament) => {
     if (!tournament?.data) return '日時未設定';
-    
     const { datetime } = tournament.data;
     if (!datetime) return '日時未設定';
-    
     try {
       const date = new Date(datetime);
       if (isNaN(date.getTime())) return datetime;
-      
       const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
       const weekday = weekdays[date.getDay()];
-      
       const year = date.getFullYear();
       const month = date.getMonth() + 1;
       const day = date.getDate();
       const hours = String(date.getHours()).padStart(2, '0');
       const minutes = String(date.getMinutes()).padStart(2, '0');
-      
       return `${year}年${month}月${day}日（${weekday}） ${hours}:${minutes}`;
     } catch (error) {
-      console.error('日付のフォーマットに失敗しました:', error);
       return datetime;
     }
   };
@@ -1328,7 +1291,6 @@ const CheckInView = ({ state, dispatch }) => {
                           </div>
                         ))}
                       </div>
-                      <p className="hint" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>受付で表示したい選手の「表示」ボタンを押してQRコードを表示してください</p>
                     </>
                   ) : (
                     <>
@@ -1348,21 +1310,20 @@ const CheckInView = ({ state, dispatch }) => {
                         <QrCode size={24} style={{ marginRight: '0.5rem' }} />
                         🎫 自分のQRコードを表示
                       </button>
-                      <p className="hint" style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>受付でこのボタンを押してQRコードを表示してください</p>
                     </>
                   )}
                   
                   {!showManualInput ? (
                     <button 
                       onClick={() => setShowManualInput(true)}
-                      style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '0.875rem', textDecoration: 'underline' }}
+                      style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '0.875rem', textDecoration: 'underline', marginTop: '0.5rem' }}
                     >
                       🔍 ID手動入力・スキャン（係員用）
                     </button>
                   ) : (
                     <button 
                       onClick={() => setShowManualInput(false)}
-                      style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '0.875rem' }}
+                      style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '0.875rem', marginTop: '0.5rem' }}
                     >
                       ▲ 入力欄を隠す
                     </button>
@@ -1388,7 +1349,6 @@ const CheckInView = ({ state, dispatch }) => {
                     className="input" 
                     disabled={isLoading}
                   />
-                  <p className="hint">例: KYUDO_2024_0001_001 または STAFF_XXXXXX</p>
                   <div className="space-y-2" style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     <div className="flex space-x-2" style={{ display: 'flex', gap: '0.5rem' }}>
                       <button 
@@ -1399,13 +1359,6 @@ const CheckInView = ({ state, dispatch }) => {
                       >
                         {isLoading ? '処理中...' : 'IDで受付実行'}
                       </button>
-                    </div>
-                    
-                    <div className="relative" style={{ position: 'relative', margin: '0.5rem 0' }}>
-                      <div className="absolute inset-0 flex items-center" style={{ position: 'absolute', top: '50%', width: '100%', borderTop: '1px solid #e5e7eb' }}></div>
-                      <div className="relative flex justify-center text-sm" style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
-                        <span style={{ padding: '0 0.5rem', backgroundColor: 'white', color: '#6b7280', fontSize: '0.875rem' }}>または</span>
-                      </div>
                     </div>
                     
                     <button
@@ -1483,18 +1436,8 @@ const CheckInView = ({ state, dispatch }) => {
                               onClick={() => showListQRCode(archer)}
                               className="btn-secondary"
                             >
-                              <QrCode size={16} /> QRコード表示
+                              <QrCode size={16} /> QR
                             </button>
-                            {archer.isCheckedIn && (
-                              <button 
-                                onClick={() => showScreenshotQRCode(archer)}
-                                className="btn-secondary"
-                                style={{ marginLeft: '8px' }}
-                                title="スクリーンショット用に表示"
-                              >
-                                <Maximize2 size={16} /> スクリーンショット
-                              </button>
-                            )}
                           </td>
                         </tr>
                       ))
@@ -1539,38 +1482,19 @@ const CheckInView = ({ state, dispatch }) => {
                         <p className="qr-name">{currentQRCodeData.name} 様</p>
                         <p className="qr-details">{currentQRCodeData.affiliation}</p>
                         <p className="qr-details">{currentQRCodeData.rank}</p>
-                        <div className="qr-id-section">
-                          <p className="qr-id-label">選手ID</p>
-                          <p className="qr-id-value">{currentQRCodeData.id}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="qr-instruction">
-                        <p>この画面を受付担当者に表示してください</p>
                       </div>
                     </div>
                     
                     <div className="qr-modal-footer">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: '0' }}>
-                        <div>
-                          {autoRefresh && (
-                            <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                              <span style={{ display: 'inline-block', width: '0.5rem', height: '0.5rem', backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 1.5s ease-in-out infinite' }}></span>
-                              自動更新中
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => {
-                            setShowQRModal(false);
-                            setAutoRefresh(false);
-                          }}
-                          className="btn-primary"
-                          style={{ marginTop: 0, width: 'auto' }}
-                        >
-                          閉じる
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => {
+                          setShowQRModal(false);
+                          setAutoRefresh(false);
+                        }}
+                        className="btn-primary"
+                      >
+                        閉じる
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1583,7 +1507,7 @@ const CheckInView = ({ state, dispatch }) => {
   );
 };
 
-const AdminView = ({ state, dispatch, adminView, setAdminView, stands, onLogout }) => {
+const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedTournamentId, setSelectedTournamentId, onLogout }) => {
   if (adminView === 'recording') {
     return (
       <div>
@@ -1608,46 +1532,105 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, onLogout 
           </div>
           <button onClick={onLogout} className="btn-logout"><LogOut size={14} />ログアウト</button>
         </div>
-        <SettingsView state={state} dispatch={dispatch} />
+        <SettingsView state={state} dispatch={dispatch} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} />
       </div>
     );
   }
 };
 
-const SettingsView = ({ state, dispatch }) => {
+const SettingsView = ({ state, dispatch, selectedTournamentId, setSelectedTournamentId }) => {
+  const [localSettings, setLocalSettings] = useState({
+    passRule: state.tournament.passRule,
+    arrowsRound1: state.tournament.arrowsRound1,
+    arrowsRound2: state.tournament.arrowsRound2,
+    archersPerStand: state.tournament.archersPerStand,
+  });
+
+  const tournaments = state.registeredTournaments || [];
+
+  useEffect(() => {
+    if (!selectedTournamentId) return;
+    const t = tournaments.find(x => x.id === selectedTournamentId);
+    if (t && t.data) {
+      setLocalSettings(prev => ({
+        ...prev,
+        passRule: t.data.passRule || prev.passRule,
+        arrowsRound1: t.data.arrowsRound1 || prev.arrowsRound1,
+        arrowsRound2: t.data.arrowsRound2 || prev.arrowsRound2,
+        archersPerStand: t.data.archersPerStand || prev.archersPerStand,
+      }));
+    }
+  }, [selectedTournamentId, tournaments]);
+
+  const handleSaveSettings = async () => {
+    if (!selectedTournamentId) {
+      alert('設定する大会を選択してください');
+      return;
+    }
+
+    const existing = tournaments.find(t => t.id === selectedTournamentId);
+    const newData = Object.assign({}, existing ? existing.data : {}, localSettings);
+
+    try {
+      const resp = await fetch(`${API_URL}/tournaments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selectedTournamentId, data: newData })
+      });
+      const json = await resp.json();
+      if (json.success) {
+        dispatch({ type: 'SAVE_TOURNAMENT_TEMPLATE', payload: { id: selectedTournamentId, data: newData } });
+        alert('大会ごとの設定を保存しました');
+      } else {
+        throw new Error(json.message || '保存失敗');
+      }
+    } catch (err) {
+      console.error('save settings error:', err);
+      alert('設定の保存に失敗しました');
+    }
+  };
+
   return (
     <div className="view-container pb-6">
       <div className="view-content">
         <div className="card">
+          <label className="label">設定対象の大会</label>
+          <select value={selectedTournamentId || ''} onChange={(e) => setSelectedTournamentId(e.target.value)} className="input">
+            <option value="">-- 大会を選択 --</option>
+            {tournaments.map(t => (<option key={t.id} value={t.id}>{t.data?.name || t.id}</option>))}
+          </select>
+
           <p className="card-title">通過判定ルール</p>
           <div className="radio-group">
             {[{ value: 'all_four', label: '全て的中' }, { value: 'four_or_more', label: '4本以上的中' }, { value: 'three_or_more', label: '3本以上的中' }, { value: 'two_or_more', label: '2本以上的中' }].map(rule => (
               <label key={rule.value} className="radio-label">
-                <input type="radio" name="passRule" value={rule.value} checked={state.tournament.passRule === rule.value} onChange={(e) => dispatch({ type: 'UPDATE_PASS_RULE', payload: e.target.value })} />
+                <input type="radio" name="passRule" value={rule.value} checked={localSettings.passRule === rule.value} onChange={(e) => setLocalSettings(prev => ({ ...prev, passRule: e.target.value }))} />
                 <span>{rule.label}</span>
               </label>
             ))}
           </div>
           <div className="divider"></div>
           <p className="label">予選1回戦の矢数</p>
-          <select value={state.tournament.arrowsRound1} onChange={(e) => dispatch({ type: 'UPDATE_ARROWS_ROUND1', payload: e.target.value })} className="input">
+          <select value={localSettings.arrowsRound1} onChange={(e) => setLocalSettings(prev => ({ ...prev, arrowsRound1: parseInt(e.target.value) }))} className="input">
             <option value={2}>2本</option>
             <option value={4}>4本</option>
           </select>
           <div className="divider"></div>
           <p className="label">予選2回戦の矢数</p>
-          <select value={state.tournament.arrowsRound2} onChange={(e) => dispatch({ type: 'UPDATE_ARROWS_ROUND2', payload: e.target.value })} className="input">
+          <select value={localSettings.arrowsRound2} onChange={(e) => setLocalSettings(prev => ({ ...prev, arrowsRound2: parseInt(e.target.value) }))} className="input">
             <option value={2}>2本</option>
             <option value={4}>4本</option>
           </select>
           <div className="divider"></div>
           <p className="label">道場に入る最大の人数</p>
-          <select value={state.tournament.archersPerStand} onChange={(e) => dispatch({ type: 'UPDATE_ARCHERS_PER_STAND', payload: e.target.value })} className="input">
+          <select value={localSettings.archersPerStand} onChange={(e) => setLocalSettings(prev => ({ ...prev, archersPerStand: parseInt(e.target.value) }))} className="input">
             {[6, 8, 10, 12].map(n => (<option key={n} value={n}>{n}人</option>))}
           </select>
-          <p className="hint">場所に応じて設定してください</p>
         </div>
-        <button onClick={() => dispatch({ type: 'RESET_ALL' })} className="btn-danger"><RotateCcw size={16} />すべてリセット</button>
+
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+          <button onClick={handleSaveSettings} className="btn-primary">大会に設定を保存</button>
+        </div>
       </div>
     </div>
   );
@@ -1680,8 +1663,6 @@ const TournamentSetupView = ({ state, dispatch }) => {
   };
 
   const handleInputChange = (field, value) => { setFormData(prev => ({ ...prev, [field]: value })); };
-  const handleLoadTemplate = (template) => { setFormData(template.data); setTournamentId(template.id); setIsEditing(true); };
-  
   const defaultDivisions = [
     { id: 'lower', label: '級位～三段以下の部', minRank: '五級', maxRank: '参段' },
     { id: 'middle', label: '四・五段の部', minRank: '四段', maxRank: '五段' },
@@ -1704,7 +1685,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
   const handleRemoveDivision = (index) => {
     setFormData(prev => {
       const ds = (prev.divisions || []).slice();
-      if (ds.length <= 3) return prev; // 最低3つは維持
+      if (ds.length <= 3) return prev; 
       ds.splice(index, 1);
       return { ...prev, divisions: ds };
     });
@@ -1843,22 +1824,11 @@ const TournamentSetupView = ({ state, dispatch }) => {
           <input type="datetime-local" value={formData.datetime} onChange={(e) => handleInputChange('datetime', e.target.value)} className="input" />
           <input type="text" value={formData.location} onChange={(e) => handleInputChange('location', e.target.value)} placeholder="開催場所 *" className="input" />
           <input type="text" value={formData.organizer} onChange={(e) => handleInputChange('organizer', e.target.value)} placeholder="主催" className="input" />
-          <input type="text" value={formData.coOrganizer} onChange={(e) => handleInputChange('coOrganizer', e.target.value)} placeholder="後援" className="input" />
-          <input type="text" value={formData.administrator} onChange={(e) => handleInputChange('administrator', e.target.value)} placeholder="主管" className="input" />
           <div style={{ marginTop: '0.5rem' }}>
             <p className="label">大会要項</p>
-            <input type="text" value={formData.purpose} onChange={(e) => handleInputChange('purpose', e.target.value)} placeholder="目的" className="input" />
             <input type="text" value={formData.event} onChange={(e) => handleInputChange('event', e.target.value)} placeholder="種目" className="input" />
-            <input type="text" value={formData.type} onChange={(e) => handleInputChange('type', e.target.value)} placeholder="種類" className="input" />
-            <input type="text" value={formData.category} onChange={(e) => handleInputChange('category', e.target.value)} placeholder="種別" className="input" />
-            <textarea value={formData.description} onChange={(e) => handleInputChange('description', e.target.value)} placeholder="内容（大会の詳細）" className="input" style={{ minHeight: '4rem' }} />
             <input type="text" value={formData.competitionMethod} onChange={(e) => handleInputChange('competitionMethod', e.target.value)} placeholder="競技方法" className="input" />
-            <input type="text" value={formData.award} onChange={(e) => handleInputChange('award', e.target.value)} placeholder="表彰" className="input" />
-            <input type="text" value={formData.qualifications} onChange={(e) => handleInputChange('qualifications', e.target.value)} placeholder="参加資格" className="input" />
-            <input type="text" value={formData.applicableRules} onChange={(e) => handleInputChange('applicableRules', e.target.value)} placeholder="適用規則" className="input" />
-            <input type="text" value={formData.applicationMethod} onChange={(e) => handleInputChange('applicationMethod', e.target.value)} placeholder="申込方法" className="input" />
-            <input type="text" value={formData.remarks} onChange={(e) => handleInputChange('remarks', e.target.value)} placeholder="その他必要事項（備考）" className="input" />
-
+            
             <div style={{ marginTop: '0.75rem' }}>
               <p className="label">部門設定（最低3つ）</p>
               {formData.divisions && (() => {
@@ -1899,7 +1869,6 @@ const TournamentSetupView = ({ state, dispatch }) => {
                     ))}
                     <div style={{ display: 'flex', marginTop: '0.5rem', gap: '0.5rem' }}>
                       <button type="button" className="btn-secondary" onClick={handleAddDivision}>部門を追加</button>
-                      <p style={{ alignSelf: 'center', color: '#6b7280', fontSize: '0.875rem' }}>最小3部門は必須</p>
                     </div>
                   </>
                 );
@@ -1915,10 +1884,18 @@ const TournamentSetupView = ({ state, dispatch }) => {
 };
 
 const ArcherSignupView = ({ state, dispatch }) => {
-  const [selectedTournamentId, setSelectedTournamentId] = useState('');
+  const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
   const [showForm, setShowForm] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
+
+  useEffect(() => {
+    if (selectedTournamentId) {
+      localStorage.setItem('selectedTournamentId', selectedTournamentId);
+    } else {
+      localStorage.removeItem('selectedTournamentId');
+    }
+  }, [selectedTournamentId]);
   const [formData, setFormData] = useState({
     name: '', 
     affiliation: '', 
@@ -1926,10 +1903,8 @@ const ArcherSignupView = ({ state, dispatch }) => {
     rankAcquiredDate: '',
     isOfficialOnly: false
   });
-  const [applicants, setApplicants] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(false);
   
   const filteredTournaments = state.registeredTournaments.filter(tournament => 
     locationFilter === '' || 
@@ -1944,11 +1919,6 @@ const ArcherSignupView = ({ state, dispatch }) => {
     affiliation: '',
     rank: '',
     registrationDate: ''
-  });
-  
-  const [currentUser, setCurrentUser] = useState(() => {
-    const savedUser = localStorage.getItem('kyudo_tournament_user');
-    return savedUser ? JSON.parse(savedUser) : null;
   });
 
   const rankOrder = [
@@ -1986,10 +1956,8 @@ const ArcherSignupView = ({ state, dispatch }) => {
     const normalized = normalizeRank(rank);
     const idx = rankOrder.indexOf(normalized);
 
-    // 大会側に divisions 範囲指定がある場合はそれを優先して判定
     if (Array.isArray(tournamentDivisions) && tournamentDivisions.length > 0) {
       for (const d of tournamentDivisions) {
-        // title は称号で判定済み
         if (!d) continue;
         const minR = d.minRank || '';
         const maxR = d.maxRank || '';
@@ -2001,7 +1969,6 @@ const ArcherSignupView = ({ state, dispatch }) => {
       }
     }
 
-    // 大会側の指定がない場合は既存の閾値で分類
     const idx3 = rankOrder.indexOf('参段');
     const idx5 = rankOrder.indexOf('五段');
 
@@ -2010,43 +1977,6 @@ const ArcherSignupView = ({ state, dispatch }) => {
 
     return 'lower';
   };
-
-  const fetchApplicants = async () => {
-    if (!selectedTournamentId) return;
-    
-    setIsLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
-      const result = await response.json();
-      
-      if (result.success) {
-        setApplicants(result.data || []);
-      }
-    } catch (error) {
-      console.error('申し込みデータの取得エラー:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (selectedTournamentId) {
-      fetchApplicants();
-    } else {
-      setApplicants([]);
-    }
-  }, [selectedTournamentId]);
-
-  // QRモーダル表示時の自動リロード機能
-  useEffect(() => {
-    if (!autoRefresh || !selectedTournamentId) return;
-
-    const interval = setInterval(() => {
-      fetchApplicants();
-    }, 2000); // 2秒ごとにリロード
-
-    return () => clearInterval(interval);
-  }, [autoRefresh, selectedTournamentId]);
 
   const handleInputChange = (field, value) => { setFormData(prev => ({ ...prev, [field]: value })); };
 
@@ -2061,12 +1991,10 @@ const ArcherSignupView = ({ state, dispatch }) => {
       registrationDate: new Date().toISOString()
     });
     setShowQRModal(true);
-    setAutoRefresh(true); // QRコード表示時に自動リロード開始
   };
 
   const handleCloseQRModal = () => {
     setShowQRModal(false);
-    setAutoRefresh(false); // QRコード閉じる時に自動リロード停止
   };
 
   const handleApply = async () => {
@@ -2115,8 +2043,6 @@ const ArcherSignupView = ({ state, dispatch }) => {
       const result = await response.json();
 
       if (response.ok && result.success) {
-        await fetchApplicants();
-        
         showQRCode(
           archerId,
           formData.name,
@@ -2260,23 +2186,12 @@ const ArcherSignupView = ({ state, dispatch }) => {
               </div>
               
               <div className="qr-modal-footer">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: '0' }}>
-                  <div>
-                    {autoRefresh && (
-                      <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ display: 'inline-block', width: '0.5rem', height: '0.5rem', backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 1.5s ease-in-out infinite' }}></span>
-                        自動更新中
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={handleCloseQRModal}
-                    className="btn-primary"
-                    style={{ marginTop: 0, width: 'auto' }}
-                  >
-                    閉じる
-                  </button>
-                </div>
+                <button
+                  onClick={handleCloseQRModal}
+                  className="btn-primary"
+                >
+                  閉じる
+                </button>
               </div>
             </div>
           </div>
