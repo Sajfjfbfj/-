@@ -5,11 +5,11 @@ import QRCodeScanner from './components/QRCodeScanner';
 import QualifiersView from './QualifiersView';
 import './index.css';
 
-const API_BASE_URL = (() => {
-  return 'https://alluring-perfection-production-f96d.up.railway.app/api';
-})();
-
-const API_URL = API_BASE_URL;
+// Ensure API URL is always absolute
+const API_BASE_URL = 'https://alluring-perfection-production-f96d.up.railway.app/api';
+const API_URL = API_BASE_URL.startsWith('http') 
+  ? API_BASE_URL 
+  : `${window.location.origin}${API_BASE_URL.startsWith('/') ? '' : '/'}${API_BASE_URL}`;
 
 const KyudoTournamentSystem = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
