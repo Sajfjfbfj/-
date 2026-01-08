@@ -1,7 +1,8 @@
-import React, { useState, useReducer, useEffect, useRef } from 'react';
-import { Lock, LogOut, RotateCcw, Copy, Check, QrCode, Maximize2, Filter, X, User, Camera, RefreshCw } from 'lucide-react';
+import React, { useState, useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Lock, LogOut, RotateCcw, Copy, Check, QrCode, Maximize2, Filter, X, User, Camera, RefreshCw, ChevronLeft, ChevronRight, Users } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import QRCodeScanner from './components/QRCodeScanner';
+import QualifiersView from './QualifiersView';
 import './index.css';
 
 const API_BASE_URL = (() => {
@@ -238,13 +239,47 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
   );
 };
 
+const getRankCategory = (rankStr) => {
+  if (!rankStr) return { ceremony: '', rank: '' };
+  
+  const ceremonyRanks = ['錬士', '教士', '範士'];
+  let ceremony = '';
+  let rank = rankStr;
+
+  for (const c of ceremonyRanks) {
+    if (rankStr.includes(c)) {
+      ceremony = c;
+      rank = rankStr.replace(c, '');
+      break;
+    }
+  }
+  return { ceremony, rank };
+};
+
 const TournamentView = ({ state, stands, checkInCount }) => {
+  const [view, setView] = useState('standings'); // 'standings' or 'qualifiers'
   const [selectedTournamentId, setSelectedTournamentId] = useState(() => {
     return localStorage.getItem('selectedTournamentId') || '';
   });
   const [archers, setArchers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const archersPerPage = 12; // 1ページあたりの選手数
+  const [totalPages, setTotalPages] = useState(1);
+  const [indexOfFirstArcher, setIndexOfFirstArcher] = useState(0);
+  const [indexOfLastArcher, setIndexOfLastArcher] = useState(archersPerPage);
+  const [currentArchers, setCurrentArchers] = useState([]);
+  
+  // ページネーションの状態を更新するエフェクト
+  useEffect(() => {
+    const indexOfLast = currentPage * archersPerPage;
+    const indexOfFirst = indexOfLast - archersPerPage;
+    setIndexOfFirstArcher(indexOfFirst);
+    setIndexOfLastArcher(indexOfLast);
+    setCurrentArchers(archers.slice(indexOfFirst, indexOfLast));
+    setTotalPages(Math.ceil(archers.length / archersPerPage));
+  }, [archers, currentPage, archersPerPage]);
 
   useEffect(() => {
     if (selectedTournamentId) {
@@ -335,36 +370,103 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     }
   }, [selectedTournamentId]);
 
-  // 自動更新 (リアルタイム表示用) - 5秒ごと
+  // 自動更新 (リアルタイム表示用) - 10秒ごとに更新（負荷軽減のため5秒から10秒に延長）
   useEffect(() => {
     if (!selectedTournamentId || !autoRefresh) return;
     const interval = setInterval(() => {
       fetchAndSortArchers();
-    }, 5000);
+    }, 10000); // 10秒間隔に変更
     return () => clearInterval(interval);
   }, [selectedTournamentId, autoRefresh]);
 
   const tournament = state.tournament;
-  const arrowsPerStand = tournament.currentRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
+  const currentRound = tournament.currentRound || 1;
+  const arrowsPerStand = currentRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
 
-  const isPassed = (archer) => {
-    const stand1Results = archer.results?.stand1 || [null, null, null, null];
-    // 有効な結果部分だけ切り出す
-    const validResults = stand1Results.slice(0, arrowsPerStand);
-    // null がある（未入力）場合は判定保留
-    if (validResults.includes(null)) return null;
+  // パフォーマンス向上のため、メモ化された関数を使用
 
-    const count = validResults.filter(r => r === 'o').length;
-    switch (tournament.passRule) {
-      case 'all_four': return count === arrowsPerStand;
-      case 'four_or_more': return count >= 4;
-      case 'three_or_more': return count >= Math.ceil(arrowsPerStand / 2);
-      case 'two_or_more': return count >= 2;
-      default: return false;
+  // パフォーマンス向上のため、メモ化された関数を使用
+  const isPassed = useCallback((archer) => {
+    // 結果が未設定の場合は即座に判定保留
+    if (!archer.results?.stand1) return null;
+    
+    const results = archer.results.stand1;
+    const currentRound = tournament.currentRound || 1;
+    const isFirstRound = currentRound === 1;
+    const endIndex = isFirstRound ? tournament.arrowsRound1 : (tournament.arrowsRound1 + tournament.arrowsRound2);
+    
+    // 必要な部分だけを処理
+    let hitCount = 0;
+    let hasNull = false;
+    
+    for (let i = 0; i < endIndex; i++) {
+      if (i >= results.length) {
+        hasNull = true;
+        break;
+      }
+      if (results[i] === null) {
+        hasNull = true;
+        break;
+      }
+      if (results[i] === 'o') hitCount++;
     }
-  };
+    
+    // 未入力の場合は判定保留
+    if (hasNull) return null;
+    
+    // 大会設定の通過ルールに基づいて判定
+    const passRule = tournament.passRule || 'all_four';
+    const currentRoundArrows = isFirstRound ? tournament.arrowsRound1 : tournament.arrowsRound2;
+    
+    if (passRule === 'all_four') {
+      return hitCount === currentRoundArrows;
+    } else if (passRule === 'four_or_more') {
+      return hitCount >= Math.min(4, currentRoundArrows);
+    } else if (passRule === 'three_or_more') {
+      return hitCount >= Math.min(3, currentRoundArrows);
+    } else if (passRule === 'two_or_more') {
+      return hitCount >= Math.min(2, currentRoundArrows);
+    }
+    
+    // デフォルトは全て的中
+    return hitCount === currentRoundArrows;
+  }, [tournament]);
 
-  const passedArchers = archers.filter(a => isPassed(a) === true);
+  // パフォーマンス向上のため、メモ化
+  const passedArchers = useMemo(() => {
+    return archers.filter(archer => isPassed(archer) === true);
+  }, [archers, isPassed]);
+
+  // ページ変更ハンドラー
+  const paginate = (pageNumber) => setCurrentPage(pageNumber);
+
+  if (view === 'qualifiers') {
+    return (
+      <div className="view-container">
+        <div className="view-header">
+          <button 
+            onClick={() => setView('standings')}
+            className="flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" /> 立ち順表に戻る
+          </button>
+          <div className="flex justify-between items-center">
+            <h1>予選通過者一覧</h1>
+            <span className="text-sm text-gray-600">
+              {passedArchers.length} / {archers.length} 名
+            </span>
+          </div>
+        </div>
+        <div className="view-content">
+          <QualifiersView 
+            archers={archers} 
+            tournament={tournament} 
+            getRankCategory={getRankCategory} 
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="view-container">
@@ -398,15 +500,41 @@ const TournamentView = ({ state, stands, checkInCount }) => {
         {selectedTournamentId && (
           <>
             <div className="settings-grid">
-              <div><p className="label">受付済み</p><p className="value">{archers.length}人</p></div>
-              <div><p className="label">通過者</p><p className="value">{passedArchers.length}人</p></div>
-              <div><p className="label">通過ルール</p><p className="value" style={{ fontSize: '0.75rem' }}>
-                {tournament.passRule === 'all_four' ? '全て的中' :
-                 tournament.passRule === 'four_or_more' ? '4本以上的中' :
-                 tournament.passRule === 'three_or_more' ? '3本以上的中' :
-                 tournament.passRule === 'two_or_more' ? '2本以上的中' : '未設定'}
-              </p></div>
-              <div><p className="label">矢数</p><p className="value">{arrowsPerStand}本</p></div>
+              <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                <p className="text-xs text-gray-500 font-medium mb-1">受付済み</p>
+                <p className="text-lg font-semibold">{archers.length}<span className="text-sm text-gray-500 ml-1">人</span></p>
+              </div>
+              <div 
+                className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setView('qualifiers')}
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium mb-1">通過者</p>
+                    <p className="text-lg font-semibold">
+                      {passedArchers.length}<span className="text-sm text-gray-500 ml-1">人</span>
+                    </p>
+                  </div>
+                  <Users className="w-4 h-4 text-gray-400" />
+                </div>
+              </div>
+              <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                <p className="text-xs text-gray-500 font-medium mb-1">通過ルール</p>
+                <p className="text-sm font-medium">
+                  {tournament.passRule === 'all_four' ? '全て的中' :
+                   tournament.passRule === 'four_or_more' ? '4本以上的中' :
+                   tournament.passRule === 'three_or_more' ? '3本以上的中' :
+                   tournament.passRule === 'two_or_more' ? '2本以上的中' : '未設定'}
+                </p>
+              </div>
+              <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                <p className="text-xs text-gray-500 font-medium mb-1">1立ち目矢数</p>
+                <p className="text-lg font-semibold">{tournament.arrowsRound1 || 0}<span className="text-sm text-gray-500 ml-1">本</span></p>
+              </div>
+              <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                <p className="text-xs text-gray-500 font-medium mb-1">2立ち目矢数</p>
+                <p className="text-lg font-semibold">{tournament.arrowsRound2 || 0}<span className="text-sm text-gray-500 ml-1">本</span></p>
+              </div>
             </div>
 
             <div className="card">
@@ -420,85 +548,103 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                   )}
               </div>
               <div className="table-responsive">
-                <table className="archer-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-                      <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem' }}>立ち順</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem' }}>氏名</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem' }}>支部</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem' }}>称号</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem' }}>段位</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem' }}>1立ち目</th>
-                      <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem' }}>2立ち目</th>
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">支部</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">結果</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="bg-white divide-y divide-gray-200">
                     {isLoading && archers.length === 0 ? (
                       <tr>
-                        <td colSpan="7" style={{ textAlign: 'center', padding: '1rem', color: '#9ca3af' }}>
+                        <td colSpan="7" className="px-4 py-4 text-center text-sm text-gray-500">
                           読み込み中...
                         </td>
                       </tr>
                     ) : archers.length === 0 ? (
                       <tr>
-                        <td colSpan="7" style={{ textAlign: 'center', padding: '1rem', color: '#9ca3af' }}>
+                        <td colSpan="7" className="px-4 py-4 text-center text-sm text-gray-500">
                           受付済みの選手がいません
                         </td>
                       </tr>
                     ) : (
-                      archers.map((archer) => {
+                      currentArchers.map((archer) => {
                         const { ceremony, rank } = getRankCategory(archer.rank);
                         const stand1Result = archer.results?.stand1?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null);
-                        const stand2Result = archer.results?.stand2?.slice(0, tournament.arrowsRound2) || Array(tournament.arrowsRound2).fill(null);
+                        const stand2Result = archer.results?.stand1?.slice(tournament.arrowsRound1, tournament.arrowsRound1 + tournament.arrowsRound2) || Array(tournament.arrowsRound2).fill(null);
+                        const passed = isPassed(archer);
                         
                         return (
-                          <tr key={archer.archerId} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                            <td style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 500 }}>{archer.standOrder}</td>
-                            <td style={{ padding: '0.75rem', textAlign: 'left' }}>{archer.name}</td>
-                            <td style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', color: '#4b5563' }}>{archer.affiliation}</td>
-                            <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem' }}>{ceremony || '—'}</td>
-                            <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem' }}>{rank}</td>
-                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
+                          <tr 
+                            key={archer.archerId} 
+                            className={`${passed ? 'bg-green-50' : ''} hover:bg-gray-50`}
+                          >
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {archer.standOrder}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <span className="font-medium">{archer.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                              {archer.affiliation}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
+                              {ceremony}{rank}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <div className="flex gap-1 justify-center">
                                 {stand1Result.map((result, idx) => (
-                                  <span key={idx} style={{
-                                    display: 'inline-block',
-                                    width: '1.5rem',
-                                    height: '1.5rem',
-                                    backgroundColor: result === 'o' ? '#111827' : result === 'x' ? '#9ca3af' : '#f3f4f6',
-                                    color: result ? '#ffffff' : '#9ca3af',
-                                    borderRadius: '0.25rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 500
-                                  }}>
-                                    {result === 'o' ? '◯' : result === 'x' ? '×' : ''}
+                                  <span 
+                                    key={idx} 
+                                    className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
+                                      result === 'o' ? 'bg-gray-900 text-white' : 
+                                      result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
+                                    }`}
+                                  >
+                                    {result === 'o' ? '◯' : result === 'x' ? '×' : '—'}
                                   </span>
                                 ))}
                               </div>
                             </td>
-                            <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                              <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <div className="flex gap-1 justify-center">
                                 {stand2Result.map((result, idx) => (
-                                  <span key={idx} style={{
-                                    display: 'inline-block',
-                                    width: '1.5rem',
-                                    height: '1.5rem',
-                                    backgroundColor: result === 'o' ? '#111827' : result === 'x' ? '#9ca3af' : '#f3f4f6',
-                                    color: result ? '#ffffff' : '#9ca3af',
-                                    borderRadius: '0.25rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 500
-                                  }}>
-                                    {result === 'o' ? '◯' : result === 'x' ? '×' : ''}
+                                  <span 
+                                    key={idx} 
+                                    className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
+                                      result === 'o' ? 'bg-gray-900 text-white' : 
+                                      result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
+                                    }`}
+                                  >
+                                    {result === 'o' ? '◯' : result === 'x' ? '×' : '—'}
                                   </span>
                                 ))}
                               </div>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-center">
+                              {passed === true && (
+                                <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
+                                  通過
+                                </span>
+                              )}
+                              {passed === false && (
+                                <span className="px-2 py-1 text-xs font-semibold text-gray-600 bg-gray-100 rounded-full">
+                                  —
+                                </span>
+                              )}
+                              {passed === null && (
+                                <span className="px-2 py-1 text-xs font-semibold text-yellow-800 bg-yellow-100 rounded-full">
+                                  未完了
+                                </span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -509,19 +655,60 @@ const TournamentView = ({ state, stands, checkInCount }) => {
               </div>
             </div>
 
-            {passedArchers.length > 0 && (
-              <div className="card">
-                <p className="card-title">予選通過者</p>
-                <div className="card-content">
-                  {passedArchers.map(a => {
-                    const { ceremony, rank } = getRankCategory(a.rank);
+            {/* ページネーション */}
+            {archers.length > archersPerPage && (
+              <div className="flex items-center justify-between mt-4">
+                <div>
+                  <p className="text-sm text-gray-700">
+                    <span className="font-medium">{indexOfFirstArcher + 1}</span> 〜 <span className="font-medium">
+                      {Math.min(indexOfLastArcher, archers.length)}
+                    </span> / <span className="font-medium">{archers.length}</span> 名
+                  </p>
+                </div>
+                <div className="flex space-x-1">
+                  <button
+                    onClick={() => paginate(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className={`px-3 py-1 rounded-md ${currentPage === 1 ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'}`}
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    // 現在のページを中心に表示するように調整
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
                     return (
-                      <div key={a.archerId} className="archer-item">
-                        <div><p>{a.standOrder}. {a.name}</p><p className="text-sm">{a.affiliation}</p></div>
-                        <span>{ceremony}{rank}</span>
-                      </div>
+                      <button
+                        key={pageNum}
+                        onClick={() => paginate(pageNum)}
+                        className={`w-8 h-8 rounded-md text-sm font-medium ${
+                          currentPage === pageNum 
+                            ? 'bg-blue-600 text-white' 
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
                     );
                   })}
+                  
+                  <button
+                    onClick={() => paginate(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className={`px-3 py-1 rounded-md ${currentPage === totalPages ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'}`}
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
             )}
@@ -561,18 +748,15 @@ const RecordingView = ({ state, dispatch, stands }) => {
     const standKey = `stand${selectedStand}`;
     const currentArrows = getCurrentArrowsPerStand();
     
-    // 現在のラウンドに必要な矢の数を取得
     const arrowsNeeded = selectedRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
-    
-    // 既存の結果を取得（あれば）
     const existing = (archer.results && archer.results[standKey]) 
       ? [...archer.results[standKey]] 
       : [];
-      
-    // 現在のラウンド分の結果を取得（足りない場合はnullで埋める）
+    
+    const startIndex = selectedRound === 1 ? 0 : tournament.arrowsRound1;
     const roundResults = [];
     for (let i = 0; i < arrowsNeeded; i++) {
-      roundResults.push(i < existing.length ? existing[i] : null);
+      roundResults.push(i + startIndex < existing.length ? existing[i + startIndex] : null);
     }
     
     return roundResults;
@@ -761,7 +945,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
       const round2Results = (archer.results?.[standKey]?.slice(tournament.arrowsRound1) || []);
       finalResults = [...roundResults, ...round2Results];
     } else {
-      const round1Results = (archer.results?.[standKey]?.slice(0, tournament.arrowsRound1) || []);
+      const round1Results = (archer.results?.[standKey]?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null));
       finalResults = [...round1Results, ...roundResults];
     }
 
@@ -774,7 +958,10 @@ const RecordingView = ({ state, dispatch, stands }) => {
     setArchers(updatedArchers);
 
     // APIへ送信
-    saveResultToApi(archerId, standNum, arrowIndex, result);
+    const adjustedArrowIndex = selectedRound === 2 
+      ? tournament.arrowsRound1 + arrowIndex 
+      : arrowIndex;
+    saveResultToApi(archerId, standNum, adjustedArrowIndex, result);
   };
 
   const handleUndo = (archerId, standNum, arrowIndex) => {
@@ -808,7 +995,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
       const round2Results = (archer.results?.[standKey]?.slice(tournament.arrowsRound1) || []);
       finalResults = [...roundResults, ...round2Results];
     } else {
-      const round1Results = (archer.results?.[standKey]?.slice(0, tournament.arrowsRound1) || []);
+      const round1Results = (archer.results?.[standKey]?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null));
       finalResults = [...round1Results, ...roundResults];
     }
 
@@ -821,7 +1008,10 @@ const RecordingView = ({ state, dispatch, stands }) => {
     setArchers(updatedArchers);
 
     // APIへ送信 (nullを送る)
-    saveResultToApi(archerId, standNum, arrowIndex, null);
+    const adjustedArrowIndex = selectedRound === 2 
+      ? tournament.arrowsRound1 + arrowIndex 
+      : arrowIndex;
+    saveResultToApi(archerId, standNum, adjustedArrowIndex, null);
   };
 
   const getHitCount = (archer, standNum, roundNum = null) => {
@@ -968,7 +1158,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
                             ) : (
                               <div className="arrow-result">
                                 <button disabled className={`btn-circle ${result === 'o' ? 'btn-hit' : 'btn-miss'}`}>{result === 'o' ? '◯' : '×'}</button>
-                                <button onClick={() => handleUndo(archer.archerId, selectedStand, arrowIdx)} className="btn-fix" disabled={roundComplete}>修正</button>
+                                <button onClick={() => handleUndo(archer.archerId, selectedStand, arrowIdx)} className="btn-fix">修正</button>
                               </div>
                             )}
                           </div>
@@ -1520,7 +1710,7 @@ const CheckInView = ({ state, dispatch }) => {
                     </div>
                     
                     <div className="qr-modal-body">
-                      <div className="qr-code-wrapper">
+                      <div className="qr-code-wrapper" style={{ textAlign: 'center' }}>
                         <QRCodeSVG 
                           value={JSON.stringify({
                             id: currentQRCodeData.id,
@@ -1535,6 +1725,9 @@ const CheckInView = ({ state, dispatch }) => {
                           level="H"
                           includeMargin={true}
                         />
+                        <div style={{ marginTop: '1rem', fontWeight: 'bold', wordBreak: 'break-all' }}>
+                          ID: {currentQRCodeData.id}
+                        </div>
                       </div>
                       
                       <div className="qr-info-box">
@@ -1944,7 +2137,6 @@ const TournamentSetupView = ({ state, dispatch }) => {
 
 const ArcherSignupView = ({ state, dispatch }) => {
   const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
-  const [showForm, setShowForm] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
 
@@ -2149,10 +2341,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
             />
             <select 
               value={selectedTournamentId} 
-              onChange={(e) => { 
-                setSelectedTournamentId(e.target.value); 
-                setShowForm(e.target.value !== ''); 
-              }} 
+              onChange={(e) => setSelectedTournamentId(e.target.value)} 
               className="input w-full"
             >
               <option value="">-- 大会を選択してください --</option>
@@ -2190,7 +2379,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
           </div>
         </div>
 
-        {showForm && (
+        {selectedTournamentId && (
           <div className="card">
             <input type="text" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="氏名 *" className="input" />
             <input type="text" value={formData.affiliation} onChange={(e) => handleInputChange('affiliation', e.target.value)} placeholder="所属 *" className="input" />
@@ -2220,7 +2409,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
               </div>
               
               <div className="qr-modal-body">
-                <div className="qr-code-wrapper">
+                <div className="qr-code-wrapper" style={{ textAlign: 'center' }}>
                   <QRCodeSVG 
                     value={JSON.stringify({
                       id: qrCodeData.id,
@@ -2235,6 +2424,9 @@ const ArcherSignupView = ({ state, dispatch }) => {
                     level="H"
                     includeMargin={true}
                   />
+                  <div style={{ marginTop: '1rem', fontWeight: 'bold', wordBreak: 'break-all' }}>
+                    ID: {qrCodeData.id}
+                  </div>
                 </div>
                 
                 <div className="qr-info-box">

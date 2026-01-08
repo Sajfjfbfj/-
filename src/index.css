@@ -1,47 +1,257 @@
-/* Responsive adjustments */
+/* Performance Optimizations */
+:root {
+  --primary-color: #1a56db;
+  --secondary-color: #6b7280;
+  --border-color: #e5e7eb;
+  --hover-bg: #f9fafb;
+  --row-hover: #f3f4f6;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Base table styles with performance optimizations */
 .table-responsive {
   display: block;
-}
-
-/* Ensure horizontal scroll when table is wider than viewport */
-.table-responsive {
+  width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  will-change: transform; /* Optimize for hardware acceleration */
+  contain: content; /* Improve performance by containing the layout */
+}
+
+/* Virtualized list container */
+.virtualized-list {
+  position: relative;
+  width: 100%;
+  overflow-y: auto;
+  will-change: transform;
+  -webkit-overflow-scrolling: touch;
+  contain: strict;
+  overscroll-behavior: contain;
+}
+
+/* Optimize table rendering */
+.archer-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+  line-height: 1.25;
+  table-layout: fixed;
+}
+
+/* Optimize table header */
+.archer-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Optimize table cells */
+.archer-table th,
+.archer-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background-color: #fff;
+}
+
+/* Optimize table rows */
+.archer-table tbody tr {
+  transition: background-color 0.1s ease;
+  will-change: transform, background-color;
+}
+
+.archer-table tbody tr:hover {
+  background-color: var(--row-hover);
+}
+
+/* Virtualized row */
+.virtualized-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 48px; /* Match your row height */
+  will-change: transform;
+  contain: strict;
 }
 
 /* Responsive adjustments */
+/* Responsive Breakpoints */
+@media (max-width: 1920px) {
+  .archer-table { font-size: 0.8125rem; }
+  .archer-table th,
+  .archer-table td { padding: 0.5rem 0.6rem; }
+}
+
+/* Large Desktop */
+@media (max-width: 1536px) {
+  .view-content { padding: 1rem; }
+  .card { padding: 1.25rem; }
+}
+
+/* Laptop */
+@media (max-width: 1280px) {
+  .archer-table { font-size: 0.8rem; }
+  .archer-table th,
+  .archer-table td { padding: 0.5rem 0.5rem; }
+}
+
+/* Small Laptop */
 @media (max-width: 1024px) {
   .view-content { padding: 0.75rem; }
   .card { padding: 1rem; }
   .login-box { max-width: 360px; padding: 1.5rem; }
-  .archer-list, .tournament-list, .applicant-list { max-height: 28vh; }
+  .archer-list,
+  .tournament-list,
+  .applicant-list { max-height: 28vh; }
   .archer-table { font-size: 0.75rem; }
-  .archer-table th, .archer-table td { padding: 0.5rem; }
-  .button-group { flex-wrap: wrap; }
-  .btn { padding: 0.5rem; }
+  .archer-table th,
+  .archer-table td { padding: 0.5rem; }
+  .button-group { flex-wrap: wrap; gap: 0.25rem; }
+  .btn { padding: 0.5rem; font-size: 0.75rem; }
 }
 
+/* Tablet */
+@media (max-width: 768px) {
+  .view-content { padding: 0.5rem; }
+  .card { padding: 0.875rem; }
+  .archer-table { font-size: 0.75rem; }
+  .archer-table th,
+  .archer-table td { padding: 0.4rem 0.5rem; }
+  
+  /* Stacked layout for forms */
+  .form-row {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .form-row > * {
+    width: 100% !important;
+  }
+}
+
+/* Mobile */
 @media (max-width: 640px) {
-  .nav-tabs { padding: 0.5rem; }
-  .nav-tab { padding: 0.5rem; font-size: 0.75rem; }
-  .view-header h1 { font-size: 1rem; }
+  .nav-tabs {
+    padding: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .nav-tab {
+    padding: 0.5rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  
+  .view-header h1 { font-size: 1.1rem; }
   .card { padding: 0.75rem; }
-  .input { padding: 0.5rem; }
-  .card-title { font-size: 0.75rem; }
+  .input { padding: 0.5rem; font-size: 0.875rem; }
+  .card-title { font-size: 0.875rem; }
   .archer-records { gap: 0.5rem; }
   .qr-modal-container { max-width: 95%; padding: 1rem; }
 
-  /* Make wide tables stack into cards for small screens */
+  /* Card-based table for small screens */
   .archer-table thead { display: none; }
-  .archer-table, .archer-table tbody, .archer-table tr, .archer-table td { display: block; width: 100%; }
-  .archer-table tr { margin-bottom: 0.75rem; border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem; }
-  .archer-table td { text-align: left; padding: 0.5rem; position: relative; }
-  .archer-table td:before { content: attr(data-label); font-weight: 600; display: block; color: #6b7280; margin-bottom: 0.25rem; font-size: 0.75rem; }
+  .archer-table,
+  .archer-table tbody,
+  .archer-table tr,
+  .archer-table td {
+    display: block;
+    width: 100%;
+  }
+  
+  .archer-table tr {
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+    background: #fff;
+  }
+  
+  .archer-table td {
+    text-align: left;
+    padding: 0.5rem;
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  
+  .archer-table td:last-child {
+    border-bottom: none;
+  }
+  
+  .archer-table td:before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-right: 1rem;
+    flex: 0 0 40%;
+    font-size: 0.75rem;
+  }
 
-  .button-group { gap: 0.25rem; }
+  .button-group {
+    gap: 0.25rem;
+    flex-wrap: wrap;
+  }
+  
+  .button-group .btn {
+    flex: 1 1 auto;
+    min-width: 48%;
+    text-align: center;
+  }
 
-  /* Tournament item stacks vertically */
-  .tournament-item { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+  /* Stack tournament items vertically */
+  .tournament-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  /* Optimize form elements */
+  .form-control {
+    margin-bottom: 0.5rem;
+  }
+  
+  /* Adjust modal sizing */
+  .modal-content {
+    width: 95%;
+    margin: 1rem auto;
+  }
+}
+
+/* Small Mobile */
+@media (max-width: 400px) {
+  .view-content { padding: 0.25rem; }
+  .card { padding: 0.5rem; }
+  
+  .archer-table td:before {
+    flex: 0 0 45%;
+  }
+  
+  .button-group .btn {
+    min-width: 100%;
+    margin-bottom: 0.25rem;
+  }
+  
+  .btn {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.7rem;
+  }
 }
 
 /* Division row layout */
