@@ -705,7 +705,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
       const offset = selectedRound === 1 ? 0 : tournament.arrowsRound1;
       const actualIndex = offset + arrowIndex;
 
-      await fetch(`${API_URL}/results`, {
+      await fetch(`${API_URL}/results`.replace(/\/\//g, '/'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
