@@ -448,8 +448,8 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                     ) : (
                       archers.map((archer) => {
                         const { ceremony, rank } = getRankCategory(archer.rank);
-                        const stand1Result = archer.results?.stand1?.slice(0, arrowsPerStand) || Array(arrowsPerStand).fill(null);
-                        const stand2Result = archer.results?.stand2?.slice(0, arrowsPerStand) || Array(arrowsPerStand).fill(null);
+                        const stand1Result = archer.results?.stand1?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null);
+                        const stand2Result = archer.results?.stand2?.slice(0, tournament.arrowsRound2) || Array(tournament.arrowsRound2).fill(null);
                         
                         return (
                           <tr key={archer.archerId} style={{ borderBottom: '1px solid #e5e7eb' }}>
@@ -560,14 +560,22 @@ const RecordingView = ({ state, dispatch, stands }) => {
   const getCurrentStandResults = (archer) => {
     const standKey = `stand${selectedStand}`;
     const currentArrows = getCurrentArrowsPerStand();
-    const offset = selectedRound === 1 ? 0 : tournament.arrowsRound1;
-
-    // DBから取得した results を優先
-    const totalNeeded = tournament.arrowsRound1 + tournament.arrowsRound2;
-    const existing = (archer.results && archer.results[standKey]) ? [...archer.results[standKey]] : Array(totalNeeded).fill(null);
-    while (existing.length < totalNeeded) existing.push(null);
-
-    return existing.slice(offset, offset + currentArrows);
+    
+    // 現在のラウンドに必要な矢の数を取得
+    const arrowsNeeded = selectedRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
+    
+    // 既存の結果を取得（あれば）
+    const existing = (archer.results && archer.results[standKey]) 
+      ? [...archer.results[standKey]] 
+      : [];
+      
+    // 現在のラウンド分の結果を取得（足りない場合はnullで埋める）
+    const roundResults = [];
+    for (let i = 0; i < arrowsNeeded; i++) {
+      roundResults.push(i < existing.length ? existing[i] : null);
+    }
+    
+    return roundResults;
   };
 
   const isRoundComplete = (archer) => {
@@ -700,20 +708,18 @@ const RecordingView = ({ state, dispatch, stands }) => {
   const standArchers = getArchersForStand(selectedStand);
 
   // API経由で記録を保存
-  const saveResultToApi = async (archerId, stand, arrowIndex, result) => {
+  const saveResultToApi = async (archerId, standNum, arrowIndex, result) => {
     try {
-      const offset = selectedRound === 1 ? 0 : tournament.arrowsRound1;
-      const actualIndex = offset + arrowIndex;
-
       await fetch(`${API_URL}/results`.replace(/\/\//g, '/'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tournamentId: selectedTournamentId,
           archerId,
-          stand,
-          arrowIndex: actualIndex,
-          result
+          stand: standNum,
+          arrowIndex: arrowIndex,
+          result,
+          round: selectedRound // ラウンド情報を追加
         })
       });
       // 更新後にデータを再取得（同期）
@@ -730,15 +736,41 @@ const RecordingView = ({ state, dispatch, stands }) => {
     if (!archer) return;
 
     const standKey = `stand${standNum}`;
-    const offset = selectedRound === 1 ? 0 : tournament.arrowsRound1;
-    const totalNeeded = tournament.arrowsRound1 + tournament.arrowsRound2;
-    const existing = (archer.results && archer.results[standKey]) ? [...archer.results[standKey]] : Array(totalNeeded).fill(null);
-    while (existing.length < totalNeeded) existing.push(null);
+    const currentArrows = getCurrentArrowsPerStand();
+    
+    // 現在のラウンドの結果のみを扱う
+    const existing = (archer.results && archer.results[standKey]) 
+      ? [...archer.results[standKey]] 
+      : [];
+      
+    // 現在のラウンドの結果を更新
+    const roundResults = [];
+    for (let i = 0; i < currentArrows; i++) {
+      if (i === arrowIndex) {
+        roundResults.push(result);
+      } else if (i < existing.length) {
+        roundResults.push(existing[i]);
+      } else {
+        roundResults.push(null);
+      }
+    }
 
-    const targetIndex = offset + arrowIndex;
-    existing[targetIndex] = result;
+    // ラウンド1と2の結果を結合
+    let finalResults = [];
+    if (selectedRound === 1) {
+      const round2Results = (archer.results?.[standKey]?.slice(tournament.arrowsRound1) || []);
+      finalResults = [...roundResults, ...round2Results];
+    } else {
+      const round1Results = (archer.results?.[standKey]?.slice(0, tournament.arrowsRound1) || []);
+      finalResults = [...round1Results, ...roundResults];
+    }
 
-    const updatedArchers = archers.map(a => a.archerId === archerId ? { ...a, results: { ...a.results, [standKey]: existing } } : a);
+    const updatedArchers = archers.map(a => 
+      a.archerId === archerId 
+        ? { ...a, results: { ...a.results, [standKey]: finalResults } } 
+        : a
+    );
+    
     setArchers(updatedArchers);
 
     // APIへ送信
@@ -751,14 +783,41 @@ const RecordingView = ({ state, dispatch, stands }) => {
     if (!archer) return;
 
     const standKey = `stand${standNum}`;
-    const offset = selectedRound === 1 ? 0 : tournament.arrowsRound1;
-    const totalNeeded = tournament.arrowsRound1 + tournament.arrowsRound2;
-    const existing = (archer.results && archer.results[standKey]) ? [...archer.results[standKey]] : Array(totalNeeded).fill(null);
+    const currentArrows = getCurrentArrowsPerStand();
     
-    const targetIndex = offset + arrowIndex;
-    existing[targetIndex] = null;
+    // 現在のラウンドの結果を取得
+    const existing = (archer.results && archer.results[standKey]) 
+      ? [...archer.results[standKey]] 
+      : [];
+    
+    // 現在のラウンドの結果を更新
+    const roundResults = [];
+    for (let i = 0; i < currentArrows; i++) {
+      if (i === arrowIndex) {
+        roundResults.push(null);
+      } else if (i < existing.length) {
+        roundResults.push(existing[i]);
+      } else {
+        roundResults.push(null);
+      }
+    }
 
-    const updatedArchers = archers.map(a => a.archerId === archerId ? { ...a, results: { ...a.results, [standKey]: existing } } : a);
+    // ラウンド1と2の結果を結合
+    let finalResults = [];
+    if (selectedRound === 1) {
+      const round2Results = (archer.results?.[standKey]?.slice(tournament.arrowsRound1) || []);
+      finalResults = [...roundResults, ...round2Results];
+    } else {
+      const round1Results = (archer.results?.[standKey]?.slice(0, tournament.arrowsRound1) || []);
+      finalResults = [...round1Results, ...roundResults];
+    }
+
+    const updatedArchers = archers.map(a => 
+      a.archerId === archerId 
+        ? { ...a, results: { ...a.results, [standKey]: finalResults } } 
+        : a
+    );
+    
     setArchers(updatedArchers);
 
     // APIへ送信 (nullを送る)
