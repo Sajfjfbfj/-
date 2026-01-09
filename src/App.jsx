@@ -11,6 +11,259 @@ const API_URL = API_BASE_URL.startsWith('http')
   ? API_BASE_URL 
   : `${window.location.origin}${API_BASE_URL.startsWith('/') ? '' : '/'}${API_BASE_URL}`;
 
+const getLocalDateKey = () => {
+  // local date like 2026-01-09
+  try {
+    return new Date().toLocaleDateString('sv-SE');
+  } catch {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+};
+
+const distanceKm = (lat1, lng1, lat2, lng2) => {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+const normalizeTournamentFormData = (data, defaultDivisions, attachments) => {
+  const d = data || {};
+  return {
+    name: d.name ?? '',
+    datetime: d.datetime ?? '',
+    location: d.location ?? '',
+    venueAddress: d.venueAddress ?? '',
+    venueLat: d.venueLat ?? '',
+    venueLng: d.venueLng ?? '',
+    organizer: d.organizer ?? '',
+    coOrganizer: d.coOrganizer ?? '',
+    administrator: d.administrator ?? '',
+    purpose: d.purpose ?? '',
+    event: d.event ?? '',
+    type: d.type ?? '',
+    category: d.category ?? '',
+    description: d.description ?? '',
+    competitionMethod: d.competitionMethod ?? '',
+    award: d.award ?? '',
+    qualifications: d.qualifications ?? '',
+    applicableRules: d.applicableRules ?? '',
+    applicationMethod: d.applicationMethod ?? '',
+    remarks: d.remarks ?? '',
+    attachments: Array.isArray(attachments) ? attachments : [],
+    divisions: Array.isArray(d.divisions) ? d.divisions : (Array.isArray(defaultDivisions) ? defaultDivisions : []),
+  };
+};
+
+const getStoredAttachments = (tournamentId) => {
+  if (!tournamentId) return [];
+  try {
+    const raw = localStorage.getItem(`tournamentAttachments:${tournamentId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTournamentId }) => {
+  const [archers, setArchers] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const tournaments = state.registeredTournaments || [];
+  const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
+
+  const rankOrder = useMemo(() => (['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段']), []);
+  const normalizeRank = useCallback((rank) => {
+    if (!rank) return '';
+    return rank
+      .replace('二段', '弐段')
+      .replace('三段', '参段')
+      .replace('二級', '弐級')
+      .replace('一級', '壱級');
+  }, []);
+
+
+  // tournament selection is locked at admin login
+  const rankIndex = useCallback((rank) => {
+    const r = normalizeRank(rank);
+    const idx = rankOrder.indexOf(r);
+    return idx === -1 ? 9999 : idx;
+  }, [normalizeRank, rankOrder]);
+
+  const getDivisionIdForArcher = useCallback((archer, divisions) => {
+    const rIdx = rankIndex(archer?.rank);
+    for (const d of (divisions || [])) {
+      const minIdx = d?.minRank ? rankIndex(d.minRank) : 0;
+      const maxIdx = d?.maxRank ? rankIndex(d.maxRank) : 9999;
+      if (rIdx >= minIdx && rIdx <= maxIdx) return d.id;
+    }
+    return 'unassigned';
+  }, [rankIndex]);
+
+  const getTotalHitCountAllStands = useCallback((archer) => {
+    const arrows1 = tournament?.data?.arrowsRound1 || state.tournament.arrowsRound1 || 0;
+    const arrows2 = tournament?.data?.arrowsRound2 || state.tournament.arrowsRound2 || 0;
+    const total = arrows1 + arrows2;
+    const results = archer?.results || {};
+    let count = 0;
+    for (let s = 1; s <= 6; s++) {
+      const arr = results[`stand${s}`] || [];
+      for (let i = 0; i < Math.min(total, arr.length); i++) {
+        if (arr[i] === 'o') count++;
+      }
+    }
+    return count;
+  }, [tournament, state.tournament]);
+
+  const calculateRanksWithTies = useCallback((items) => {
+    const sorted = [...items].sort((a, b) => b.hitCount - a.hitCount);
+    let currentRank = 1;
+    let prevHitCount = null;
+    return sorted.map((item, index) => {
+      if (prevHitCount !== null && item.hitCount !== prevHitCount) currentRank = index + 1;
+      prevHitCount = item.hitCount;
+      return { ...item, rank: currentRank };
+    });
+  }, []);
+
+  useEffect(() => {
+    const fetchArchers = async () => {
+      if (!selectedTournamentId) {
+        setArchers([]);
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
+        const result = await response.json();
+        if (result.success) {
+          const checkedIn = (result.data || []).filter(a => a.isCheckedIn);
+          setArchers(checkedIn);
+        } else {
+          setArchers([]);
+        }
+      } catch (e) {
+        console.error('AwardsView fetch error', e);
+        setArchers([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchArchers();
+  }, [selectedTournamentId]);
+
+  const divisions = useMemo(() => {
+    const ds = tournament?.data?.divisions;
+    return Array.isArray(ds) ? ds : [];
+  }, [tournament]);
+
+  const awardRankLimit = tournament?.data?.awardRankLimit || 3;
+
+  const divisionRankings = useMemo(() => {
+    const groups = {};
+    for (const d of divisions) groups[d.id] = { division: d, rows: [] };
+    if (!groups.unassigned) groups.unassigned = { division: { id: 'unassigned', label: '未分類' }, rows: [] };
+
+    for (const a of archers) {
+      const divId = getDivisionIdForArcher(a, divisions);
+      const hitCount = getTotalHitCountAllStands(a);
+      if (!groups[divId]) groups[divId] = { division: { id: divId, label: divId }, rows: [] };
+      groups[divId].rows.push({
+        archer: a,
+        hitCount,
+      });
+    }
+
+    const result = [];
+    for (const key of Object.keys(groups)) {
+      const g = groups[key];
+      const ranked = calculateRanksWithTies(g.rows.map(r => ({ ...r })));
+      result.push({
+        division: g.division,
+        ranked,
+      });
+    }
+    // keep the original division order first
+    result.sort((a, b) => {
+      const ai = divisions.findIndex(d => d.id === a.division.id);
+      const bi = divisions.findIndex(d => d.id === b.division.id);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+    return result;
+  }, [archers, divisions, getDivisionIdForArcher, getTotalHitCountAllStands, calculateRanksWithTies]);
+
+  return (
+    <div className="view-container">
+      <div className="view-content">
+        <p className="hint" style={{ marginBottom: '1rem' }}>表彰は {awardRankLimit}位まで（同率あり）</p>
+        
+        {!selectedTournamentId ? (
+          <div className="card">大会を選択してください</div>
+        ) : isLoading ? (
+          <div className="card">読み込み中...</div>
+        ) : (
+          divisionRankings.map(block => (
+            <div key={block.division.id} className="card" style={{ marginBottom: '1rem' }}>
+              <div className="flex justify-between items-center">
+                <h2 className="card-title">{block.division.label || block.division.id}</h2>
+                <span className="text-sm text-gray-600">{block.ranked.length}名</span>
+              </div>
+
+              <div className="table-responsive">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">順位</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">所属</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">的中</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">表彰</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {block.ranked.length === 0 ? (
+                      <tr><td colSpan="6" className="px-4 py-4 text-center text-sm text-gray-500">該当者なし</td></tr>
+                    ) : (
+                      block.ranked.map((row, idx) => (
+                        <tr key={`${row.archer?.archerId || idx}`}> 
+                          <td className="px-4 py-3 text-sm font-medium">{row.rank}位</td>
+                          <td className="px-4 py-3">{row.archer?.name || ''}</td>
+                          <td className="px-4 py-3">{row.archer?.affiliation || ''}</td>
+                          <td className="px-4 py-3 text-center">{row.archer?.rank || ''}</td>
+                          <td className="px-4 py-3 text-center">{row.hitCount}</td>
+                          <td className="px-4 py-3 text-center">{row.rank <= awardRankLimit ? '○' : ''}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+const setStoredAttachments = (tournamentId, attachments) => {
+  if (!tournamentId) return;
+  try {
+    localStorage.setItem(`tournamentAttachments:${tournamentId}`, JSON.stringify(Array.isArray(attachments) ? attachments : []));
+  } catch (e) {
+    console.error('Failed to store attachments', e);
+  }
+};
+
 const KyudoTournamentSystem = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminPassword, setAdminPassword] = useState(null);
@@ -101,7 +354,16 @@ const KyudoTournamentSystem = () => {
           {mainView === 'tournament' && <TournamentView state={tournamentState} stands={dynamicStands} checkInCount={checkInCount} />}
           {mainView === 'checkin' && <CheckInView state={tournamentState} dispatch={dispatch} />}
           {mainView === 'admin' && !isAdminLoggedIn && <AdminLoginView adminPassword={adminPassword} setAdminPassword={setAdminPassword} adminLoginStep={adminLoginStep} setAdminLoginStep={setAdminLoginStep} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} state={tournamentState} onLogin={() => setIsAdminLoggedIn(true)} />}
-          {mainView === 'admin' && isAdminLoggedIn && <AdminView state={tournamentState} dispatch={dispatch} adminView={adminView} setAdminView={setAdminView} stands={dynamicStands} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} onLogout={() => { setIsAdminLoggedIn(false); setAdminLoginStep('password_setup'); setSelectedTournamentId(null); }} />}
+          {mainView === 'admin' && isAdminLoggedIn && <AdminView state={tournamentState} dispatch={dispatch} adminView={adminView} setAdminView={setAdminView} stands={dynamicStands} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} onLogout={() => { 
+            setIsAdminLoggedIn(false); 
+            setAdminLoginStep('password_setup'); 
+            setSelectedTournamentId(null); 
+            try {
+              localStorage.removeItem('adminSelectedTournamentDate');
+              localStorage.removeItem('adminSelectedTournamentId');
+              localStorage.removeItem('selectedTournamentId');
+            } catch {}
+          }} />}
           {mainView === 'tournament-setup' && <TournamentSetupView state={tournamentState} dispatch={dispatch} />}
           {mainView === 'archer-signup' && <ArcherSignupView state={tournamentState} dispatch={dispatch} />}
         </>
@@ -148,6 +410,67 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
   const [inputValue, setInputValue] = useState('');
   const [error, setError] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [geoStatus, setGeoStatus] = useState('');
+
+  useEffect(() => {
+    if (adminLoginStep !== 'tournament_id') return;
+    try {
+      const storedDate = localStorage.getItem('adminSelectedTournamentDate');
+      const storedTournamentId = localStorage.getItem('adminSelectedTournamentId');
+      const today = getLocalDateKey();
+      if (storedDate === today && storedTournamentId) {
+        setSelectedTournamentId(storedTournamentId);
+        setInputValue('');
+        setError('');
+        onLogin();
+      }
+    } catch {
+      // ignore
+    }
+  }, [adminLoginStep, onLogin, setSelectedTournamentId]);
+
+  const autoSelectTournamentByGeolocation = () => {
+    if (!navigator.geolocation) {
+      setGeoStatus('❌ この端末は位置情報に対応していません');
+      return;
+    }
+    setGeoStatus('📍 位置情報を取得中...');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        try {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const candidates = (state.registeredTournaments || [])
+            .map(t => {
+              const tLat = Number(t?.data?.venueLat);
+              const tLng = Number(t?.data?.venueLng);
+              if (!Number.isFinite(tLat) || !Number.isFinite(tLng)) return null;
+              return { t, dist: distanceKm(lat, lng, tLat, tLng) };
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.dist - b.dist);
+
+          if (candidates.length === 0) {
+            setGeoStatus('⚠️ 会場の緯度/経度が登録されている大会がありません');
+            return;
+          }
+
+          const nearest = candidates[0];
+          setInputValue(nearest.t.id);
+          setError('');
+          setGeoStatus(`✅ 近い大会を自動選択しました（約${nearest.dist.toFixed(1)}km）`);
+        } catch (e) {
+          console.error(e);
+          setGeoStatus('❌ 位置情報から大会の自動選択に失敗しました');
+        }
+      },
+      (err) => {
+        const msg = err?.message ? `❌ 位置情報の取得に失敗しました: ${err.message}` : '❌ 位置情報の取得に失敗しました';
+        setGeoStatus(msg);
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
+    );
+  };
 
   const handlePasswordSetup = () => {
     if (!inputValue || !confirmPassword) {
@@ -183,6 +506,10 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
       return;
     }
     setSelectedTournamentId(inputValue.trim());
+    try {
+      localStorage.setItem('adminSelectedTournamentDate', getLocalDateKey());
+      localStorage.setItem('adminSelectedTournamentId', inputValue.trim());
+    } catch {}
     setInputValue('');
     setError('');
     onLogin();
@@ -224,6 +551,10 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
               <h1>大会を選択</h1>
             </div>
             <p className="hint">本日の大会IDを入力してください</p>
+            <button onClick={autoSelectTournamentByGeolocation} className="btn-secondary" style={{ width: '100%', marginBottom: '0.5rem' }}>
+              📍 現在地から大会を自動選択
+            </button>
+            {geoStatus && <p className="text-sm text-gray-600" style={{ marginBottom: '0.5rem' }}>{geoStatus}</p>}
             <select value={inputValue} onChange={(e) => setInputValue(e.target.value)} className="input">
               <option value="">-- 大会を選択 --</option>
               {state.registeredTournaments.map(t => (
@@ -261,15 +592,20 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   const [selectedTournamentId, setSelectedTournamentId] = useState(() => {
     return localStorage.getItem('selectedTournamentId') || '';
   });
+  const [isArcherVerified, setIsArcherVerified] = useState(false);
+  const [archerIdInputModal, setArcherIdInputModal] = useState('');
+  const [archerIdError, setArcherIdError] = useState('');
   const [archers, setArchers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const archersPerPage = 12; // 1ページあたりの選手数
+  const programArchersPerPage = 36;
   const [totalPages, setTotalPages] = useState(1);
   const [indexOfFirstArcher, setIndexOfFirstArcher] = useState(0);
   const [indexOfLastArcher, setIndexOfLastArcher] = useState(archersPerPage);
   const [currentArchers, setCurrentArchers] = useState([]);
+  const [currentPageProgram, setCurrentPageProgram] = useState(1);
   
   // ページネーションの状態を更新するエフェクト
   useEffect(() => {
@@ -280,6 +616,10 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     setCurrentArchers(archers.slice(indexOfFirst, indexOfLast));
     setTotalPages(Math.ceil(archers.length / archersPerPage));
   }, [archers, currentPage, archersPerPage]);
+
+  useEffect(() => {
+    setCurrentPageProgram(1);
+  }, [selectedTournamentId]);
 
   useEffect(() => {
     if (selectedTournamentId) {
@@ -363,12 +703,53 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     }
   };
 
+  const handleArcherIdSubmit = () => {
+    const val = (archerIdInputModal || '').trim();
+    if (!val) {
+      setArcherIdError('選手IDを入力してください');
+      return;
+    }
+    const pick = state.registeredTournaments.find(t => val.startsWith(t.id));
+    if (!pick) {
+      setArcherIdError('該当する大会が見つかりません');
+      return;
+    }
+    setSelectedTournamentId(pick.id);
+    setIsArcherVerified(true);
+    try {
+      localStorage.setItem('tournamentViewVerifiedDate', getLocalDateKey());
+      localStorage.setItem('tournamentViewVerifiedTournamentId', pick.id);
+    } catch {}
+    setArcherIdInputModal('');
+    setArcherIdError('');
+    setIsLoading(true);
+    // small timeout to allow selectedTournamentId effect to run
+    setTimeout(() => { fetchAndSortArchers(); }, 50);
+  };
+
   useEffect(() => {
     if (selectedTournamentId) {
       setIsLoading(true);
       fetchAndSortArchers();
     }
   }, [selectedTournamentId]);
+
+  // 当日1回だけID入力にする
+  useEffect(() => {
+    try {
+      const storedDate = localStorage.getItem('tournamentViewVerifiedDate');
+      const storedTournamentId = localStorage.getItem('tournamentViewVerifiedTournamentId');
+      const today = getLocalDateKey();
+      if (storedDate === today && storedTournamentId) {
+        setSelectedTournamentId(storedTournamentId);
+        setIsArcherVerified(true);
+      } else {
+        setIsArcherVerified(false);
+      }
+    } catch {
+      setIsArcherVerified(false);
+    }
+  }, []);
 
   // 自動更新 (リアルタイム表示用) - 10秒ごとに更新(負荷軽減のため5秒から10秒に延長)
   useEffect(() => {
@@ -382,6 +763,113 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   const tournament = state.tournament;
   const currentRound = tournament.currentRound || 1;
   const arrowsPerStand = currentRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
+
+  const printProgram = () => {
+    if (!selectedTournamentId) { alert('大会を選択してください'); return; }
+    // get selected tournament data
+    const tpl = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+    const tplData = tpl?.data || {};
+    const perPage = programArchersPerPage;
+    const pages = Math.max(1, Math.ceil(archers.length / perPage));
+    const title = tplData?.name || selectedTournamentId;
+    const attachments = getStoredAttachments(selectedTournamentId);
+
+    const styles = `
+      body{font-family: Arial, Helvetica, sans-serif; padding:20px; color:#111}
+      h1,h2{margin:0 0 8px}
+      .tourney{margin-bottom:16px}
+      table{width:100%;border-collapse:collapse;margin-top:8px}
+      th,td{border:1px solid #ddd;padding:6px;font-size:12px}
+      th{background:#f7f7f7}
+      .page{page-break-after:always;margin-bottom:20px}
+      .att{margin-top:10px}
+      .att-item{margin:0 0 8px}
+      .att-img{max-width:100%;height:auto;border:1px solid #ddd}
+    `;
+
+    let html = `<!doctype html><html><head><meta charset="utf-8"><title>${title} プログラム</title><style>${styles}</style></head><body>`;
+
+    // Page 1: tournament info only
+    html += `<div class="page"><div class="tourney"><h1>${title}</h1>`;
+    html += `<p>${tplData?.datetime || ''}</p>`;
+    html += `<p>${tplData?.location || ''}</p>`;
+    html += `<p>目的: ${tplData?.purpose || ''}</p>`;
+    html += `<p>主催: ${tplData?.organizer || ''}</p>`;
+    html += `<p>後援: ${tplData?.coOrganizer || ''}</p>`;
+    html += `<p>主管: ${tplData?.administrator || ''}</p>`;
+    html += `<p>種目: ${tplData?.event || ''}</p>`;
+    html += `<p>種類: ${tplData?.type || ''}</p>`;
+    html += `<p>種別: ${tplData?.category || ''}</p>`;
+    html += `<p>内容: ${tplData?.description || ''}</p>`;
+    html += `<p>競技方法: ${tplData?.competitionMethod || ''}</p>`;
+    html += `<p>表彰: ${tplData?.award || ''}</p>`;
+    html += `<p>参加資格: ${tplData?.qualifications || ''}</p>`;
+    html += `<p>適用規則: ${tplData?.applicableRules || ''}</p>`;
+    html += `<p>申込方法: ${tplData?.applicationMethod || ''}</p>`;
+    html += `<p>その他: ${tplData?.remarks || ''}</p>`;
+    if (attachments.length > 0) {
+      html += `<div class="att"><h2 style="margin:0 0 6px">添付資料</h2><ul style="margin:0;padding-left:18px">`;
+      for (const att of attachments) {
+        const safeName = (att?.name || 'file').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const href = att?.dataUrl || '';
+        html += `<li style="margin:0 0 4px"><a href="${href}" target="_blank" rel="noopener noreferrer">${safeName}</a></li>`;
+      }
+      html += `</ul>`;
+      // Image previews (only for image/*)
+      for (const att of attachments) {
+        const href = att?.dataUrl || '';
+        const type = (att?.type || '').toLowerCase();
+        const isImage = type.startsWith('image/') || href.startsWith('data:image/');
+        if (!isImage || !href) continue;
+        const safeName = (att?.name || 'image').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        html += `<div class="att-item"><div style="font-size:12px;margin:6px 0 4px">${safeName}</div><img class="att-img" src="${href}" alt="${safeName}" /></div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div></div>`;
+
+    // Page 2..: standings table only
+    for (let p = 0; p < pages; p++) {
+      html += `<div class="page">`;
+      html += `<h2 style="margin:0 0 8px">立ち順表</h2>`;
+
+      const arrows1 = tplData?.arrowsRound1 || 0;
+      const arrows2 = tplData?.arrowsRound2 || 0;
+      html += `<table><thead><tr><th>#</th><th>氏名</th><th>所属</th><th>段位</th><th>1立ち目</th><th>2立ち目</th></tr></thead><tbody>`;
+
+      const start = p * perPage;
+      const end = Math.min(start + perPage, archers.length);
+      for (let i = start; i < end; i++) {
+        const a = archers[i];
+        html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td>`;
+        // 1立ち目 placeholders
+        html += `<td style="white-space:nowrap">`;
+        for (let x = 0; x < arrows1; x++) {
+          html += `<span style="display:inline-block;width:18px;height:14px;margin:0 3px;font-size:12px;line-height:14px">&nbsp;</span>`;
+        }
+        html += `</td>`;
+        // 2立ち目 placeholders
+        html += `<td style="white-space:nowrap">`;
+        for (let x = 0; x < arrows2; x++) {
+          html += `<span style="display:inline-block;width:18px;height:14px;margin:0 3px;font-size:12px;line-height:14px">&nbsp;</span>`;
+        }
+        html += `</td>`;
+        html += `</tr>`;
+      }
+
+      html += `</tbody></table></div>`;
+    }
+
+    html += `</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { alert('ポップアップがブロックされました。ポップアップを許可してください。'); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    // Give browser a moment to render
+    setTimeout(() => { win.print(); }, 300);
+  };
 
   // パフォーマンス向上のため、メモ化された関数を使用
 
@@ -439,6 +927,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
 
   // ページ変更ハンドラー
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
+  const paginateProgram = (pageNumber) => setCurrentPageProgram(pageNumber);
 
   if (view === 'qualifiers') {
     return (
@@ -468,254 +957,424 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     );
   }
 
-  return (
-    <div className="view-container">
-      <div className="view-header">
-        <h1>大会進行 (リアルタイム)</h1>
-        <div style={{ marginTop: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>大会を選択</label>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <select 
-              value={selectedTournamentId} 
-              onChange={(e) => setSelectedTournamentId(e.target.value)}
-              className="input w-full"
-            >
-              <option value="">-- 大会を選択してください --</option>
-              {filteredTournaments.map(t => (
-                <option key={t.id} value={t.id}>{t.data?.name || t.id}</option>
-              ))}
-            </select>
-            <button 
-              onClick={fetchAndSortArchers} 
-              className="btn-secondary"
-              style={{ padding: '0 1rem' }}
-              title="更新"
-            >
-              <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
-            </button>
+  if (view === 'program') {
+    const tpl = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+    const tplData = tpl?.data || {};
+    const attachments = getStoredAttachments(selectedTournamentId);
+    const totalPagesProgram = Math.max(1, Math.ceil(archers.length / programArchersPerPage));
+    const indexOfFirstProgram = (currentPageProgram - 1) * programArchersPerPage;
+    const indexOfLastProgram = indexOfFirstProgram + programArchersPerPage;
+    const currentArchersProgram = archers.slice(indexOfFirstProgram, indexOfLastProgram);
+
+    return (
+      <div className="view-container">
+        <div className="view-header">
+          <button 
+            onClick={() => setView('standings')}
+            className="flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" /> 立ち順表に戻る
+          </button>
+          <div className="flex justify-between items-center">
+            <h1>プログラム表</h1>
+            <button onClick={printProgram} className="btn-primary">印刷</button>
           </div>
         </div>
-      </div>
-      <div className="view-content">
-        {selectedTournamentId && (
-          <>
-            <div className="settings-grid">
-              <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                <p className="text-xs text-gray-500 font-medium mb-1">受付済み</p>
-                <p className="text-lg font-semibold">{archers.length}<span className="text-sm text-gray-500 ml-1">人</span></p>
-              </div>
-              <div 
-                className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
-                onClick={() => setView('qualifiers')}
-              >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-xs text-gray-500 font-medium mb-1">通過者</p>
-                    <p className="text-lg font-semibold">
-                      {passedArchers.length}<span className="text-sm text-gray-500 ml-1">人</span>
-                    </p>
-                  </div>
-                  <Users className="w-4 h-4 text-gray-400" />
-                </div>
-              </div>
-              <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                <p className="text-xs text-gray-500 font-medium mb-1">通過ルール</p>
-                <p className="text-sm font-medium">
-                  {tournament.passRule === 'all_four' ? '全て的中' :
-                   tournament.passRule === 'four_or_more' ? '4本以上的中' :
-                   tournament.passRule === 'three_or_more' ? '3本以上的中' :
-                   tournament.passRule === 'two_or_more' ? '2本以上的中' : '未設定'}
-                </p>
-              </div>
-              <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                <p className="text-xs text-gray-500 font-medium mb-1">1立ち目矢数</p>
-                <p className="text-lg font-semibold">{tournament.arrowsRound1 || 0}<span className="text-sm text-gray-500 ml-1">本</span></p>
-              </div>
-              <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                <p className="text-xs text-gray-500 font-medium mb-1">2立ち目矢数</p>
-                <p className="text-lg font-semibold">{tournament.arrowsRound2 || 0}<span className="text-sm text-gray-500 ml-1">本</span></p>
-              </div>
-            </div>
 
-            <div className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <p className="card-title">立ち順表</p>
-                {autoRefresh && (
-                    <span style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <span style={{ display: 'inline-block', width: '0.5rem', height: '0.5rem', backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 1.5s ease-in-out infinite' }}></span>
-                      Live
-                    </span>
-                  )}
+        <div className="view-content">
+          {!selectedTournamentId ? (
+            <div className="card">大会を選択してください</div>
+          ) : (
+            <>
+              <div className="card" style={{ marginBottom: '1rem' }}>
+                <h2 className="card-title">大会概要</h2>
+                <p><strong>大会名:</strong> {tplData?.name || '未設定'}</p>
+                <p><strong>日時:</strong> {tplData?.datetime || '未設定'}</p>
+                <p><strong>場所:</strong> {tplData?.location || '未設定'}</p>
+                <p><strong>目的:</strong> {tplData?.purpose || '-'}</p>
+                <p><strong>主催:</strong> {tplData?.organizer || '-'}</p>
+                <p><strong>後援:</strong> {tplData?.coOrganizer || '-'}</p>
+                <p><strong>主管:</strong> {tplData?.administrator || '-'}</p>
+                <p><strong>種目:</strong> {tplData?.event || '-'}</p>
+                <p><strong>種類:</strong> {tplData?.type || '-'}</p>
+                <p><strong>種別:</strong> {tplData?.category || '-'}</p>
+                <p><strong>内容:</strong> {tplData?.description || '-'}</p>
+                <p><strong>競技方法:</strong> {tplData?.competitionMethod || '-'}</p>
+                <p><strong>表彰:</strong> {tplData?.award || '-'}</p>
+                <p><strong>参加資格:</strong> {tplData?.qualifications || '-'}</p>
+                <p><strong>適用規則:</strong> {tplData?.applicableRules || '-'}</p>
+                <p><strong>申込方法:</strong> {tplData?.applicationMethod || '-'}</p>
+                <p><strong>その他:</strong> {tplData?.remarks || '-'}</p>
               </div>
-              <div className="table-responsive">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">支部</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">結果</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {isLoading && archers.length === 0 ? (
+
+              <div className="card" style={{ marginBottom: '1rem' }}>
+                <h2 className="card-title">添付資料</h2>
+                {attachments.length === 0 ? (
+                  <p className="text-sm text-gray-500">添付資料はありません</p>
+                ) : (
+                  <div className="space-y-2">
+                    {attachments.map((att, idx) => (
+                      <div key={`${att?.name || 'file'}_${idx}`} className="flex items-center justify-between">
+                        <a className="text-sm text-blue-600 hover:underline" href={att?.dataUrl || ''} target="_blank" rel="noopener noreferrer">
+                          {att?.name || `file_${idx+1}`}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="card">
+                <h2 className="card-title">立ち順表</h2>
+                <div className="table-responsive">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
                       <tr>
-                        <td colSpan="7" className="px-4 py-4 text-center text-sm text-gray-500">
-                          読み込み中...
-                        </td>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">所属</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
                       </tr>
-                    ) : archers.length === 0 ? (
-                      <tr>
-                        <td colSpan="7" className="px-4 py-4 text-center text-sm text-gray-500">
-                          受付済みの選手がいません
-                        </td>
-                      </tr>
-                    ) : (
-                      currentArchers.map((archer) => {
-                        const { ceremony, rank } = getRankCategory(archer.rank);
-                        const stand1Result = archer.results?.stand1?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null);
-                        const stand2Result = archer.results?.stand1?.slice(tournament.arrowsRound1, tournament.arrowsRound1 + tournament.arrowsRound2) || Array(tournament.arrowsRound2).fill(null);
-                        const passed = isPassed(archer);
-                        
-                        return (
-                          <tr 
-                            key={archer.archerId} 
-                            className={`${passed ? 'bg-green-50' : ''} hover:bg-gray-50`}
-                          >
-                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                              {archer.standOrder}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <span className="font-medium">{archer.name}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                              {archer.affiliation}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
-                              {ceremony}{rank}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap">
-                              <div className="flex gap-1 justify-center">
-                                {stand1Result.map((result, idx) => (
-                                  <span 
-                                    key={idx} 
-                                    className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
-                                      result === 'o' ? 'bg-gray-900 text-white' : 
-                                      result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
-                                    }`}
-                                  >
-                                    {result === 'o' ? '◯' : result === 'x' ? '×' : '—'}
-                                  </span>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {isLoading && archers.length === 0 ? (
+                        <tr><td colSpan="6" className="px-4 py-4 text-center">読み込み中...</td></tr>
+                      ) : archers.length === 0 ? (
+                        <tr><td colSpan="6" className="px-4 py-4 text-center">選手が登録されていません</td></tr>
+                      ) : (
+                        currentArchersProgram.map(a => (
+                          <tr key={a.archerId}>
+                            <td className="px-4 py-3 text-sm font-medium">{a.standOrder}</td>
+                            <td className="px-4 py-3">{a.name}</td>
+                            <td className="px-4 py-3">{a.affiliation}</td>
+                            <td className="px-4 py-3 text-center">{a.rank}</td>
+                            <td className="px-4 py-3">
+                              <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                                {Array.from({ length: (tplData?.arrowsRound1 || 0) }).map((_, idx) => (
+                                  <span key={idx} className="inline-flex items-center justify-center w-6 h-4 text-xs text-gray-600">&nbsp;</span>
                                 ))}
                               </div>
                             </td>
-                            <td className="px-4 py-3 whitespace-nowrap">
-                              <div className="flex gap-1 justify-center">
-                                {stand2Result.map((result, idx) => (
-                                  <span 
-                                    key={idx} 
-                                    className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
-                                      result === 'o' ? 'bg-gray-900 text-white' : 
-                                      result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
-                                    }`}
-                                  >
-                                    {result === 'o' ? '◯' : result === 'x' ? '×' : '—'}
-                                  </span>
+                            <td className="px-4 py-3">
+                              <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                                {Array.from({ length: (tplData?.arrowsRound2 || 0) }).map((_, idx) => (
+                                  <span key={idx} className="inline-flex items-center justify-center w-6 h-4 text-xs text-gray-600">&nbsp;</span>
                                 ))}
                               </div>
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-center">
-                              {passed === true && (
-                                <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
-                                  通過
-                                </span>
-                              )}
-                              {passed === false && (
-                                <span className="px-2 py-1 text-xs font-semibold text-gray-600 bg-gray-100 rounded-full">
-                                  —
-                                </span>
-                              )}
-                              {passed === null && (
-                                <span className="px-2 py-1 text-xs font-semibold text-yellow-800 bg-yellow-100 rounded-full">
-                                  未完了
-                                </span>
-                              )}
                             </td>
                           </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {archers.length > programArchersPerPage && (
+                  <div className="flex items-center justify-between mt-4">
+                    <div>
+                      <p className="text-sm">{indexOfFirstProgram + 1} 〜 {Math.min(indexOfLastProgram, archers.length)} / {archers.length} 名</p>
+                    </div>
+                    <div className="flex space-x-1">
+                      <button onClick={() => paginateProgram(Math.max(1, currentPageProgram-1))} disabled={currentPageProgram === 1} className="btn">前へ</button>
+                      <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                        {Array.from({ length: totalPagesProgram }, (_, i) => (
+                          <button key={i} onClick={() => paginateProgram(i+1)} className={`btn ${currentPageProgram === i+1 ? 'btn-active' : ''}`}>{i+1}</button>
+                        ))}
+                      </div>
+                      <button onClick={() => paginateProgram(Math.min(totalPagesProgram, currentPageProgram+1))} disabled={currentPageProgram === totalPagesProgram} className="btn">次へ</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {!isArcherVerified ? (
+        <div className="view-container">
+          <div className="login-container">
+            <div className="login-box">
+              <div className="login-header">
+                <User size={32} />
+                <h1>選手IDで大会を開く</h1>
+              </div>
+              <p className="hint">受付された選手IDを入力してください（必須）</p>
+              <input
+                type="text"
+                value={archerIdInputModal}
+                onChange={(e) => { setArcherIdInputModal(e.target.value); setArcherIdError(''); }}
+                onKeyPress={(e) => e.key === 'Enter' && handleArcherIdSubmit()}
+                placeholder="選手IDを入力"
+                className="input"
+              />
+              {archerIdError && <p className="error-text">{archerIdError}</p>}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={() => handleArcherIdSubmit()} className="btn-primary">開く</button>
               </div>
             </div>
-
-            {/* ページネーション */}
-            {archers.length > archersPerPage && (
-              <div className="flex items-center justify-between mt-4">
-                <div>
-                  <p className="text-sm text-gray-700">
-                    <span className="font-medium">{indexOfFirstArcher + 1}</span> 〜 <span className="font-medium">
-                      {Math.min(indexOfLastArcher, archers.length)}
-                    </span> / <span className="font-medium">{archers.length}</span> 名
-                  </p>
+          </div>
+        </div>
+      ) : (
+        <div className="view-container">
+          <div className="view-header">
+            <h1>大会進行 (リアルタイム)</h1>
+            <div style={{ marginTop: '1rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <div className="input w-full" style={{ display: 'flex', alignItems: 'center', padding: '0.5rem' }}>
+                  <span style={{ fontWeight: 600 }}>{(state.registeredTournaments.find(t => t.id === selectedTournamentId)?.data?.name) || (selectedTournamentId ? selectedTournamentId : '-- 大会が選択されていません --')}</span>
                 </div>
-                <div className="flex space-x-1">
-                  <button
-                    onClick={() => paginate(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className={`px-3 py-1 rounded-md ${currentPage === 1 ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'}`}
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-                  
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    // 現在のページを中心に表示するように調整
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
-                    
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => paginate(pageNum)}
-                        className={`w-8 h-8 rounded-md text-sm font-medium ${
-                          currentPage === pageNum 
-                            ? 'bg-blue-600 text-white' 
-                            : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                  
-                  <button
-                    onClick={() => paginate(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                    className={`px-3 py-1 rounded-md ${currentPage === totalPages ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'}`}
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </div>
+                <button
+                  onClick={printProgram}
+                  className="btn-secondary"
+                  style={{ padding: '0 1rem' }}
+                  title="プログラムを表示/印刷"
+                >
+                  <Maximize2 size={18} />
+                </button>
               </div>
+            </div>
+          </div>
+          <div className="view-content">
+            {selectedTournamentId && (
+              <>
+                <div className="settings-grid">
+                  <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                    <p className="text-xs text-gray-500 font-medium mb-1">受付済み</p>
+                    <p className="text-lg font-semibold">{archers.length}<span className="text-sm text-gray-500 ml-1">人</span></p>
+                  </div>
+                  <div 
+                    className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                    onClick={() => setView('qualifiers')}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-xs text-gray-500 font-medium mb-1">通過者</p>
+                        <p className="text-lg font-semibold">
+                          {passedArchers.length}<span className="text-sm text-gray-500 ml-1">人</span>
+                        </p>
+                      </div>
+                      <Users className="w-4 h-4 text-gray-400" />
+                    </div>
+                  </div>
+                  <div 
+                    className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                    onClick={() => setView('program')}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-xs text-gray-500 font-medium mb-1">プログラム</p>
+                        <p className="text-sm font-medium">表示/印刷</p>
+                      </div>
+                      <Maximize2 className="w-4 h-4 text-gray-400" />
+                    </div>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                    <p className="text-xs text-gray-500 font-medium mb-1">通過ルール</p>
+                    <p className="text-sm font-medium">
+                      {tournament.passRule === 'all_four' ? '全て的中' :
+                       tournament.passRule === 'four_or_more' ? '4本以上的中' :
+                       tournament.passRule === 'three_or_more' ? '3本以上的中' :
+                       tournament.passRule === 'two_or_more' ? '2本以上的中' : '未設定'}
+                    </p>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                    <p className="text-xs text-gray-500 font-medium mb-1">1立ち目矢数</p>
+                    <p className="text-lg font-semibold">{tournament.arrowsRound1 || 0}<span className="text-sm text-gray-500 ml-1">本</span></p>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+                    <p className="text-xs text-gray-500 font-medium mb-1">2立ち目矢数</p>
+                    <p className="text-lg font-semibold">{tournament.arrowsRound2 || 0}<span className="text-sm text-gray-500 ml-1">本</span></p>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <p className="card-title">立ち順表</p>
+                    {autoRefresh && (
+                        <span style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <span style={{ display: 'inline-block', width: '0.5rem', height: '0.5rem', backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 1.5s ease-in-out infinite' }}></span>
+                          Live
+                        </span>
+                      )}
+                  </div>
+                  <div className="table-responsive">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">支部</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">結果</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {isLoading && archers.length === 0 ? (
+                          <tr>
+                            <td colSpan="7" className="px-4 py-4 text-center text-sm text-gray-500">
+                              読み込み中...
+                            </td>
+                          </tr>
+                        ) : archers.length === 0 ? (
+                          <tr>
+                            <td colSpan="7" className="px-4 py-4 text-center text-sm text-gray-500">
+                              受付済みの選手がいません
+                            </td>
+                          </tr>
+                        ) : (
+                          currentArchers.map((archer) => {
+                            const { ceremony, rank } = getRankCategory(archer.rank);
+                            const stand1Result = archer.results?.stand1?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null);
+                            const stand2Result = archer.results?.stand1?.slice(tournament.arrowsRound1, tournament.arrowsRound1 + tournament.arrowsRound2) || Array(tournament.arrowsRound2).fill(null);
+                            const passed = isPassed(archer);
+                            
+                            return (
+                              <tr 
+                                key={archer.archerId} 
+                                className={`${passed ? 'bg-green-50' : ''} hover:bg-gray-50`}
+                              >
+                                <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                                  {archer.standOrder}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <div className="flex items-center">
+                                    <span className="font-medium">{archer.name}</span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                  {archer.affiliation}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
+                                  {ceremony}{rank}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <div className="flex gap-1 justify-center">
+                                    {stand1Result.map((result, idx) => (
+                                      <span 
+                                        key={idx} 
+                                        className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
+                                          result === 'o' ? 'bg-gray-900 text-white' : 
+                                          result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
+                                        }`}
+                                      >
+                                        {result === 'o' ? '◯' : result === 'x' ? '×' : '—'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <div className="flex gap-1 justify-center">
+                                    {stand2Result.map((result, idx) => (
+                                      <span 
+                                        key={idx} 
+                                        className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
+                                          result === 'o' ? 'bg-gray-900 text-white' : 
+                                          result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
+                                        }`}
+                                      >
+                                        {result === 'o' ? '◯' : result === 'x' ? '×' : '—'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-center">
+                                  {passed === true && (
+                                    <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
+                                      通過
+                                    </span>
+                                  )}
+                                  {passed === false && (
+                                    <span className="px-2 py-1 text-xs font-semibold text-gray-600 bg-gray-100 rounded-full">
+                                      —
+                                    </span>
+                                  )}
+                                  {passed === null && (
+                                    <span className="px-2 py-1 text-xs font-semibold text-yellow-800 bg-yellow-100 rounded-full">
+                                      未完了
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* ページネーション */}
+                {archers.length > archersPerPage && (
+                  <div className="flex items-center justify-between mt-4">
+                    <div>
+                      <p className="text-sm text-gray-700">
+                        <span className="font-medium">{indexOfFirstArcher + 1}</span> 〜 <span className="font-medium">
+                          {Math.min(indexOfLastArcher, archers.length)}
+                        </span> / <span className="font-medium">{archers.length}</span> 名
+                      </p>
+                    </div>
+                    <div className="flex space-x-1">
+                      <button
+                        onClick={() => paginate(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className={`px-3 py-1 rounded-md ${currentPage === 1 ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'}`}
+                      >
+                        <ChevronLeft className="w-5 h-5" />
+                      </button>
+                      
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        // 現在のページを中心に表示するように調整
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => paginate(pageNum)}
+                            className={`w-8 h-8 rounded-md text-sm font-medium ${
+                              currentPage === pageNum 
+                                ? 'bg-blue-600 text-white' 
+                                : 'text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                      
+                      <button
+                        onClick={() => paginate(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className={`px-3 py-1 rounded-md ${currentPage === totalPages ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-100'}`}
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
-          </>
-        )}
-      </div>
-    </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
@@ -1063,23 +1722,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
         <p>部門ごとに立ち順を管理 (自動保存)</p>
       </div>
       <div className="view-content">
-        <div className="card">
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>大会を選択</label>
-          <select 
-            value={selectedTournamentId} 
-            onChange={(e) => {
-              setSelectedTournamentId(e.target.value);
-              setSelectedStand(1);
-            }}
-            className="input w-full"
-          >
-            <option value="">-- 大会を選択してください --</option>
-            {filteredTournaments.map(t => (
-              <option key={t.id} value={t.id}>{t.data?.name || t.id}</option>
-            ))}
-          </select>
-        </div>
-
+        
         {selectedTournamentId && (
           <>
             <div className="card">
@@ -1193,14 +1836,60 @@ const CheckInView = ({ state, dispatch }) => {
   }, [selectedTournamentId]);
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
+  const [geoStatus, setGeoStatus] = useState('');
   const [currentQRCodeData, setCurrentQRCodeData] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const checkinListRef = React.useRef(null);
   
-  const filteredTournaments = state.registeredTournaments.filter(tournament => 
-    locationFilter === '' || 
-    (tournament.data.location && tournament.data.location.toLowerCase().includes(locationFilter.toLowerCase()))
-  );
+  const filteredTournaments = state.registeredTournaments.filter(tournament => {
+    if (locationFilter === '') return true;
+    const q = locationFilter.toLowerCase();
+    const loc = (tournament.data.location || '').toLowerCase();
+    const addr = (tournament.data.venueAddress || '').toLowerCase();
+    return loc.includes(q) || addr.includes(q);
+  });
+
+  const autoSelectTournamentByGeolocation = async () => {
+    if (!navigator.geolocation) {
+      setGeoStatus('❌ この端末は位置情報に対応していません');
+      return;
+    }
+    setGeoStatus('📍 位置情報を取得中...');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        try {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const candidates = (state.registeredTournaments || [])
+            .map(t => {
+              const tLat = Number(t?.data?.venueLat);
+              const tLng = Number(t?.data?.venueLng);
+              if (!Number.isFinite(tLat) || !Number.isFinite(tLng)) return null;
+              return { t, dist: distanceKm(lat, lng, tLat, tLng) };
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.dist - b.dist);
+
+          if (candidates.length === 0) {
+            setGeoStatus('⚠️ 会場の緯度/経度が登録されている大会がありません');
+            return;
+          }
+
+          const nearest = candidates[0];
+          setSelectedTournamentId(nearest.t.id);
+          setGeoStatus(`✅ 近い大会を自動選択しました（約${nearest.dist.toFixed(1)}km）`);
+        } catch (e) {
+          console.error(e);
+          setGeoStatus('❌ 位置情報から大会の自動選択に失敗しました');
+        }
+      },
+      (err) => {
+        const msg = err?.message ? `❌ 位置情報の取得に失敗しました: ${err.message}` : '❌ 位置情報の取得に失敗しました';
+        setGeoStatus(msg);
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
+    );
+  };
   
   const [currentUser, setCurrentUser] = useState(null);
   const [myApplicantData, setMyApplicantData] = useState(null);
@@ -1483,9 +2172,15 @@ const CheckInView = ({ state, dispatch }) => {
               type="text" 
               value={locationFilter} 
               onChange={(e) => setLocationFilter(e.target.value)} 
-              placeholder="開催地でフィルター" 
+              placeholder="開催地/住所でフィルター" 
               className="input w-full mb-2"
             />
+            <button onClick={autoSelectTournamentByGeolocation} className="btn-secondary" style={{ width: '100%', marginBottom: '0.5rem' }}>
+              📍 現在地から大会を自動選択
+            </button>
+            {geoStatus && (
+              <p className="text-sm text-gray-600" style={{ marginBottom: '0.5rem' }}>{geoStatus}</p>
+            )}
             <select 
               value={selectedTournamentId} 
               onChange={(e) => setSelectedTournamentId(e.target.value)}
@@ -1497,7 +2192,7 @@ const CheckInView = ({ state, dispatch }) => {
               ) : (
                 filteredTournaments.map(tournament => (
                   <option key={tournament.id} value={tournament.id}>
-                    {tournament.data.name} ({tournament.data.location})
+                    {tournament.data.name} ({tournament.data.location}{tournament.data.venueAddress ? ` / ${tournament.data.venueAddress}` : ''})
                   </option>
                 ))
               )}
@@ -1767,6 +2462,9 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedT
           <div className="button-group">
             <button onClick={() => setAdminView('recording')} className={`btn ${adminView === 'recording' ? 'btn-active' : ''}`}>記録入力</button>
             <button onClick={() => setAdminView('settings')} className={`btn ${adminView === 'settings' ? 'btn-active' : ''}`}>設定</button>
+            <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
+            <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>
+            <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
           </div>
           <button onClick={onLogout} className="btn-logout"><LogOut size={14} />ログアウト</button>
         </div>
@@ -1781,6 +2479,9 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedT
           <div className="button-group">
             <button onClick={() => setAdminView('recording')} className={`btn ${adminView === 'recording' ? 'btn-active' : ''}`}>記録入力</button>
             <button onClick={() => setAdminView('settings')} className={`btn ${adminView === 'settings' ? 'btn-active' : ''}`}>設定</button>
+            <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
+            <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>
+            <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
           </div>
           <button onClick={onLogout} className="btn-logout"><LogOut size={14} />ログアウト</button>
         </div>
@@ -1788,6 +2489,349 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedT
       </div>
     );
   }
+  if (adminView === 'awards') {
+    return (
+      <div>
+        <div className="admin-header">
+          <div className="button-group">
+            <button onClick={() => setAdminView('recording')} className={`btn ${adminView === 'recording' ? 'btn-active' : ''}`}>記録入力</button>
+            <button onClick={() => setAdminView('settings')} className={`btn ${adminView === 'settings' ? 'btn-active' : ''}`}>設定</button>
+            <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
+            <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>
+            <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
+          </div>
+          <button onClick={onLogout} className="btn-logout"><LogOut size={14} />ログアウト</button>
+        </div>
+        <AwardsView state={state} dispatch={dispatch} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} />
+      </div>
+    );
+  }
+  if (adminView === 'program') {
+    return (
+      <div>
+        <div className="admin-header">
+          <div className="button-group">
+            <button onClick={() => setAdminView('recording')} className={`btn ${adminView === 'recording' ? 'btn-active' : ''}`}>記録入力</button>
+            <button onClick={() => setAdminView('settings')} className={`btn ${adminView === 'settings' ? 'btn-active' : ''}`}>設定</button>
+            <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
+            <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>
+            <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
+          </div>
+          <button onClick={onLogout} className="btn-logout"><LogOut size={14} />ログアウト</button>
+        </div>
+        <ProgramView state={state} />
+      </div>
+    );
+  }
+  if (adminView === 'ranking') {
+    return (
+      <div>
+        <div className="admin-header">
+          <div className="button-group">
+            <button onClick={() => setAdminView('recording')} className={`btn ${adminView === 'recording' ? 'btn-active' : ''}`}>記録入力</button>
+            <button onClick={() => setAdminView('settings')} className={`btn ${adminView === 'settings' ? 'btn-active' : ''}`}>設定</button>
+            <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
+            <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>
+            <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
+          </div>
+          <button onClick={onLogout} className="btn-logout"><LogOut size={14} />ログアウト</button>
+        </div>
+        <RankingView state={state} dispatch={dispatch} selectedTournamentId={selectedTournamentId} />
+      </div>
+    );
+  }
+};
+
+const RankingView = ({ state, dispatch, selectedTournamentId }) => {
+  const [archers, setArchers] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [shootOffType, setShootOffType] = useState(''); // 'shichuma' or 'enkin'
+  const [shichumaResults, setShichumaResults] = useState({});
+  const [enkinResults, setEnkinResults] = useState({});
+  const [currentRound, setCurrentRound] = useState(1);
+  const [isShootOffActive, setIsShootOffActive] = useState(false);
+  const [eliminatedArchers, setEliminatedArchers] = useState(new Set());
+
+  const tournaments = state.registeredTournaments || [];
+  const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
+
+  useEffect(() => {
+    const fetchArchers = async () => {
+      if (!selectedTournamentId) {
+        setArchers([]);
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
+        const result = await response.json();
+        if (result.success) {
+          const checkedIn = (result.data || []).filter(a => a.isCheckedIn);
+          setArchers(checkedIn);
+        } else {
+          setArchers([]);
+        }
+      } catch (e) {
+        console.error('RankingView fetch error', e);
+        setArchers([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchArchers();
+  }, [selectedTournamentId]);
+
+  const getTiedArchers = useCallback(() => {
+    const rankGroups = {};
+    archers.forEach(archer => {
+      const hitCount = getTotalHitCountAllStands(archer);
+      if (!rankGroups[hitCount]) {
+        rankGroups[hitCount] = [];
+      }
+      rankGroups[hitCount].push(archer);
+    });
+
+    const tiedGroups = Object.entries(rankGroups)
+      .filter(([_, group]) => group.length > 1)
+      .sort(([a], [b]) => parseInt(b) - parseInt(a));
+
+    return tiedGroups;
+  }, [archers]);
+
+  const getTotalHitCountAllStands = useCallback((archer) => {
+    const arrows1 = tournament?.data?.arrowsRound1 || state.tournament.arrowsRound1 || 0;
+    const arrows2 = tournament?.data?.arrowsRound2 || state.tournament.arrowsRound2 || 0;
+    const total = arrows1 + arrows2;
+    const results = archer?.results || {};
+    let count = 0;
+    for (let s = 1; s <= 6; s++) {
+      const arr = results[`stand${s}`] || [];
+      for (let i = 0; i < Math.min(total, arr.length); i++) {
+        if (arr[i] === 'o') count++;
+      }
+    }
+    return count;
+  }, [tournament, state.tournament]);
+
+  const startShichumaShootOff = (tiedArchers) => {
+    setShootOffType('shichuma');
+    setIsShootOffActive(true);
+    setCurrentRound(1);
+    setShichumaResults({});
+    setEliminatedArchers(new Set());
+  };
+
+  const startEnkinShootOff = (tiedArchers) => {
+    setShootOffType('enkin');
+    setIsShootOffActive(true);
+    setEnkinResults({});
+  };
+
+  const handleShichumaShot = (archerId, arrowIndex, result) => {
+    if (result === 'x') {
+      setEliminatedArchers(prev => new Set([...prev, archerId]));
+    }
+    
+    setShichumaResults(prev => ({
+      ...prev,
+      [archerId]: {
+        ...prev[archerId],
+        [`arrow${arrowIndex}`]: result
+      }
+    }));
+  };
+
+  const handleEnkinResult = (archerId, distance) => {
+    setEnkinResults(prev => ({
+      ...prev,
+      [archerId]: distance
+    }));
+  };
+
+  const getShichumaWinner = () => {
+    const remainingArchers = archers.filter(archer => !eliminatedArchers.has(archer.archerId));
+    if (remainingArchers.length === 1) {
+      return remainingArchers[0];
+    }
+    return null;
+  };
+
+  const getEnkinRanking = () => {
+    return Object.entries(enkinResults)
+      .sort(([,a], [,b]) => parseFloat(a) - parseFloat(b))
+      .map(([archerId, distance], index) => ({
+        archer: archers.find(a => a.archerId === archerId),
+        distance,
+        rank: index + 1
+      }));
+  };
+
+  const tiedGroups = getTiedArchers();
+
+  return (
+    <div className="view-container">
+      <div className="view-header">
+        <h1>順位決定戦</h1>
+      </div>
+      <div className="view-content">
+        {!selectedTournamentId ? (
+          <div className="card">大会を選択してください</div>
+        ) : isLoading ? (
+          <div className="card">読み込み中...</div>
+        ) : tiedGroups.length === 0 ? (
+          <div className="card">
+            <h2 className="card-title">同率の選手はいません</h2>
+            <p>すべての順位が確定しています</p>
+          </div>
+        ) : (
+          <>
+            <div className="card">
+              <h2 className="card-title">同率選手一覧</h2>
+              {tiedGroups.map(([hitCount, tiedArchers], index) => (
+                <div key={hitCount} className="mb-4">
+                  <h3 className="font-semibold mb-2">{hitCount}本的中 - {tiedArchers.length}名</h3>
+                  <div className="space-y-2">
+                    {tiedArchers.map(archer => (
+                      <div key={archer.archerId} className="flex justify-between items-center p-2 border rounded">
+                        <span>{archer.name} ({archer.affiliation})</span>
+                        <span>{archer.rank}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {index === 0 ? (
+                    <div className="mt-3">
+                      <p className="text-sm text-gray-600 mb-2">
+                        1位決定戦：射詰競射（4本の矢、×で即退場）
+                      </p>
+                      <button 
+                        onClick={() => startShichumaShootOff(tiedArchers)}
+                        className="btn-primary"
+                      >
+                        射詰競射を開始
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-3">
+                      <p className="text-sm text-gray-600 mb-2">
+                        {index + 1}位決定戦：遠近競射（的の中心からの距離で順位決定）
+                      </p>
+                      <button 
+                        onClick={() => startEnkinShootOff(tiedArchers)}
+                        className="btn-primary"
+                      >
+                        遠近競射を開始
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {isShootOffActive && shootOffType === 'shichuma' && (
+              <div className="card">
+                <h2 className="card-title">射詰競射中</h2>
+                <div className="mb-4">
+                  <p className="text-sm text-gray-600">
+                    ルール：4本の矢、×を出した時点で退場。最後まで的中し続けた選手が優勝
+                  </p>
+                </div>
+                {getShichumaWinner() ? (
+                  <div className="bg-green-100 p-4 rounded mb-4">
+                    <h3 className="font-bold text-green-800">優勝者決定！</h3>
+                    <p>{getShichumaWinner().name} ({getShichumaWinner().affiliation})</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {archers.filter(archer => !eliminatedArchers.has(archer.archerId)).map(archer => (
+                      <div key={archer.archerId} className="border rounded p-4">
+                        <h4 className="font-semibold mb-2">{archer.name}</h4>
+                        <div className="grid grid-cols-4 gap-2">
+                          {[0, 1, 2, 3].map(arrowIndex => {
+                            const result = shichumaResults[archer.archerId]?.[`arrow${arrowIndex}`];
+                            return (
+                              <div key={arrowIndex} className="text-center">
+                                <p className="text-sm mb-1">{arrowIndex + 1}本目</p>
+                                {result ? (
+                                  <span className={`text-2xl font-bold ${result === 'o' ? 'text-green-600' : 'text-red-600'}`}>
+                                    {result === 'o' ? '◯' : '×'}
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleShichumaShot(archer.archerId, arrowIndex, 'o')}
+                                    className="btn-circle btn-hit"
+                                    disabled={eliminatedArchers.has(archer.archerId)}
+                                  >
+                                    ◯
+                                  </button>
+                                )}
+                                {!result && !eliminatedArchers.has(archer.archerId) && (
+                                  <button
+                                    onClick={() => handleShichumaShot(archer.archerId, arrowIndex, 'x')}
+                                    className="btn-circle btn-miss ml-1"
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {eliminatedArchers.has(archer.archerId) && (
+                          <p className="text-red-600 font-semibold mt-2">退場</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isShootOffActive && shootOffType === 'enkin' && (
+              <div className="card">
+                <h2 className="card-title">遠近競射中</h2>
+                <div className="mb-4">
+                  <p className="text-sm text-gray-600">
+                    ルール：的の中心からの距離を測定し、近い順に順位を決定
+                  </p>
+                </div>
+                <div className="space-y-4">
+                  {archers.map(archer => (
+                    <div key={archer.archerId} className="border rounded p-4">
+                      <h4 className="font-semibold mb-2">{archer.name}</h4>
+                      <div className="flex items-center gap-4">
+                        <input
+                          type="number"
+                          step="0.1"
+                          placeholder="距離 (cm)"
+                          value={enkinResults[archer.archerId] || ''}
+                          onChange={(e) => handleEnkinResult(archer.archerId, e.target.value)}
+                          className="input"
+                        />
+                        <span className="text-sm text-gray-600">cm</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {Object.keys(enkinResults).length === archers.length && (
+                  <div className="mt-4">
+                    <h3 className="font-bold mb-2">遠近競射結果</h3>
+                    <div className="space-y-2">
+                      {getEnkinRanking().map(({archer, distance, rank}) => (
+                        <div key={archer.archerId} className="flex justify-between items-center p-2 border rounded">
+                          <span>{rank}位: {archer.name}</span>
+                          <span>{distance}cm</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
 };
 
 const SettingsView = ({ state, dispatch, selectedTournamentId, setSelectedTournamentId }) => {
@@ -1796,6 +2840,7 @@ const SettingsView = ({ state, dispatch, selectedTournamentId, setSelectedTourna
     arrowsRound1: state.tournament.arrowsRound1,
     arrowsRound2: state.tournament.arrowsRound2,
     archersPerStand: state.tournament.archersPerStand,
+    awardRankLimit: 3,
   });
 
   const tournaments = state.registeredTournaments || [];
@@ -1810,6 +2855,7 @@ const SettingsView = ({ state, dispatch, selectedTournamentId, setSelectedTourna
         arrowsRound1: t.data.arrowsRound1 || prev.arrowsRound1,
         arrowsRound2: t.data.arrowsRound2 || prev.arrowsRound2,
         archersPerStand: t.data.archersPerStand || prev.archersPerStand,
+        awardRankLimit: t.data.awardRankLimit || prev.awardRankLimit,
       }));
     }
   }, [selectedTournamentId, tournaments]);
@@ -1846,12 +2892,6 @@ const SettingsView = ({ state, dispatch, selectedTournamentId, setSelectedTourna
     <div className="view-container pb-6">
       <div className="view-content">
         <div className="card">
-          <label className="label">設定対象の大会</label>
-          <select value={selectedTournamentId || ''} onChange={(e) => setSelectedTournamentId(e.target.value)} className="input">
-            <option value="">-- 大会を選択 --</option>
-            {tournaments.map(t => (<option key={t.id} value={t.id}>{t.data?.name || t.id}</option>))}
-          </select>
-
           <p className="card-title">通過判定ルール</p>
           <div className="radio-group">
             {[{ value: 'all_four', label: '全て的中' }, { value: 'four_or_more', label: '4本以上的中' }, { value: 'three_or_more', label: '3本以上的中' }, { value: 'two_or_more', label: '2本以上的中' }].map(rule => (
@@ -1878,6 +2918,16 @@ const SettingsView = ({ state, dispatch, selectedTournamentId, setSelectedTourna
           <select value={localSettings.archersPerStand} onChange={(e) => setLocalSettings(prev => ({ ...prev, archersPerStand: parseInt(e.target.value) }))} className="input">
             {[6, 8, 10, 12].map(n => (<option key={n} value={n}>{n}人</option>))}
           </select>
+          <div className="divider"></div>
+          <p className="label">表彰は何位まで</p>
+          <input
+            type="number"
+            min="1"
+            max="999"
+            value={localSettings.awardRankLimit}
+            onChange={(e) => setLocalSettings(prev => ({ ...prev, awardRankLimit: Math.max(1, parseInt(e.target.value || '1')) }))}
+            className="input"
+          />
         </div>
 
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
@@ -1888,13 +2938,301 @@ const SettingsView = ({ state, dispatch, selectedTournamentId, setSelectedTourna
   );
 };
 
+const ProgramView = ({ state }) => {
+  const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
+  const [archers, setArchers] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const archersPerPage = 36;
+
+  useEffect(() => {
+    if (selectedTournamentId) localStorage.setItem('selectedTournamentId', selectedTournamentId);
+    else localStorage.removeItem('selectedTournamentId');
+  }, [selectedTournamentId]);
+
+  useEffect(() => {
+    const fetchArchers = async () => {
+      if (!selectedTournamentId) {
+        setArchers([]);
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const resp = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
+        const json = await resp.json();
+        if (json.success) {
+          const applicants = json.data || [];
+          const rankOrder = ['五級','四級','三級','弐級','壱級','初段','弐段','参段','四段','五段','錬士五段','錬士六段','教士七段','教士八段','範士八段','範士九段'];
+          const normalize = (r) => (r||'').replace('二段','弐段').replace('三段','参段').replace('二級','弐級').replace('一級','壱級');
+
+          const sorted = [...applicants].sort((a,b)=>{
+            const ar = normalize(a.rank); const br = normalize(b.rank);
+            const ai = rankOrder.indexOf(ar); const bi = rankOrder.indexOf(br);
+            if (ai !== bi) {
+              if (ai === -1) return 1;
+              if (bi === -1) return -1;
+              return ai - bi;
+            }
+            const ad = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
+            const bd = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
+            return ad.getTime() - bd.getTime();
+          }).map((s, idx)=>({ ...s, standOrder: idx+1 }));
+
+          setArchers(sorted);
+        }
+      } catch (err) {
+        console.error('ProgramView fetch error', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchArchers();
+  }, [selectedTournamentId]);
+
+  const tournaments = state.registeredTournaments || [];
+  const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
+  const attachments = useMemo(() => getStoredAttachments(selectedTournamentId), [selectedTournamentId]);
+
+  const printProgram = () => {
+    if (!selectedTournamentId) { alert('大会を選択してください'); return; }
+    const perPage = archersPerPage;
+    const pages = Math.max(1, Math.ceil(archers.length / perPage));
+    const title = tournament?.data?.name || selectedTournamentId;
+    const attachmentsForPrint = getStoredAttachments(selectedTournamentId);
+
+    const styles = `
+      body{font-family: Arial, Helvetica, sans-serif; padding:20px; color:#111}
+      h1,h2{margin:0 0 8px}
+      .tourney{margin-bottom:16px}
+      table{width:100%;border-collapse:collapse;margin-top:8px}
+      th,td{border:1px solid #ddd;padding:6px;font-size:12px}
+      th{background:#f7f7f7}
+      .page{page-break-after:always;margin-bottom:20px}
+      .att{margin-top:10px}
+      .att-item{margin:0 0 8px}
+      .att-img{max-width:100%;height:auto;border:1px solid #ddd}
+    `;
+
+    let html = `<!doctype html><html><head><meta charset="utf-8"><title>${title} プログラム</title><style>${styles}</style></head><body>`;
+
+    // Page 1: tournament info only
+    html += `<div class="page"><div class="tourney"><h1>${title}</h1>`;
+    html += `<p>${tournament?.data?.datetime || ''}</p>`;
+    html += `<p>${tournament?.data?.location || ''}</p>`;
+    html += `<p>目的: ${tournament?.data?.purpose || ''}</p>`;
+    html += `<p>主催: ${tournament?.data?.organizer || ''}</p>`;
+    html += `<p>後援: ${tournament?.data?.coOrganizer || ''}</p>`;
+    html += `<p>主管: ${tournament?.data?.administrator || ''}</p>`;
+    html += `<p>種目: ${tournament?.data?.event || ''}</p>`;
+    html += `<p>種類: ${tournament?.data?.type || ''}</p>`;
+    html += `<p>種別: ${tournament?.data?.category || ''}</p>`;
+    html += `<p>内容: ${tournament?.data?.description || ''}</p>`;
+    html += `<p>競技方法: ${tournament?.data?.competitionMethod || ''}</p>`;
+    html += `<p>表彰: ${tournament?.data?.award || ''}</p>`;
+    html += `<p>参加資格: ${tournament?.data?.qualifications || ''}</p>`;
+    html += `<p>適用規則: ${tournament?.data?.applicableRules || ''}</p>`;
+    html += `<p>申込方法: ${tournament?.data?.applicationMethod || ''}</p>`;
+    html += `<p>その他: ${tournament?.data?.remarks || ''}</p>`;
+    if (attachmentsForPrint.length > 0) {
+      html += `<div class="att"><h2 style="margin:0 0 6px">添付資料</h2><ul style="margin:0;padding-left:18px">`;
+      for (const att of attachmentsForPrint) {
+        const safeName = (att?.name || 'file').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const href = att?.dataUrl || '';
+        html += `<li style="margin:0 0 4px"><a href="${href}" target="_blank" rel="noopener noreferrer">${safeName}</a></li>`;
+      }
+      html += `</ul>`;
+      // Image previews (only for image/*)
+      for (const att of attachmentsForPrint) {
+        const href = att?.dataUrl || '';
+        const type = (att?.type || '').toLowerCase();
+        const isImage = type.startsWith('image/') || href.startsWith('data:image/');
+        if (!isImage || !href) continue;
+        const safeName = (att?.name || 'image').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        html += `<div class="att-item"><div style="font-size:12px;margin:6px 0 4px">${safeName}</div><img class="att-img" src="${href}" alt="${safeName}" /></div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div></div>`;
+
+    // Page 2..: standings table only
+    for (let p = 0; p < pages; p++) {
+      html += `<div class="page">`;
+      html += `<h2 style="margin:0 0 8px">立ち順表</h2>`;
+
+      const arrows1 = tournament?.data?.arrowsRound1 || 0;
+      const arrows2 = tournament?.data?.arrowsRound2 || 0;
+      html += `<table><thead><tr><th>#</th><th>氏名</th><th>所属</th><th>段位</th><th>1立ち目</th><th>2立ち目</th></tr></thead><tbody>`;
+
+      const start = p * perPage;
+      const end = Math.min(start + perPage, archers.length);
+      for (let i = start; i < end; i++) {
+        const a = archers[i];
+        html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td>`;
+        // 1立ち目 placeholders
+        html += `<td style="white-space:nowrap">`;
+        for (let x = 0; x < arrows1; x++) {
+          html += `<span style="display:inline-block;width:18px;height:14px;margin:0 3px;font-size:12px;line-height:14px">&nbsp;</span>`;
+        }
+        html += `</td>`;
+        // 2立ち目 placeholders
+        html += `<td style="white-space:nowrap">`;
+        for (let x = 0; x < arrows2; x++) {
+          html += `<span style="display:inline-block;width:18px;height:14px;margin:0 3px;font-size:12px;line-height:14px">&nbsp;</span>`;
+        }
+        html += `</td>`;
+        html += `</tr>`;
+      }
+
+      html += `</tbody></table></div>`;
+    }
+
+    html += `</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { alert('ポップアップがブロックされました。ポップアップを許可してください。'); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    // Give browser a moment to render
+    setTimeout(() => { win.print(); }, 300);
+  };
+
+  const totalPages = Math.max(1, Math.ceil(archers.length / archersPerPage));
+  const [currentPage, setCurrentPage] = useState(1);
+  const indexOfFirst = (currentPage - 1) * archersPerPage;
+  const indexOfLast = indexOfFirst + archersPerPage;
+  const currentArchers = archers.slice(indexOfFirst, indexOfLast);
+
+  return (
+    <div className="view-container">
+      <div className="view-header">
+        <h1>プログラム表</h1>
+        <button onClick={printProgram} className="btn-primary">印刷</button>
+      </div>
+
+      <div className="view-content">
+        {!selectedTournamentId ? (
+          <div className="card">大会を選択してください</div>
+        ) : (
+          <>
+            <div className="card" style={{ marginBottom: '1rem' }}>
+              <h2 className="card-title">大会概要</h2>
+              <p><strong>大会名:</strong> {tournament?.data?.name || '未設定'}</p>
+              <p><strong>日時:</strong> {tournament?.data?.datetime || '未設定'}</p>
+              <p><strong>場所:</strong> {tournament?.data?.location || '未設定'}</p>
+              <p><strong>目的:</strong> {tournament?.data?.purpose || '-'}</p>
+              <p><strong>主催:</strong> {tournament?.data?.organizer || '-'}</p>
+              <p><strong>後援:</strong> {tournament?.data?.coOrganizer || '-'}</p>
+              <p><strong>主管:</strong> {tournament?.data?.administrator || '-'}</p>
+              <p><strong>種目:</strong> {tournament?.data?.event || '-'}</p>
+              <p><strong>種類:</strong> {tournament?.data?.type || '-'}</p>
+              <p><strong>種別:</strong> {tournament?.data?.category || '-'}</p>
+              <p><strong>内容:</strong> {tournament?.data?.description || '-'}</p>
+              <p><strong>競技方法:</strong> {tournament?.data?.competitionMethod || '-'}</p>
+              <p><strong>表彰:</strong> {tournament?.data?.award || '-'}</p>
+              <p><strong>参加資格:</strong> {tournament?.data?.qualifications || '-'}</p>
+              <p><strong>適用規則:</strong> {tournament?.data?.applicableRules || '-'}</p>
+              <p><strong>申込方法:</strong> {tournament?.data?.applicationMethod || '-'}</p>
+              <p><strong>その他:</strong> {tournament?.data?.remarks || '-'}</p>
+            </div>
+
+            <div className="card" style={{ marginBottom: '1rem' }}>
+              <h2 className="card-title">添付資料</h2>
+              {attachments.length > 0 ? (
+                <div className="space-y-2">
+                  {attachments.map((att, idx) => (
+                    <div key={`${att?.name || 'file'}_${idx}`} className="flex items-center justify-between">
+                      <a className="text-sm text-blue-600 hover:underline" href={att?.dataUrl || ''} target="_blank" rel="noopener noreferrer">
+                        {att?.name || `file_${idx+1}`}
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">添付資料はありません</p>
+              )}
+            </div>
+
+            <div className="card">
+              <h2 className="card-title">立ち順表</h2>
+              <div className="table-responsive">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">所属</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {isLoading && archers.length === 0 ? (
+                      <tr><td colSpan="4" className="px-4 py-4 text-center">読み込み中...</td></tr>
+                    ) : archers.length === 0 ? (
+                      <tr><td colSpan="4" className="px-4 py-4 text-center">選手が登録されていません</td></tr>
+                    ) : (
+                      currentArchers.map(a => (
+                        <tr key={a.archerId}>
+                          <td className="px-4 py-3 text-sm font-medium">{a.standOrder}</td>
+                          <td className="px-4 py-3">{a.name}</td>
+                          <td className="px-4 py-3">{a.affiliation}</td>
+                          <td className="px-4 py-3 text-center">{a.rank}</td>
+                          <td className="px-4 py-3">
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                              {Array.from({ length: (tournament?.data?.arrowsRound1 || 0) }).map((_, idx) => (
+                                <span key={idx} className="inline-flex items-center justify-center w-6 h-4 text-xs text-gray-600">&nbsp;</span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                              {Array.from({ length: (tournament?.data?.arrowsRound2 || 0) }).map((_, idx) => (
+                                <span key={idx} className="inline-flex items-center justify-center w-6 h-4 text-xs text-gray-600">&nbsp;</span>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {archers.length > archersPerPage && (
+                <div className="flex items-center justify-between mt-4">
+                  <div>
+                    <p className="text-sm">{indexOfFirst + 1} 〜 {Math.min(indexOfLast, archers.length)} / {archers.length} 名</p>
+                  </div>
+                  <div className="flex space-x-1">
+                    <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage === 1} className="btn">前へ</button>
+                    <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                      {Array.from({ length: totalPages }, (_, i) => (
+                        <button key={i} onClick={() => setCurrentPage(i+1)} className={`btn ${currentPage === i+1 ? 'btn-active' : ''}`}>{i+1}</button>
+                      ))}
+                    </div>
+                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage === totalPages} className="btn">次へ</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const TournamentSetupView = ({ state, dispatch }) => {
   const [copied, setCopied] = useState(false);
   const [tournamentId, setTournamentId] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
+  const [geocodeStatus, setGeocodeStatus] = useState('');
+  const [isGeocoding, setIsGeocoding] = useState(false);
   const [formData, setFormData] = useState({
-    name: '', datetime: '', location: '', organizer: '', coOrganizer: '', administrator: '', purpose: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '',
+    name: '', datetime: '', location: '', venueAddress: '', venueLat: '', venueLng: '', organizer: '', coOrganizer: '', administrator: '', purpose: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '',
+    attachments: [],
     divisions: [
       { id: 'lower', label: '級位~三段以下の部' },
       { id: 'middle', label: '四・五段の部' },
@@ -1921,11 +3259,173 @@ const TournamentSetupView = ({ state, dispatch }) => {
     { id: 'title', label: '称号者の部', minRank: '錬士五段', maxRank: '範士九段' }
   ];
 
+  const handleGeocodeAddress = async () => {
+    const addrRaw = (formData.venueAddress || '').trim();
+    if (!addrRaw) {
+      setGeocodeStatus('❌ 会場住所を入力してください');
+      return;
+    }
+    const postalMatch = addrRaw.match(/\b\d{3}-?\d{4}\b/);
+    const postal = postalMatch ? postalMatch[0].replace('-', '') : '';
+    const normalizeQuery = (s) => {
+      if (!s) return '';
+      const toHalfWidth = (str) => {
+        // Numbers and some symbols to half-width
+        return String(str)
+          .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+          .replace(/[Ａ-Ｚａ-ｚ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+          .replace(/[，、]/g, ',')
+          .replace(/[．。]/g, '.')
+          .replace(/[：]/g, ':')
+          .replace(/[（]/g, '(')
+          .replace(/[）]/g, ')')
+          .replace(/[－ー―‐‑‒–—−]/g, '-')
+          .replace(/[　]/g, ' ');
+      };
+
+      return toHalfWidth(s)
+        .replace(/\(.*?\)/g, ' ')
+        .replace(/（.*?）/g, ' ')
+        .replace(/〒\s*\d{3}-?\d{4}/g, ' ')
+        .replace(/〒/g, ' ')
+        .replace(/\bJapan\b/gi, ' ')
+        .replace(/\b日本\b/g, ' ')
+        .replace(/TEL[:：]?\s*\d{2,4}-\d{2,4}-\d{3,4}/gi, ' ')
+        .replace(/\d{2,4}-\d{2,4}-\d{3,4}/g, ' ')
+        // try to normalize Japanese block numbers
+        .replace(/(\d+)丁目/g, '$1-')
+        .replace(/(\d+)番地?/g, '$1-')
+        .replace(/(\d+)号/g, '$1')
+        .replace(/[\s,]+/g, ' ')
+        .trim();
+    };
+    const addr = normalizeQuery(addrRaw);
+
+    const tryQueries = [];
+    if (addr) tryQueries.push(addr);
+
+    // If postal code exists, also try with it (Nominatim sometimes matches better)
+    if (postal) {
+      const formattedPostal = postal.length === 7 ? `${postal.slice(0, 3)}-${postal.slice(3)}` : postal;
+      const withPostal = normalizeQuery(`${formattedPostal} ${addr}`);
+      if (withPostal && !tryQueries.includes(withPostal)) tryQueries.push(withPostal);
+    }
+
+    // Remove common building keywords (keep the rest)
+    const noBuilding = normalizeQuery(addr.replace(/(武道館|体育館|道場|弓道場|会館|ホール|センター|公民館|市民会館|県立|市立)/g, ''));
+    if (noBuilding && noBuilding !== addr) tryQueries.push(noBuilding);
+    // Remove trailing block names after comma-like spaces
+    const noLastToken = normalizeQuery(addr.split(' ').slice(0, -1).join(' '));
+    if (noLastToken && noLastToken !== addr && noLastToken !== noBuilding) tryQueries.push(noLastToken);
+
+    // Remove number-heavy tail (often helps with Japanese addresses)
+    const coarse = normalizeQuery(addr.replace(/\d[\d-]*/g, ' '));
+    if (coarse && coarse !== addr && coarse !== noBuilding && !tryQueries.includes(coarse)) tryQueries.push(coarse);
+
+    setIsGeocoding(true);
+    setGeocodeStatus('📍 住所から座標を取得中...');
+    try {
+      let found = null;
+      for (const q of tryQueries) {
+        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=jp&addressdetails=1&q=${encodeURIComponent(q)}`;
+        const resp = await fetch(url, {
+          headers: {
+            'Accept': 'application/json',
+            'Accept-Language': 'ja'
+          }
+        });
+        if (!resp.ok) {
+          continue;
+        }
+        const data = await resp.json();
+        const first = Array.isArray(data) ? data.find(x => x?.lat && x?.lon) : null;
+        if (first) {
+          found = first;
+          break;
+        }
+      }
+
+      if (!found) {
+        // Fallback: GSI (Geospatial Information Authority of Japan) address search
+        // https://msearch.gsi.go.jp/address-search/AddressSearch?q=...
+        let gsiFound = null;
+        for (const q of tryQueries) {
+          const gsiUrl = `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(q)}`;
+          const resp = await fetch(gsiUrl, { headers: { 'Accept': 'application/json' } });
+          if (!resp.ok) continue;
+          const data = await resp.json();
+          const first = Array.isArray(data) ? data.find(x => Array.isArray(x?.geometry?.coordinates) && x.geometry.coordinates.length >= 2) : null;
+          if (first) {
+            gsiFound = first;
+            break;
+          }
+        }
+
+        if (!gsiFound) {
+          setGeocodeStatus('⚠️ 住所から座標を取得できませんでした（住所を短くする/市区町村までにする/時間をおく などを試してください）');
+          return;
+        }
+
+        const [lng, lat] = gsiFound.geometry.coordinates;
+        setFormData(prev => ({ ...prev, venueLat: String(lat), venueLng: String(lng) }));
+        setGeocodeStatus('✅ 座標を取得しました（国土地理院）');
+        return;
+      }
+
+      setFormData(prev => ({ ...prev, venueLat: String(found.lat), venueLng: String(found.lon) }));
+      setGeocodeStatus('✅ 座標を取得しました（Nominatim）');
+    } catch (e) {
+      console.error('Nominatim geocode error:', e);
+      setGeocodeStatus('❌ 座標取得に失敗しました（時間をおいて再試行してください）');
+    } finally {
+      setIsGeocoding(false);
+    }
+  };
+
   const handleLoadTemplateSafe = (template) => {
     const data = template.data || {};
-    setFormData({ ...defaultDivisions && { divisions: defaultDivisions }, ...data, divisions: data.divisions || defaultDivisions });
+    const storedAttachments = getStoredAttachments(template.id);
+    setFormData(normalizeTournamentFormData(data, defaultDivisions, storedAttachments));
     setTournamentId(template.id);
     setIsEditing(true);
+  };
+
+  const handleAttachmentsChange = async (files) => {
+    const list = Array.from(files || []);
+    if (list.length === 0) return;
+    try {
+      const readAsDataUrl = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          dataUrl: typeof reader.result === 'string' ? reader.result : ''
+        });
+        reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました'));
+        reader.readAsDataURL(file);
+      });
+
+      const newAttachments = await Promise.all(list.map(readAsDataUrl));
+      setFormData(prev => ({
+        ...prev,
+        attachments: [
+          ...(Array.isArray(prev.attachments) ? prev.attachments : []),
+          ...newAttachments
+        ]
+      }));
+    } catch (e) {
+      console.error(e);
+      alert('添付ファイルの読み込みに失敗しました');
+    }
+  };
+
+  const handleRemoveAttachment = (index) => {
+    setFormData(prev => {
+      const next = Array.isArray(prev.attachments) ? prev.attachments.slice() : [];
+      next.splice(index, 1);
+      return { ...prev, attachments: next };
+    });
   };
   
   const handleAddDivision = () => {
@@ -1937,7 +3437,6 @@ const TournamentSetupView = ({ state, dispatch }) => {
   const handleRemoveDivision = (index) => {
     setFormData(prev => {
       const ds = (prev.divisions || []).slice();
-      if (ds.length <= 3) return prev; 
       ds.splice(index, 1);
       return { ...prev, divisions: ds };
     });
@@ -1950,30 +3449,40 @@ const TournamentSetupView = ({ state, dispatch }) => {
     });
   };
   const handleSaveTournament = async () => {
-    if (!formData.name || !formData.datetime || !formData.location) { 
-      alert('大会名、開催日時、開催場所は必須です'); 
+    if (!formData.name || !formData.datetime || !formData.location || !formData.purpose || !formData.organizer || !formData.coOrganizer || !formData.administrator || !formData.event || !formData.type || !formData.category || !formData.description || !formData.competitionMethod || !formData.award || !formData.qualifications || !formData.applicableRules || !formData.applicationMethod || !formData.remarks) { 
+      alert('大会名、目的、主催、後援、主管、期日、会場、種目、種類、種別、内容、競技方法、表彰、参加資格、適用規則、申込方法、その他必要事項は必須です'); 
       return; 
     }
     
     try {
       const newId = isEditing && tournamentId ? tournamentId : generateTournamentId();
+
+      setStoredAttachments(newId, formData.attachments);
+
+      const { attachments, ...dataWithoutAttachments } = formData;
       
       const response = await fetch(`${API_URL}/tournaments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: newId,
-          data: formData
+          data: dataWithoutAttachments
         })
       });
 
-      const result = await response.json();
+      const text = await response.text();
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch {
+        throw new Error(`サーバー応答が不正です (status: ${response.status})`);
+      }
       
       if (result.success) {
         setTournamentId(newId);
         setIsEditing(true);
-        dispatch({ type: 'SAVE_TOURNAMENT_TEMPLATE', payload: { id: newId, data: formData } });
-        dispatch({ type: 'UPDATE_TOURNAMENT_INFO', payload: { id: newId, name: formData.name } });
+        dispatch({ type: 'SAVE_TOURNAMENT_TEMPLATE', payload: { id: newId, data: dataWithoutAttachments } });
+        dispatch({ type: 'UPDATE_TOURNAMENT_INFO', payload: { id: newId, name: dataWithoutAttachments.name } });
         alert(isEditing ? '大会情報を更新しました' : '大会を登録しました');
       } else {
         throw new Error(result.message || '保存に失敗しました');
@@ -1985,10 +3494,11 @@ const TournamentSetupView = ({ state, dispatch }) => {
   };
   
   const handleResetForm = () => {
-    setFormData({ name: '', datetime: '', location: '', organizer: '', coOrganizer: '', administrator: '', purpose: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '', divisions: defaultDivisions });
+    setFormData(normalizeTournamentFormData({}, defaultDivisions, []));
     setTournamentId(null);
     setIsEditing(false);
     setCopied(false);
+    setGeocodeStatus('');
   };
   
   const handleDeleteTemplate = async (id) => {
@@ -2075,18 +3585,66 @@ const TournamentSetupView = ({ state, dispatch }) => {
           <input type="text" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="大会名 *" className="input" />
           <input type="datetime-local" value={formData.datetime} onChange={(e) => handleInputChange('datetime', e.target.value)} className="input" />
           <input type="text" value={formData.location} onChange={(e) => handleInputChange('location', e.target.value)} placeholder="開催場所 *" className="input" />
-          <input type="text" value={formData.organizer} onChange={(e) => handleInputChange('organizer', e.target.value)} placeholder="主催" className="input" />
+          <input type="text" value={formData.venueAddress} onChange={(e) => handleInputChange('venueAddress', e.target.value)} placeholder="会場住所（プログラム表には表示されません）" className="input" />
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button type="button" onClick={handleGeocodeAddress} className="btn-secondary" disabled={isGeocoding} style={{ whiteSpace: 'nowrap' }}>
+              {isGeocoding ? '取得中...' : '住所から座標取得'}
+            </button>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+              {geocodeStatus && <p className="text-sm text-gray-600" style={{ margin: 0 }}>{geocodeStatus}</p>}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <input type="text" value={formData.venueLat} onChange={(e) => handleInputChange('venueLat', e.target.value)} placeholder="緯度（自動受付用）" className="input" />
+            <input type="text" value={formData.venueLng} onChange={(e) => handleInputChange('venueLng', e.target.value)} placeholder="経度（自動受付用）" className="input" />
+          </div>
+          <input type="text" value={formData.purpose} onChange={(e) => handleInputChange('purpose', e.target.value)} placeholder="目的 *" className="input" />
+          <input type="text" value={formData.organizer} onChange={(e) => handleInputChange('organizer', e.target.value)} placeholder="主催 *" className="input" />
+          <input type="text" value={formData.coOrganizer} onChange={(e) => handleInputChange('coOrganizer', e.target.value)} placeholder="後援 *" className="input" />
+          <input type="text" value={formData.administrator} onChange={(e) => handleInputChange('administrator', e.target.value)} placeholder="主管 *" className="input" />
+          <div style={{ marginTop: '0.5rem' }}>
+            <p className="label">添付資料（PDF/Excel/Word等・複数可）</p>
+            <input
+              type="file"
+              multiple
+              onChange={(e) => handleAttachmentsChange(e.target.files)}
+              className="input"
+            />
+            {Array.isArray(formData.attachments) && formData.attachments.length > 0 && (
+              <div style={{ marginTop: '0.5rem' }}>
+                {formData.attachments.map((att, idx) => (
+                  <div key={`${att?.name || 'file'}_${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <a href={att?.dataUrl || ''} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
+                      {att?.name || `file_${idx+1}`}
+                    </a>
+                    <button type="button" className="btn-fix" onClick={() => handleRemoveAttachment(idx)}>削除</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div style={{ marginTop: '0.5rem' }}>
             <p className="label">大会要項</p>
-            <input type="text" value={formData.event} onChange={(e) => handleInputChange('event', e.target.value)} placeholder="種目" className="input" />
-            <input type="text" value={formData.competitionMethod} onChange={(e) => handleInputChange('competitionMethod', e.target.value)} placeholder="競技方法" className="input" />
+            <input type="text" value={formData.event} onChange={(e) => handleInputChange('event', e.target.value)} placeholder="種目 *" className="input" />
+            <input type="text" value={formData.type} onChange={(e) => handleInputChange('type', e.target.value)} placeholder="種類 *" className="input" />
+            <input type="text" value={formData.category} onChange={(e) => handleInputChange('category', e.target.value)} placeholder="種別 *" className="input" />
+            <input type="text" value={formData.description} onChange={(e) => handleInputChange('description', e.target.value)} placeholder="内容 *" className="input" />
+            <input type="text" value={formData.competitionMethod} onChange={(e) => handleInputChange('competitionMethod', e.target.value)} placeholder="競技方法 *" className="input" />
+            <input type="text" value={formData.award} onChange={(e) => handleInputChange('award', e.target.value)} placeholder="表彰 *" className="input" />
+            <input type="text" value={formData.qualifications} onChange={(e) => handleInputChange('qualifications', e.target.value)} placeholder="参加資格 *" className="input" />
+            <input type="text" value={formData.applicableRules} onChange={(e) => handleInputChange('applicableRules', e.target.value)} placeholder="適用規則 *" className="input" />
+            <input type="text" value={formData.applicationMethod} onChange={(e) => handleInputChange('applicationMethod', e.target.value)} placeholder="申込方法 *" className="input" />
+            <input type="text" value={formData.remarks} onChange={(e) => handleInputChange('remarks', e.target.value)} placeholder="その他必要事項 *" className="input" />
             
             <div style={{ marginTop: '0.75rem' }}>
-              <p className="label">部門設定(最低3つ)</p>
+              <p className="label">部門設定</p>
               {formData.divisions && (() => {
                 const rankOptions = ['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
                 return (
                   <>
+                    {(formData.divisions || []).length === 0 && (
+                      <p className="text-sm text-gray-500" style={{ marginBottom: '0.5rem' }}>部門がありません。「部門を追加」から追加してください。</p>
+                    )}
                     {formData.divisions.map((d, idx) => (
                       <div key={d.id} className="division-row" style={{ marginBottom: '0.5rem', alignItems: 'center' }}>
                         <input
@@ -2115,7 +3673,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
                           {rankOptions.map(r => (<option key={r} value={r}>{r}</option>))}
                         </select>
                         <div className="division-actions" style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.5rem' }}>
-                          <button type="button" className="btn-fix" onClick={() => handleRemoveDivision(idx)} disabled={(formData.divisions || []).length <= 3}>削除</button>
+                          <button type="button" className="btn-fix" onClick={() => handleRemoveDivision(idx)}>削除</button>
                         </div>
                       </div>
                     ))}
