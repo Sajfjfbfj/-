@@ -3,9 +3,6 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "engines": {
-    "node": "18.x"
-  },
   "scripts": {
     "dev": "concurrently \"npm run server\" \"vite\"",
     "dev:client": "vite",
@@ -13,7 +10,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "NODE_ENV=production node server.js",
+    "start": "set NODE_ENV=production && node server.js",
     "heroku-postbuild": "npm install && npm run build",
     "vercel-build": "npm run build"
   },
