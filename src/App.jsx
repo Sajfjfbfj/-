@@ -370,7 +370,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     }
   }, [selectedTournamentId]);
 
-  // 自動更新 (リアルタイム表示用) - 10秒ごとに更新（負荷軽減のため5秒から10秒に延長）
+  // 自動更新 (リアルタイム表示用) - 10秒ごとに更新(負荷軽減のため5秒から10秒に延長)
   useEffect(() => {
     if (!selectedTournamentId || !autoRefresh) return;
     const interval = setInterval(() => {
@@ -793,7 +793,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
 
   const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
   const localDefaultDivisions = [
-    { id: 'lower', label: '級位～三段以下の部' },
+    { id: 'lower', label: '級位~三段以下の部' },
     { id: 'middle', label: '四・五段の部' },
     { id: 'title', label: '称号者の部' }
   ];
@@ -871,7 +871,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
     }
   }, [selectedTournamentId]);
 
-  // リアルタイム同期（3秒ごとに他の端末の入力を反映）
+  // リアルタイム同期(3秒ごとに他の端末の入力を反映)
   useEffect(() => {
     if (!selectedTournamentId) return;
     const interval = setInterval(() => {
@@ -894,7 +894,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
   // API経由で記録を保存
   const saveResultToApi = async (archerId, standNum, arrowIndex, result) => {
     try {
-      await fetch(`${API_URL}/results`.replace(/\/\//g, '/'), {
+      await fetch(`${API_URL}/results`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -906,7 +906,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
           round: selectedRound // ラウンド情報を追加
         })
       });
-      // 更新後にデータを再取得（同期）
+      // 更新後にデータを再取得(同期)
       fetchAndSortArchers(true);
     } catch (error) {
       console.error('記録保存エラー:', error);
@@ -915,7 +915,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
   };
 
   const handleRecord = (archerId, standNum, arrowIndex, result) => {
-    // 楽観的UI更新（即時反映）
+    // 楽観的UI更新(即時反映)
     const archer = archers.find(a => a.archerId === archerId);
     if (!archer) return;
 
@@ -1450,7 +1450,7 @@ const CheckInView = ({ state, dispatch }) => {
       const day = date.getDate();
       const hours = String(date.getHours()).padStart(2, '0');
       const minutes = String(date.getMinutes()).padStart(2, '0');
-      return `${year}年${month}月${day}日（${weekday}） ${hours}:${minutes}`;
+      return `${year}年${month}月${day}日(${weekday}) ${hours}:${minutes}`;
     } catch (error) {
       return datetime;
     }
@@ -1567,7 +1567,7 @@ const CheckInView = ({ state, dispatch }) => {
                       onClick={() => setShowManualInput(true)}
                       style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '0.875rem', textDecoration: 'underline', marginTop: '0.5rem' }}
                     >
-                      🔍 ID手動入力・スキャン（係員用）
+                      📝 ID手動入力・スキャン(係員用)
                     </button>
                   ) : (
                     <button 
@@ -1896,7 +1896,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
   const [formData, setFormData] = useState({
     name: '', datetime: '', location: '', organizer: '', coOrganizer: '', administrator: '', purpose: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '',
     divisions: [
-      { id: 'lower', label: '級位～三段以下の部' },
+      { id: 'lower', label: '級位~三段以下の部' },
       { id: 'middle', label: '四・五段の部' },
       { id: 'title', label: '称号者の部' }
     ]
@@ -1916,7 +1916,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
 
   const handleInputChange = (field, value) => { setFormData(prev => ({ ...prev, [field]: value })); };
   const defaultDivisions = [
-    { id: 'lower', label: '級位～三段以下の部', minRank: '五級', maxRank: '参段' },
+    { id: 'lower', label: '級位~三段以下の部', minRank: '五級', maxRank: '参段' },
     { id: 'middle', label: '四・五段の部', minRank: '四段', maxRank: '五段' },
     { id: 'title', label: '称号者の部', minRank: '錬士五段', maxRank: '範士九段' }
   ];
@@ -2082,7 +2082,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
             <input type="text" value={formData.competitionMethod} onChange={(e) => handleInputChange('competitionMethod', e.target.value)} placeholder="競技方法" className="input" />
             
             <div style={{ marginTop: '0.75rem' }}>
-              <p className="label">部門設定（最低3つ）</p>
+              <p className="label">部門設定(最低3つ)</p>
               {formData.divisions && (() => {
                 const rankOptions = ['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
                 return (
