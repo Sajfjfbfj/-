@@ -25,7 +25,7 @@ if (MONGODB_URI) {
   const maskedUri = MONGODB_URI.replace(/\/\/([^:]+):([^@]+)@/, '//$1:****@');
   console.log('  - MONGODB_URI (masked):', maskedUri);
 } else {
-  console.log('  ❌ MONGODB_URI が設定されていません！');
+  console.log('  ❌ MONGODB_URI が設定されていません!');
   console.log('  .envファイルを確認してください');
 }
 console.log('==========================================\n');
@@ -212,7 +212,7 @@ app.post('/api/checkin', async (req, res) => {
   }
 });
 
-// 7. 【新規】結果記録 (リアルタイム更新用)
+// 7. 結果記録 (リアルタイム更新用)
 app.post('/api/results', async (req, res) => {
   try {
     const db = await connectToDatabase();
@@ -256,6 +256,56 @@ app.post('/api/results', async (req, res) => {
 
   } catch (error) {
     console.error('❌ POST /api/results error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 8. 射詰競射結果保存
+app.post('/api/ranking/shichuma', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, archerId, arrowIndex, result } = req.body;
+
+    if (!tournamentId || !archerId || arrowIndex === undefined) {
+      return res.status(400).json({ success: false, message: 'Missing parameters' });
+    }
+
+    const updatePath = `shichumaResults.arrow${arrowIndex}`;
+
+    await db.collection('applicants').updateOne(
+      { tournamentId, archerId },
+      { $set: { [updatePath]: result } }
+    );
+
+    console.log(`🎯 Shichuma Result Updated: ${archerId} arrow${arrowIndex} = ${result}`);
+    res.status(200).json({ success: true });
+
+  } catch (error) {
+    console.error('❌ POST /api/ranking/shichuma error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 9. 遠近競射結果保存
+app.post('/api/ranking/enkin', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, archerId, distance } = req.body;
+
+    if (!tournamentId || !archerId || distance === undefined) {
+      return res.status(400).json({ success: false, message: 'Missing parameters' });
+    }
+
+    await db.collection('applicants').updateOne(
+      { tournamentId, archerId },
+      { $set: { enkinDistance: distance } }
+    );
+
+    console.log(`🎯 Enkin Result Updated: ${archerId} distance = ${distance}`);
+    res.status(200).json({ success: true });
+
+  } catch (error) {
+    console.error('❌ POST /api/ranking/enkin error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

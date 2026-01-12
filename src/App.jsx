@@ -80,7 +80,7 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
   const tournaments = state.registeredTournaments || [];
   const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
 
-  const rankOrder = useMemo(() => (['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段']), []);
+  const rankOrder = useMemo(() => (['無指定', '五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段']), []);
   const normalizeRank = useCallback((rank) => {
     if (!rank) return '';
     return rank
@@ -633,7 +633,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     tournament.id
   );
 
-  const rankOrder = ['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
+  const rankOrder = ['無指定', '五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
 
   const getRankCategory = (rankStr) => {
     const ceremonyRanks = ['錬士', '教士', '範士'];
@@ -1397,7 +1397,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
   useEffect(() => { localStorage.setItem('recording_selectedRound', selectedRound); }, [selectedRound]);
 
   const tournament = state.tournament;
-  const rankOrder = ['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
+  const rankOrder = ['無指定', '五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
   
   const getCurrentArrowsPerStand = () => {
     return selectedRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
@@ -2551,33 +2551,47 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   const [currentRound, setCurrentRound] = useState(1);
   const [isShootOffActive, setIsShootOffActive] = useState(false);
   const [eliminatedArchers, setEliminatedArchers] = useState(new Set());
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const tournaments = state.registeredTournaments || [];
   const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
 
+  // リアルタイム同期(3秒ごとに他の端末の入力を反映)
   useEffect(() => {
-    const fetchArchers = async () => {
-      if (!selectedTournamentId) {
+    if (!selectedTournamentId) return;
+    const interval = setInterval(() => {
+      fetchArchers(true);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [selectedTournamentId]);
+
+  const fetchArchers = async (background = false) => {
+    if (!selectedTournamentId) {
+      setArchers([]);
+      return;
+    }
+    if (!background) setIsLoading(true);
+    else setIsSyncing(true);
+    
+    try {
+      const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
+      const result = await response.json();
+      if (result.success) {
+        const checkedIn = (result.data || []).filter(a => a.isCheckedIn);
+        setArchers(checkedIn);
+      } else {
         setArchers([]);
-        return;
       }
-      setIsLoading(true);
-      try {
-        const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
-        const result = await response.json();
-        if (result.success) {
-          const checkedIn = (result.data || []).filter(a => a.isCheckedIn);
-          setArchers(checkedIn);
-        } else {
-          setArchers([]);
-        }
-      } catch (e) {
-        console.error('RankingView fetch error', e);
-        setArchers([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    } catch (e) {
+      console.error('RankingView fetch error', e);
+      setArchers([]);
+    } finally {
+      setIsLoading(false);
+      setIsSyncing(false);
+    }
+  };
+
+  useEffect(() => {
     fetchArchers();
   }, [selectedTournamentId]);
 
@@ -2613,6 +2627,73 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
     return count;
   }, [tournament, state.tournament]);
 
+  // API経由で射詰競射結果を保存
+  const saveShichumaResultToApi = async (archerId, arrowIndex, result) => {
+    try {
+      const response = await fetch(`${API_URL}/ranking/shichuma`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournamentId: selectedTournamentId,
+          archerId,
+          arrowIndex,
+          result
+        })
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.warn('射詰競射APIエンドポイントが未実装です');
+          return; // ローカルのみで処理を続行
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      // 更新後にデータを再取得(同期)
+      fetchArchers(true);
+    } catch (error) {
+      console.error('射詰競射結果保存エラー:', error);
+      if (error.message.includes('404')) {
+        // 404エラーは通知しない（バックエンド未実装）
+        return;
+      }
+      alert('射詰競射結果の保存に失敗しました: ' + error.message);
+    }
+  };
+
+  // API経由で遠近競射結果を保存
+  const saveEnkinResultToApi = async (archerId, distance) => {
+    try {
+      const response = await fetch(`${API_URL}/ranking/enkin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournamentId: selectedTournamentId,
+          archerId,
+          distance
+        })
+      });
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.warn('遠近競射APIエンドポイントが未実装です');
+          return; // ローカルのみで処理を続行
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      // 更新後にデータを再取得(同期)
+      fetchArchers(true);
+    } catch (error) {
+      console.error('遠近競射結果保存エラー:', error);
+      if (error.message.includes('404')) {
+        // 404エラーは通知しない（バックエンド未実装）
+        return;
+      }
+      alert('遠近競射結果の保存に失敗しました: ' + error.message);
+    }
+  };
+
   const startShichumaShootOff = (tiedArchers) => {
     setShootOffType('shichuma');
     setIsShootOffActive(true);
@@ -2632,6 +2713,7 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
       setEliminatedArchers(prev => new Set([...prev, archerId]));
     }
     
+    // 楽観的UI更新(即時反映)
     setShichumaResults(prev => ({
       ...prev,
       [archerId]: {
@@ -2639,13 +2721,20 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
         [`arrow${arrowIndex}`]: result
       }
     }));
+    
+    // API経由で結果を保存(リアルタイム同期)
+    saveShichumaResultToApi(archerId, arrowIndex, result);
   };
 
   const handleEnkinResult = (archerId, distance) => {
+    // 楽観的UI更新(即時反映)
     setEnkinResults(prev => ({
       ...prev,
       [archerId]: distance
     }));
+    
+    // API経由で結果を保存(リアルタイム同期)
+    saveEnkinResultToApi(archerId, distance);
   };
 
   const getShichumaWinner = () => {
@@ -2671,7 +2760,15 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   return (
     <div className="view-container">
       <div className="view-header">
-        <h1>順位決定戦</h1>
+        <div className="flex items-center gap-2">
+          <h1>順位決定戦</h1>
+          {isSyncing && (
+            <span className="text-sm text-blue-600 flex items-center gap-1">
+              <RefreshCw size={14} className="animate-spin" />
+              同期中
+            </span>
+          )}
+        </div>
       </div>
       <div className="view-content">
         {!selectedTournamentId ? (
@@ -2961,7 +3058,7 @@ const ProgramView = ({ state }) => {
         const json = await resp.json();
         if (json.success) {
           const applicants = json.data || [];
-          const rankOrder = ['五級','四級','三級','弐級','壱級','初段','弐段','参段','四段','五段','錬士五段','錬士六段','教士七段','教士八段','範士八段','範士九段'];
+          const rankOrder = ['無指定','五級','四級','三級','弐級','壱級','初段','弐段','参段','四段','五段','錬士五段','錬士六段','教士七段','教士八段','範士八段','範士九段'];
           const normalize = (r) => (r||'').replace('二段','弐段').replace('三段','参段').replace('二級','弐級').replace('一級','壱級');
 
           const sorted = [...applicants].sort((a,b)=>{
@@ -3731,6 +3828,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
   });
 
   const rankOrder = [
+    '無指定',
     '五級', '四級', '三級', '弐級', '壱級',
     '初段', '弐段', '参段', '四段', '五段',
     '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'
@@ -3807,7 +3905,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
   };
 
   const handleApply = async () => {
-    if (!selectedTournamentId || !formData.name || !formData.affiliation || !formData.rankAcquiredDate) {
+    if (!selectedTournamentId || !formData.name || !formData.affiliation || (formData.rank !== '無指定' && !formData.rankAcquiredDate)) {
       alert('すべての必須項目を入力してください');
       return;
     }
@@ -3915,27 +4013,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
             </select>
           </div>
           
-          <div className="mt-4">
-            <label className="flex items-center space-x-2">
-              <input 
-                type="radio" 
-                checked={!isStaff} 
-                onChange={() => setIsStaff(false)} 
-                className="form-radio"
-              />
-              <span>選手として申し込む</span>
-            </label>
-            <label className="flex items-center space-x-2 mt-2">
-              <input 
-                type="radio" 
-                checked={isStaff} 
-                onChange={() => setIsStaff(true)} 
-                className="form-radio"
-              />
-              <span>役員として申し込む</span>
-            </label>
-          </div>
-        </div>
+                  </div>
 
         {selectedTournamentId && (
           <div className="card">
@@ -3944,16 +4022,18 @@ const ArcherSignupView = ({ state, dispatch }) => {
             <select value={formData.rank} onChange={(e) => handleInputChange('rank', e.target.value)} className="input">
               {rankOrder.map(rank => (<option key={rank} value={rank}>{rank}</option>))}
             </select>
-            <div>
-              <label>段位取得日 *</label>
-              <input 
-                type="date" 
-                value={formData.rankAcquiredDate} 
-                onChange={(e) => handleInputChange('rankAcquiredDate', e.target.value)} 
-                className="input w-full" 
-                max={new Date().toISOString().split('T')[0]}
-              />
-            </div>
+            {formData.rank !== '無指定' && (
+              <div>
+                <label>段位取得日 *</label>
+                <input 
+                  type="date" 
+                  value={formData.rankAcquiredDate} 
+                  onChange={(e) => handleInputChange('rankAcquiredDate', e.target.value)} 
+                  className="input w-full" 
+                  max={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+            )}
             <button onClick={handleApply} className="btn-primary">申し込む</button>
           </div>
         )}
