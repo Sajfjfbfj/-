@@ -310,6 +310,110 @@ app.post('/api/ranking/enkin', async (req, res) => {
   }
 });
 
+// 10. 射詰競射の最終結果保存
+app.post('/api/ranking/shichuma/final', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, shootOffType, results } = req.body;
+
+    if (!tournamentId || !results) {
+      return res.status(400).json({ success: false, message: 'Missing parameters' });
+    }
+
+    const finalData = {
+      tournamentId,
+      shootOffType,
+      results,
+      completedAt: new Date()
+    };
+
+    await db.collection('shichuma_results').updateOne(
+      { tournamentId },
+      { $set: finalData },
+      { upsert: true }
+    );
+
+    console.log(`🎯 Shichuma Final Results Saved: ${tournamentId}`);
+    res.status(200).json({ success: true, data: finalData });
+
+  } catch (error) {
+    console.error('❌ POST /api/ranking/shichuma/final error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 11. 射詰競射の結果取得
+app.get('/api/ranking/shichuma/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const result = await db.collection('shichuma_results').findOne({ tournamentId });
+
+    if (!result) {
+      return res.status(404).json({ success: false, message: 'No shichuma results found' });
+    }
+
+    res.status(200).json({ success: true, data: result });
+
+  } catch (error) {
+    console.error('❌ GET /api/ranking/shichuma error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 12. 遠近競射の最終結果保存
+app.post('/api/ranking/enkin/final', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, shootOffType, results } = req.body;
+
+    if (!tournamentId || !results) {
+      return res.status(400).json({ success: false, message: 'Missing parameters' });
+    }
+
+    const finalData = {
+      tournamentId,
+      shootOffType,
+      results,
+      completedAt: new Date()
+    };
+
+    await db.collection('enkin_results').updateOne(
+      { tournamentId },
+      { $set: finalData },
+      { upsert: true }
+    );
+
+    console.log(`🎯 Enkin Final Results Saved: ${tournamentId}`);
+    res.status(200).json({ success: true, data: finalData });
+
+  } catch (error) {
+    console.error('❌ POST /api/ranking/enkin/final error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 13. 遠近競射の結果取得
+app.get('/api/ranking/enkin/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const result = await db.collection('enkin_results').findOne({ tournamentId });
+
+    if (!result) {
+      return res.status(404).json({ success: false, message: 'No enkin results found' });
+    }
+
+    res.status(200).json({ success: true, data: result });
+
+  } catch (error) {
+    console.error('❌ GET /api/ranking/enkin error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // サーバー起動
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
