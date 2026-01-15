@@ -819,29 +819,20 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     const fetchShichumaResults = async () => {
       if (!selectedTournamentId) return;
       
-      console.log('🎯 Fetching shichuma results for tournament:', selectedTournamentId);
       setIsLoadingShichuma(true);
       try {
         const response = await fetch(`${API_URL}/ranking/shichuma/${selectedTournamentId}`);
         
-        console.log('🎯 Shichuma API response status:', response.status);
-        
         if (response.ok) {
           const result = await response.json();
-          console.log('🎯 Shichuma API response:', result);
           if (result.success) {
             setShichumaData(result.data);
-            console.log('🎯 Shichuma data loaded:', result.data);
           }
         } else if (response.status === 404) {
-          console.log('🎯 No shichuma results found (404)');
-          setShichumaData(null);
-        } else {
-          console.error('🎯 Shichuma API error:', response.status, response.statusText);
           setShichumaData(null);
         }
       } catch (error) {
-        console.error('🎯 射詰競射結果の取得エラー:', error);
+        console.error('射詰競射結果の取得エラー:', error);
         setShichumaData(null);
       } finally {
         setIsLoadingShichuma(false);
@@ -1020,39 +1011,6 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
   const paginateProgram = (pageNumber) => setCurrentPageProgram(pageNumber);
 
-  // 射詰データを再取得する関数
-  const refreshShichumaData = async () => {
-    if (!selectedTournamentId) return;
-    
-    console.log('🎯 Manually refreshing shichuma results for tournament:', selectedTournamentId);
-    setIsLoadingShichuma(true);
-    try {
-      const response = await fetch(`${API_URL}/ranking/shichuma/${selectedTournamentId}`);
-      
-      console.log('🎯 Shichuma API response status:', response.status);
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log('🎯 Shichuma API response:', result);
-        if (result.success) {
-          setShichumaData(result.data);
-          console.log('🎯 Shichuma data refreshed:', result.data);
-        }
-      } else if (response.status === 404) {
-        console.log('🎯 No shichuma results found (404)');
-        setShichumaData(null);
-      } else {
-        console.error('🎯 Shichuma API error:', response.status, response.statusText);
-        setShichumaData(null);
-      }
-    } catch (error) {
-      console.error('🎯 射詰競射結果の取得エラー:', error);
-      setShichumaData(null);
-    } finally {
-      setIsLoadingShichuma(false);
-    }
-  };
-
   if (view === 'qualifiers') {
     return (
       <div className="view-container">
@@ -1092,19 +1050,23 @@ const TournamentView = ({ state, stands, checkInCount }) => {
           >
             <ChevronLeft className="w-4 h-4 mr-1" /> 立ち順表に戻る
           </button>
-          <div className="flex justify-between items-center">
-            <h1>射詰競射結果</h1>
-            <button 
-              onClick={refreshShichumaData}
-              disabled={isLoadingShichuma}
-              className="btn-secondary flex items-center gap-2"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoadingShichuma ? 'animate-spin' : ''}`} />
-              更新
-            </button>
-          </div>
+          <h1>射詰競射結果</h1>
         </div>
         <div className="view-content">
+          {/* デバッグ情報 */}
+          <div className="card mb-4" style={{ backgroundColor: '#f0f9ff', border: '1px solid #0ea5e9' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px' }}>🔍 デバッグ情報</h3>
+            <p style={{ fontSize: '12px', margin: '4px 0' }}>大会ID: {selectedTournamentId || '未選択'}</p>
+            <p style={{ fontSize: '12px', margin: '4px 0' }}>射詰データ: {shichumaData ? 'あり' : 'なし'}</p>
+            <p style={{ fontSize: '12px', margin: '4px 0' }}>ローディング: {isLoadingShichuma ? '中' : '完了'}</p>
+            <button 
+              onClick={() => alert(`大会ID: ${selectedTournamentId}\n射詰データ: ${shichumaData ? 'あり' : 'なし'}\nローディング: ${isLoadingShichuma ? '中' : '完了'}`)}
+              style={{ fontSize: '10px', padding: '2px 6px', marginTop: '8px' }}
+            >
+              状態を確認
+            </button>
+          </div>
+          
           {isLoadingShichuma ? (
             <div className="card">
               <p className="text-gray-500">読み込み中...</p>
