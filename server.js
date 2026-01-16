@@ -290,18 +290,18 @@ app.post('/api/ranking/shichuma', async (req, res) => {
 app.post('/api/ranking/enkin', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { tournamentId, archerId, distance } = req.body;
+    const { tournamentId, archerId, rank, arrowType } = req.body;
 
-    if (!tournamentId || !archerId || distance === undefined) {
+    if (!tournamentId || !archerId || rank === undefined) {
       return res.status(400).json({ success: false, message: 'Missing parameters' });
     }
 
     await db.collection('applicants').updateOne(
       { tournamentId, archerId },
-      { $set: { enkinDistance: distance } }
+      { $set: { enkinRank: rank, enkinArrowType: arrowType || 'normal' } }
     );
 
-    console.log(`🎯 Enkin Result Updated: ${archerId} distance = ${distance}`);
+    console.log(`🎯 Enkin Result Updated: ${archerId} rank = ${rank}, arrowType = ${arrowType || 'normal'}`);
     res.status(200).json({ success: true });
 
   } catch (error) {

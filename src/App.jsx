@@ -1,4 +1,4 @@
-import React, { useState, useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
+﻿import React, { useState, useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Lock, LogOut, RotateCcw, Copy, Check, QrCode, Maximize2, Filter, X, User, Camera, RefreshCw, ChevronLeft, ChevronRight, Users } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import QRCodeScanner from './components/QRCodeScanner';
@@ -2815,6 +2815,21 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
     fetchArchers();
   }, [selectedTournamentId]);
 
+  const getTotalHitCountAllStands = useCallback((archer) => {
+    const arrows1 = tournament?.data?.arrowsRound1 || state.tournament.arrowsRound1 || 0;
+    const arrows2 = tournament?.data?.arrowsRound2 || state.tournament.arrowsRound2 || 0;
+    const total = arrows1 + arrows2;
+    const results = archer?.results || {};
+    let count = 0;
+    for (let s = 1; s <= 6; s++) {
+      const arr = results[`stand${s}`] || [];
+      for (let i = 0; i < Math.min(total, arr.length); i++) {
+        if (arr[i] === 'o') count++;
+      }
+    }
+    return count;
+  }, [tournament, state.tournament]);
+
   const getTiedArchers = useCallback(() => {
     const rankGroups = {};
     archers.forEach(archer => {
@@ -2832,20 +2847,47 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
     return tiedGroups;
   }, [archers]);
 
-  const getTotalHitCountAllStands = useCallback((archer) => {
-    const arrows1 = tournament?.data?.arrowsRound1 || state.tournament.arrowsRound1 || 0;
-    const arrows2 = tournament?.data?.arrowsRound2 || state.tournament.arrowsRound2 || 0;
-    const total = arrows1 + arrows2;
-    const results = archer?.results || {};
-    let count = 0;
-    for (let s = 1; s <= 6; s++) {
-      const arr = results[`stand${s}`] || [];
-      for (let i = 0; i < Math.min(total, arr.length); i++) {
-        if (arr[i] === 'o') count++;
+  const getNearFarArchers = useCallback(() => {
+    if (archers.length === 0) return [];
+    
+    // 的中数でグループ化
+    const rankGroups = {};
+    archers.forEach(archer => {
+      const hitCount = getTotalHitCountAllStands(archer);
+      if (!rankGroups[hitCount]) {
+        rankGroups[hitCount] = [];
       }
+      rankGroups[hitCount].push(archer);
+    });
+
+    // 的中数の多い順にソート
+    const sortedGroups = Object.entries(rankGroups)
+      .sort(([a], [b]) => parseInt(b) - parseInt(a));
+
+    if (sortedGroups.length === 0) return [];
+
+    const [maxHits, topGroup] = sortedGroups[0];
+    
+    // 1位グループが複数いる場合は遠近競射対象外
+    if (topGroup.length > 1) return [];
+
+    // 1位が1人で全中の場合、他の選手を遠近競射対象とする
+    const totalArrows = (tournament?.data?.arrowsRound1 || state.tournament.arrowsRound1 || 0) + 
+                     (tournament?.data?.arrowsRound2 || state.tournament.arrowsRound2 || 0);
+    
+    if (parseInt(maxHits) === totalArrows && topGroup.length === 1) {
+      // 全中が1人のみ → 2位以下全員が遠近競射対象
+      return archers.filter(archer => {
+        const hitCount = getTotalHitCountAllStands(archer);
+        return hitCount < parseInt(maxHits);
+      }).map(archer => ({
+        ...archer,
+        reason: '1位が全中のため遠近競射対象'
+      }));
     }
-    return count;
-  }, [tournament, state.tournament]);
+
+    return [];
+  }, [archers, getTotalHitCountAllStands, tournament, state.tournament]);
 
   // API経由で射詰競射結果を保存
   const saveShichumaResultToApi = async (archerId, arrowIndex, result) => {
@@ -2882,7 +2924,7 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   };
 
   // API経由で遠近競射結果を保存
-  const saveEnkinResultToApi = async (archerId, distance, arrowType = 'normal') => {
+  const saveEnkinResultToApi = async (archerId, rank, arrowType = 'normal') => {
     try {
       const response = await fetch(`${API_URL}/ranking/enkin`, {
         method: 'POST',
@@ -2890,7 +2932,7 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
         body: JSON.stringify({
           tournamentId: selectedTournamentId,
           archerId,
-          distance, // 的表面からの距離（mm）
+          rank, // 入力された順位
           arrowType // 'normal', 'saki', 'miss' など
         })
       });
@@ -3287,6 +3329,7 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   };
 
   const tiedGroups = getTiedArchers();
+  const nearFarArchers = getNearFarArchers();
 
   // 遠近競射の順位計算
   const calculateEnkinRanking = () => {
@@ -3294,31 +3337,31 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
       const result = enkinResults[archer.archerId] || {};
       return {
         archerId: archer.archerId,
-        distance: parseFloat(result.distance) || Infinity,
+        rank: parseInt(result.rank) || Infinity,
         arrowType: result.arrowType || 'normal',
         isTied: false
       };
     }).sort((a, b) => {
-      // 優先順位: 1. 距離が近い, 2. 矢の種類 (normal > saki > miss)
-      if (a.distance !== b.distance) {
-        return a.distance - b.distance;
+      // 優先順位: 1. 順位が低い, 2. 矢の種類 (normal > saki > miss)
+      if (a.rank !== b.rank) {
+        return a.rank - b.rank;
       }
       const typeOrder = { normal: 0, saki: 1, miss: 2 };
       return typeOrder[a.arrowType] - typeOrder[b.arrowType];
     }).map((item, index) => ({
       ...item,
-      rank: index + 1
+      calculatedRank: index + 1
     }));
   };
 
   // 遠近競射結果処理
-  const handleEnkinResult = (archerId, distance, arrowType) => {
+  const handleEnkinResult = (archerId, rank, arrowType) => {
     setEnkinResults(prev => ({
       ...prev,
-      [archerId]: { distance, arrowType }
+      [archerId]: { rank, arrowType }
     }));
     
-    saveEnkinResultToApi(archerId, distance, arrowType).catch(error => {
+    saveEnkinResultToApi(archerId, rank, arrowType).catch(error => {
       console.error('遠近競射結果保存エラー:', error);
       alert('遠近競射結果の保存に失敗しました: ' + error.message);
     });
@@ -3418,54 +3461,86 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
           <div className="card">大会を選択してください</div>
         ) : isLoading ? (
           <div className="card">読み込み中...</div>
-        ) : tiedGroups.length === 0 ? (
+        ) : tiedGroups.length === 0 && nearFarArchers.length === 0 ? (
           <div className="card">
-            <h2 className="card-title">同率の選手はいません</h2>
+            <h2 className="card-title">順位決定戦対象者はいません</h2>
             <p>すべての順位が確定しています</p>
           </div>
         ) : (
           <>
-            <div className="card">
-              <h2 className="card-title">同率選手一覧</h2>
-              {tiedGroups.map(([hitCount, tiedArchers], index) => (
-                <div key={hitCount} className="mb-4">
-                  <h3 className="font-semibold mb-2">{hitCount}本的中 - {tiedArchers.length}名</h3>
-                  <div className="space-y-2">
-                    {tiedArchers.map(archer => (
-                      <div key={archer.archerId} className="flex justify-between items-center p-2 border rounded">
-                        <span>{archer.name} ({archer.affiliation})</span>
-                        <span>{archer.rank}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {index === 0 ? (
-                    <div className="mt-3">
-                      <p className="text-sm text-gray-600 mb-2">
-                        1位決定戦：射詰競射（4本の矢、×で即退場）
-                      </p>
-                      <button 
-                        onClick={() => startShichumaShootOff(tiedArchers)}
-                        className="btn-primary"
-                      >
-                        射詰競射を開始
-                      </button>
+            {/* 遠近競射対象者の表示 */}
+            {nearFarArchers.length > 0 && (
+              <div className="card mb-4">
+                <h2 className="card-title">遠近競射対象者</h2>
+                <p className="text-sm text-gray-600 mb-2">
+                  {nearFarArchers[0]?.reason || '遠近競射で順位決定'}
+                </p>
+                <div className="space-y-2">
+                  {nearFarArchers.map(archer => (
+                    <div key={archer.archerId} className="flex justify-between items-center p-2 border rounded">
+                      <span>{archer.name} ({archer.affiliation})</span>
+                      <span>{archer.rank} | {getTotalHitCountAllStands(archer)}本的中</span>
                     </div>
-                  ) : (
-                    <div className="mt-3">
-                      <p className="text-sm text-gray-600 mb-2">
-                        {index + 1}位決定戦：遠近競射（的の中心からの距離で順位決定）
-                      </p>
-                      <button 
-                        onClick={() => startEnkinShootOff(tiedArchers)}
-                        className="btn-primary"
-                      >
-                        遠近競射を開始
-                      </button>
-                    </div>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
+                <div className="mt-3">
+                  <p className="text-sm text-gray-600 mb-2">
+                    遠近競射:順位入力で順位決定
+                  </p>
+                  <button 
+                    onClick={() => startEnkinShootOff(nearFarArchers)}
+                    className="btn-primary"
+                  >
+                    遠近競射を開始
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 同率選手一覧(射詰競射対象) */}
+            {tiedGroups.length > 0 && (
+              <div className="card">
+                <h2 className="card-title">同率選手一覧(射詰競射)</h2>
+                {tiedGroups.map(([hitCount, tiedArchers], index) => (
+                  <div key={hitCount} className="mb-4">
+                    <h3 className="font-semibold mb-2">{hitCount}本的中 - {tiedArchers.length}名</h3>
+                    <div className="space-y-2">
+                      {tiedArchers.map(archer => (
+                        <div key={archer.archerId} className="flex justify-between items-center p-2 border rounded">
+                          <span>{archer.name} ({archer.affiliation})</span>
+                          <span>{archer.rank}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {index === 0 ? (
+                      <div className="mt-3">
+                        <p className="text-sm text-gray-600 mb-2">
+                          1位決定戦：射詰競射（4本の矢、×で即退場）
+                        </p>
+                        <button 
+                          onClick={() => startShichumaShootOff(tiedArchers)}
+                          className="btn-primary"
+                        >
+                          射詰競射を開始
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-3">
+                        <p className="text-sm text-gray-600 mb-2">
+                          {index + 1}位決定戦：遠近競射（順位入力で順位決定）
+                        </p>
+                        <button 
+                          onClick={() => startEnkinShootOff(tiedArchers)}
+                          className="btn-primary"
+                        >
+                          遠近競射を開始
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {isShootOffActive && shootOffType === 'shichuma' && (
               <div className="card">
@@ -3563,6 +3638,22 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
                         );
                       })}
                     </div>
+                    
+                    {/* 射詰競射完了ボタン */}
+                    <div className="mt-4 pt-4 border-t">
+                      <button
+                        onClick={() => {
+                          const finalRanking = getShichumaFinalRanking();
+                          const allResults = shichumaResults;
+                          console.log('🎯 射詰競射を完了します:', { finalRanking, allResults });
+                          saveFinalShichumaResults(finalRanking, allResults);
+                          setIsShootOffActive(false);
+                        }}
+                        className="btn-primary bg-green-600 hover:bg-green-700"
+                      >
+                        🏹 射詰競射結果を保存して完了
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -3641,146 +3732,73 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
                 )}
               </div>
             )}
+
             {isShootOffActive && shootOffType === 'enkin' && (
               <div className="card">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="card-title">{getEnkinTitle()}中</h2>
-                  {enkinTargetRank === null && (
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm text-gray-600">開始順位:</label>
-                      <select 
-                        value={enkinStartRank} 
-                        onChange={(e) => setEnkinStartRank(parseInt(e.target.value))}
+                <h2 className="card-title">遠近競射中</h2>
+                <div className="mb-4">
+                  <p className="text-sm text-gray-600 mb-2">
+                    遠近競射ルール：
+                  </p>
+                  <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
+                    <li>各競技者が順位を入力し、順位を決定する方法</li>
+                    <li>順位の高い方を上位とする</li>
+                    <li>優勝者確定まで遠近競射を継続する（最後の1人が決定するまで）</li>
+                  </ul>
+                </div>
+
+                {/* === 遠近競射対象者 === */}
+                {currentShootOffArchers.map(archer => (
+                  <div key={archer.archerId} className="border rounded p-4">
+                    <h4 className="font-semibold mb-2">{archer.name}</h4>
+                    <div className="flex gap-2">
+                      <select
+                        value={(enkinResults[archer.archerId]?.arrowType) || 'normal'}
+                        onChange={(e) => {
+                          const currentData = enkinResults[archer.archerId] || {};
+                          handleEnkinResult(archer.archerId, currentData.rank || '', e.target.value);
+                        }}
                         className="input"
                       >
-                        {[2, 3, 4, 5, 6, 7, 8].map(rank => (
-                          <option key={rank} value={rank}>{rank}位</option>
-                        ))}
+                        <option value="normal">的中</option>
+                        <option value="saki">掃き矢（垜到達）</option>
+                        <option value="miss">掃き矢（垜未到達）</option>
                       </select>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        max={currentShootOffArchers.length}
+                        placeholder="順位を入力"
+                        value={(enkinResults[archer.archerId]?.rank) || ''}
+                        onChange={(e) => {
+                          const arrowType = (enkinResults[archer.archerId]?.arrowType) || 'normal';
+                          handleEnkinResult(archer.archerId, e.target.value, arrowType);
+                        }}
+                        className="input w-24"
+                      />
+                      <span className="text-sm text-gray-600">位</span>
                     </div>
-                  )
-                }
-                </div>
-                <div className="mb-4">
-                  <p className="text-sm text-gray-600">
-                    ルール：順位を入力
-                  </p>
-                  {enkinTargetRank !== null && (
-                    <div className="mt-2 p-2 bg-blue-50 border rounded">
-                      <p className="text-sm text-blue-800">
-                        <strong>射詰競射からの遠近競射決定戦</strong>
-                      </p>
-                      <p className="text-xs text-blue-600">
-                        射詰競射で同時に×になった選手たちの順位を決定します
-                      </p>
-                    </div>
-                  )}
-                </div>
-                
-                {/* 選手をグループ分けして表示 */}
-                <div className="space-y-6">
-                  {/* 射詰競射からの選手 */}
-                  {originalEnkinArchers.size === 0 && currentShootOffArchers.length > 0 && (
-                    <div className="mb-4 p-3 bg-orange-50 border rounded">
-                      <h4 className="font-semibold text-sm mb-2 text-orange-800">射詰競射からの選手</h4>
-                      <div className="text-sm space-y-1">
-                        {currentShootOffArchers.map(archer => {
-                          const eliminatedInfo = eliminationOrder.find(e => e.archerId === archer.archerId);
-                          return (
-                            <div key={archer.archerId} className="flex justify-between items-center">
-                              <span>{archer.name} ({archer.affiliation})</span>
-                              <span className="text-xs text-gray-500">
-                                {eliminatedInfo ? `${eliminatedInfo.arrowIndex}本目で×` : '4本完射'}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* 元々の遠近競射選手 */}
-                  {originalEnkinArchers.size > 0 && (
-                    <div className="mb-4 p-3 bg-blue-50 border rounded">
-                      <h4 className="font-semibold text-sm mb-2 text-blue-800">元々の遠近競射選手</h4>
-                      <div className="text-sm space-y-1">
-                        {currentShootOffArchers.filter(archer => originalEnkinArchers.has(archer.archerId)).map(archer => (
-                          <div key={archer.archerId} className="flex justify-between items-center">
-                            <span>{archer.name} ({archer.affiliation})</span>
-                            <span className="text-xs text-gray-500">遠近競射対象</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-4">
-                    {currentShootOffArchers.map(archer => (
-                      <div key={archer.archerId} className="border rounded p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-semibold">{archer.name}</h4>
-                          {originalEnkinArchers.size === 0 && (
-                            <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
-                              射詰から
-                            </span>
-                          )}
-                          {originalEnkinArchers.size > 0 && originalEnkinArchers.has(archer.archerId) && (
-                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                              元々遠近
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-600 mb-2">{archer.affiliation}</p>
-                        <div className="flex items-center gap-4">
-                          <select
-                            value={(enkinResults[archer.archerId]?.arrowType) || 'normal'}
-                            onChange={(e) => {
-                              const currentData = enkinResults[archer.archerId] || {};
-                              handleEnkinResult(archer.archerId, currentData.distance || '', e.target.value);
-                            }}
-                            className="input"
-                          >
-                            <option value="normal">的中</option>
-                            <option value="saki">掃き矢（垜到達）</option>
-                            <option value="miss">掃き矢（垜未到達）</option>
-                          </select>
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            placeholder="距離を入力 (mm)"
-                            value={(enkinResults[archer.archerId]?.distance) || ''}
-                            onChange={(e) => {
-                              const arrowType = (enkinResults[archer.archerId]?.arrowType) || 'normal';
-                              handleEnkinResult(archer.archerId, e.target.value, arrowType);
-                            }}
-                            className="input"
-                            disabled={(enkinResults[archer.archerId]?.arrowType) === 'miss'}
-                          />
-                          <span className="text-sm text-gray-600">mm</span>
-                        </div>
-                      </div>
-                    ))}
                   </div>
-                </div>
+                ))}
+
+                {/* === 遠近競射結果 === */}
                 {Object.keys(enkinResults).length === currentShootOffArchers.length && (
                   <div className="mt-4">
                     <h3 className="font-bold mb-2">遠近競射結果</h3>
                     <div className="space-y-2">
-                      {calculateEnkinRanking().map(({archerId, rank, distance, arrowType, isTied}) => {
+                      {calculateEnkinRanking().map(({archerId, calculatedRank, rank, arrowType, isTied}) => {
                         const archer = currentShootOffArchers.find(a => a.archerId === archerId);
                         if (!archer) return null;
                         
                         return (
                           <div key={archerId} className="flex justify-between items-center p-2 border rounded">
                             <span>
-                              {enkinStartRank + rank - 1}位: {archer.name}
-                              {isTied && <span className="text-xs text-orange-600 ml-1">(同距離)</span>}
+                              {enkinStartRank + calculatedRank - 1}位: {archer.name}
+                              {isTied && <span className="text-xs text-orange-600 ml-1">(同順位)</span>}
                             </span>
                             <span className="text-sm text-gray-600">
-                              {arrowType === 'normal' && `${distance}mm`}
-                              {arrowType === 'saki' && `掃き矢 ${distance}mm`}
-                              {arrowType === 'miss' && '垜未到達'}
+                              入力順位: {rank}位
                             </span>
                           </div>
                         );
@@ -3789,14 +3807,13 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
                   </div>
                 )}
               </div>
-            )}            
+            )}
           </>          
         )}
       </div>
     </div>
   );
 };
-
 const SettingsView = ({ state, dispatch, selectedTournamentId, setSelectedTournamentId }) => {
   const [localSettings, setLocalSettings] = useState({
     passRule: state.tournament.passRule,
