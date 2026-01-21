@@ -2733,9 +2733,13 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   const [enkinTargetRank, setEnkinTargetRank] = useState(null);
   const [showEnkinOption, setShowEnkinOption] = useState(false);
   const [remainingAfterFourArrows, setRemainingAfterFourArrows] = useState([]);
+  const [enkinDefeated, setEnkinDefeated] = useState(new Set()); // 敗退した選手ID
   const [originalEnkinArchers, setOriginalEnkinArchers] = useState(new Set());
   const [enkinStartRank, setEnkinStartRank] = useState(2); // 運営側で選択可能な開始順位
   const [editingArrow, setEditingArrow] = useState(null); // {archerId, arrowIndex}
+  const [shichumaFinalResults, setShichumaFinalResults] = useState(null); // 射詰競射の最終結果
+  const [enkinFinalResults, setEnkinFinalResults] = useState(null); // 遠近競射の最終結果
+  const [isLoadingResults, setIsLoadingResults] = useState(false); // 結果読み込み状態
 
   const tournaments = state.registeredTournaments || [];
   const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
@@ -2818,6 +2822,72 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
     fetchArchers();
   }, [selectedTournamentId]);
 
+  // 射詰競射結果を取得
+  const fetchShichumaResults = async () => {
+    if (!selectedTournamentId) return;
+    
+    setIsLoadingResults(true);
+    try {
+      const response = await fetch(`${API_URL}/ranking/shichuma/${selectedTournamentId}`);
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          setShichumaFinalResults(result.data);
+        }
+      } else {
+        setShichumaFinalResults(null);
+      }
+    } catch (error) {
+      console.error('射詰競射結果の取得エラー:', error);
+      setShichumaFinalResults(null);
+    } finally {
+      setIsLoadingResults(false);
+    }
+  };
+
+  // 遠近競射結果を取得
+  const fetchEnkinResults = async () => {
+    if (!selectedTournamentId) return;
+    
+    setIsLoadingResults(true);
+    try {
+      const response = await fetch(`${API_URL}/ranking/enkin/${selectedTournamentId}`);
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          setEnkinFinalResults(result.data);
+        }
+      } else {
+        setEnkinFinalResults(null);
+      }
+    } catch (error) {
+      console.error('遠近競射結果の取得エラー:', error);
+      setEnkinFinalResults(null);
+    } finally {
+      setIsLoadingResults(false);
+    }
+  };
+
+  // 結果取得を実行
+  useEffect(() => {
+    if (selectedTournamentId) {
+      fetchShichumaResults();
+      fetchEnkinResults();
+    }
+  }, [selectedTournamentId]);
+
+  // デバッグ情報
+  useEffect(() => {
+    console.log('Debug info:', {
+      selectedTournamentId,
+      shichumaFinalResults,
+      enkinFinalResults,
+      isLoadingResults
+    });
+  }, [selectedTournamentId, shichumaFinalResults, enkinFinalResults, isLoadingResults]);
+
   const getTiedArchers = useCallback(() => {
     const rankGroups = {};
     archers.forEach(archer => {
@@ -2832,18 +2902,21 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
     
     // 的中数の降順でソート
     const sortedGroups = Object.entries(rankGroups)
-      .sort(([a], [b]) => parseInt(b) - parseInt(a));
+      .map(([hitCount, group]) => [parseInt(hitCount), group])
+      .sort(([a], [b]) => b - a);
     
     const displayGroups = [];
     let currentRank = 1;
     
     for (const [hitCount, group] of sortedGroups) {
       // このグループの開始順位が表彰範囲内なら、グループ全体を対象にする
-      if (currentRank <= awardRankLimit) {
+      if (currentRank <= awardRankLimit && group.length > 1) {
         displayGroups.push([hitCount, group]);
-      } else {
-        // 表彰範囲外になったら終了
-        break;
+      } else if (currentRank > awardRankLimit && group.length > 1) {
+        // 表彰範囲外だが同率の場合、そのグループは順位確定として扱う
+        // ここではdisplayGroupsには追加しないが、categorizedGroupsで処理される
+      } else if (currentRank > awardRankLimit && group.length === 1) {
+        // 表彰範囲外で同率でない場合、順位確定として扱う
       }
       
       // 次のグループの開始順位を計算
@@ -2895,7 +2968,7 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
         body: JSON.stringify({
           tournamentId: selectedTournamentId,
           archerId,
-          distance, // 的表面からの距離（mm）
+          rank: distance, // 的表面からの距離（mm）をrankとして送信
           arrowType // 'normal', 'saki', 'miss' など
         })
       });
@@ -2938,6 +3011,18 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
     setIsShootOffActive(true);
     setEnkinResults({});
     setCurrentShootOffArchers(tiedArchers);
+    
+    // 開始順位を設定
+    if (targetRank !== null) {
+      setEnkinTargetRank(targetRank);
+    } else if (fromShichuma) {
+      // 射詰競射からの遠近競射の場合、脱落順から次の順位を計算
+      const nextRank = getNextEnkinTargetRank();
+      setEnkinTargetRank(nextRank);
+    } else {
+      // 通常の遠近競射の場合
+      setEnkinTargetRank(null);
+    }
     
     if (fromShichuma && isNewFromShichuma) {
       // 射詰競射からの新規遠近競射選手
@@ -3127,38 +3212,35 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   }
 };
 
-  const handleStartEnkinFromShichuma = () => {
-    setShootOffType('enkin');
-    setEnkinResults({});
-    setCurrentShootOffArchers(remainingAfterFourArrows);
-    setShowEnkinOption(false);
-    setOriginalEnkinArchers(new Set()); // 新規遠近競射として扱う
-  };
+const handleStartEnkinFromShichuma = () => {
+  // 射詰競射からの遠近競射として開始
+  // 同点グループの開始順位を計算（脱落順から取得）
+  const nextRank = getNextEnkinTargetRank();
+  startEnkinShootOff(remainingAfterFourArrows, true, nextRank, true);
+  setShowEnkinOption(false);
+};
 
-  const getShichumaWinner = () => {
-    if (Object.keys(shichumaResults).length === 0) return null;
+const getShichumaWinner = () => {
+  if (Object.keys(shichumaResults).length === 0) return null;
+  
+  const remainingArchers = currentShootOffArchers.filter(
+    archer => !eliminatedArchers.has(archer.archerId)
+  );
+  
+  if (remainingArchers.length === 1) {
+    const lastArcher = remainingArchers[0];
+    const archerResults = shichumaResults[lastArcher.archerId] || [];
     
-    const remainingArchers = currentShootOffArchers.filter(
-      archer => !eliminatedArchers.has(archer.archerId)
+    const allArrowsCompleted = [0, 1, 2, 3].every(arrowIndex => 
+      archerResults[arrowIndex] !== undefined
     );
     
-    // 生存者が1人だけでも、その選手が4本射ち終わっていない場合は優勝確定しない
-    if (remainingArchers.length === 1) {
-      const lastArcher = remainingArchers[0];
-      const archerResults = shichumaResults[lastArcher.archerId] || [];
-      
-      // 4本すべての結果が入力されているかチェック
-      const allArrowsCompleted = [0, 1, 2, 3].every(arrowIndex => 
-        archerResults[arrowIndex] !== undefined
-      );
-      
-      // 4本射ち終わっている場合のみ優勝者として返す
-      if (allArrowsCompleted) {
-        return lastArcher;
-      }
+    if (allArrowsCompleted) {
+      return lastArcher;
     }
-    return null;
-  };
+  }
+  return null;
+};
 
   const getShichumaFinalRanking = () => {
     const ranking = [];
@@ -3413,35 +3495,32 @@ const categorizedGroups = useMemo(() => {
 
   // 遠近競射の順位計算
   const calculateEnkinRanking = () => {
+    // 開始順位を取得（射詰からの遠近競射か、手動で設定された順位か）
+    const startRank = enkinTargetRank !== null ? enkinTargetRank : getNextEnkinTargetRank();
+    
     return currentShootOffArchers.map(archer => {
       const result = enkinResults[archer.archerId] || {};
       return {
         archerId: archer.archerId,
-        distance: parseFloat(result.distance) || Infinity,
+        rank: parseInt(result.rank) || startRank + currentShootOffArchers.length - 1, // 入力された順位、なければ最下位
         arrowType: result.arrowType || 'normal',
         isTied: false
       };
     }).sort((a, b) => {
-      // 優先順位: 1. 距離が近い, 2. 矢の種類 (normal > saki > miss)
-      if (a.distance !== b.distance) {
-        return a.distance - b.distance;
-      }
-      const typeOrder = { normal: 0, saki: 1, miss: 2 };
-      return typeOrder[a.arrowType] - typeOrder[b.arrowType];
-    }).map((item, index) => ({
-      ...item,
-      rank: index + 1
-    }));
+      // 順位の昇順でソート
+      return a.rank - b.rank;
+    });
   };
 
   // 遠近競射結果処理
-  const handleEnkinResult = (archerId, distance, arrowType) => {
+  const handleEnkinResult = (archerId, rank, arrowType = 'normal') => {
     setEnkinResults(prev => ({
       ...prev,
-      [archerId]: { distance, arrowType }
+      [archerId]: { rank, arrowType }
     }));
     
-    saveEnkinResultToApi(archerId, distance, arrowType).catch(error => {
+    // APIにはrankとして送信（distanceの代わり）
+    saveEnkinResultToApi(archerId, rank, arrowType).catch(error => {
       console.error('遠近競射結果保存エラー:', error);
       alert('遠近競射結果の保存に失敗しました: ' + error.message);
     });
@@ -3450,15 +3529,47 @@ const categorizedGroups = useMemo(() => {
   // 遠近競射タイトル取得
   const getEnkinTitle = () => {
     if (enkinTargetRank !== null) {
+      // 射詰競射からの遠近競射の場合
+      // 同点で脱落した複数名の順位を決定するもの
+      // なので表示は「〇位決定戦」でOK
       return `${enkinTargetRank}位決定戦（遠近競射）`;
     }
     return '遠近競射';
   };
 
+  // 遠近競射の選択肢生成ロジック修正
+  // 射詰競射からの遠近競射の場合、enkinStartRankを使う必要がある
+  const getEnkinRankOptions = () => {
+    const startRank = enkinTargetRank !== null ? enkinTargetRank : enkinStartRank;
+    const options = [];
+    
+    // 単一順位決定戦の場合（射詰競射からの遠近競射）
+    if (enkinTargetRank !== null) {
+      options.push(startRank); // 例：5位決定戦なら5位のみ
+      options.push('敗退'); // 敗退も選択肢に追加
+    } else {
+      // 通常の遠近競射の場合は連続した順位を生成
+      for (let i = 0; i < currentShootOffArchers.length; i++) {
+        options.push(startRank + i);
+      }
+    }
+    
+    return options;
+  };
+
   // 次の遠近競射対象順位を取得
   const getNextEnkinTargetRank = () => {
     if (eliminationOrder.length > 0) {
-      return eliminationOrder.length + 1;
+      // 射詰競射の脱落順位から開始順位を計算
+      // eliminationOrderにはrankが設定されているはず
+      const firstEliminatedRank = eliminationOrder[0]?.rank;
+      if (firstEliminatedRank !== undefined) {
+        return firstEliminatedRank;
+      }
+      // rankが設定されていない場合のフォールバック
+      // 脱落者の中で最も低い順位を取得
+      const minRank = Math.min(...eliminationOrder.map(e => e.rank || Infinity));
+      return minRank + 1;
     }
     return 2; // デフォルトは2位から
   };
@@ -3522,6 +3633,19 @@ const categorizedGroups = useMemo(() => {
     }
   };
 
+  // 敗退状態を切り替える関数
+  const toggleEnkinDefeated = (archerId) => {
+    setEnkinDefeated(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(archerId)) {
+        newSet.delete(archerId);
+      } else {
+        newSet.add(archerId);
+      }
+      return newSet;
+    });
+  };
+
   return (
     <div className="view-container">
       <div className="view-header">
@@ -3541,11 +3665,6 @@ const categorizedGroups = useMemo(() => {
           <div className="card">大会を選択してください</div>
         ) : isLoading ? (
           <div className="card">読み込み中...</div>
-        ) : categorizedGroups.izume.length === 0 && categorizedGroups.enkin.length === 0 && categorizedGroups.confirmed.length === 0 ? (
-          <div className="card">
-            <h2 className="card-title">同率の選手はいません</h2>
-            <p>すべての順位が確定しています</p>
-          </div>
         ) : (
           <>
             {/* === 1. 射詰競射（優勝決定戦）の表示エリア === */}
@@ -3591,7 +3710,7 @@ const categorizedGroups = useMemo(() => {
                     <div className="flex justify-between items-center mb-2">
                       <span className="font-bold">{rank}位決定戦 ({hitCount}本) - {group.length}名</span>
                       <button 
-                        onClick={() => startEnkinShootOff(group)}
+                        onClick={() => startEnkinShootOff(group, false, rank)}
                         className="btn-primary bg-orange-600 hover:bg-orange-700"
                       >
                         遠近競射を開始
@@ -3895,31 +4014,17 @@ const categorizedGroups = useMemo(() => {
                         <p className="text-sm text-gray-600 mb-2">{archer.affiliation}</p>
                         <div className="flex items-center gap-4">
                           <select
-                            value={(enkinResults[archer.archerId]?.arrowType) || 'normal'}
+                            value={(enkinResults[archer.archerId]?.rank) || ''}
                             onChange={(e) => {
-                              const currentData = enkinResults[archer.archerId] || {};
-                              handleEnkinResult(archer.archerId, currentData.distance || '', e.target.value);
+                              handleEnkinResult(archer.archerId, e.target.value, 'normal');
                             }}
                             className="input"
                           >
-                            <option value="normal">的中</option>
-                            <option value="saki">掃き矢（垜到達）</option>
-                            <option value="miss">掃き矢（垜未到達）</option>
+                            <option value="">順位を選択</option>
+                            {getEnkinRankOptions().map(rank => (
+                              <option key={rank} value={rank}>{rank}位</option>
+                            ))}
                           </select>
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            placeholder="距離を入力 (mm)"
-                            value={(enkinResults[archer.archerId]?.distance) || ''}
-                            onChange={(e) => {
-                              const arrowType = (enkinResults[archer.archerId]?.arrowType) || 'normal';
-                              handleEnkinResult(archer.archerId, e.target.value, arrowType);
-                            }}
-                            className="input"
-                            disabled={(enkinResults[archer.archerId]?.arrowType) === 'miss'}
-                          />
-                          <span className="text-sm text-gray-600">mm</span>
                         </div>
                       </div>
                     ))}
@@ -3929,21 +4034,55 @@ const categorizedGroups = useMemo(() => {
                   <div className="mt-4">
                     <h3 className="font-bold mb-2">遠近競射結果</h3>
                     <div className="space-y-2">
-                      {calculateEnkinRanking().map(({archerId, rank, distance, arrowType, isTied}) => {
+                      {calculateEnkinRanking().map(({archerId, rank}) => {
                         const archer = currentShootOffArchers.find(a => a.archerId === archerId);
                         if (!archer) return null;
                         
                         return (
-                          <div key={archerId} className="flex justify-between items-center p-2 border rounded">
-                            <span>
-                              {enkinStartRank + rank - 1}位: {archer.name}
-                              {isTied && <span className="text-xs text-orange-600 ml-1">(同距離)</span>}
-                            </span>
-                            <span className="text-sm text-gray-600">
-                              {arrowType === 'normal' && `${distance}mm`}
-                              {arrowType === 'saki' && `掃き矢 ${distance}mm`}
-                              {arrowType === 'miss' && '垜未到達'}
-                            </span>
+                          <div key={archerId} className={`flex justify-between items-center p-2 border rounded ${
+                            enkinDefeated.has(archerId) ? 'bg-red-50 border-red-200' : 'bg-white'
+                          }`}>
+                            <div className="flex items-center gap-3">
+                              <span className="font-semibold">
+                                {enkinResults[archerId]?.rank && !enkinDefeated.has(archerId) ? `${rank}位` : '敗退'}: {archer.name}
+                              </span>
+                              {enkinDefeated.has(archerId) && (
+                                <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">
+                                  敗退
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={enkinResults[archerId]?.rank || ''}
+                                onChange={(e) => {
+                                  handleEnkinResult(archerId, e.target.value, 'normal');
+                                  // 敗退状態をリセット
+                                  if (enkinDefeated.has(archerId)) {
+                                    setEnkinDefeated(prev => {
+                                      const newSet = new Set(prev);
+                                      newSet.delete(archerId);
+                                      return newSet;
+                                    });
+                                  }
+                                }}
+                                className="input text-sm"
+                                disabled={enkinDefeated.has(archerId)}
+                              >
+                                <option value="">順位を選択</option>
+                                {getEnkinRankOptions().map(rank => (
+                                  <option key={rank} value={rank}>{rank}位</option>
+                                ))}
+                              </select>
+                              {currentShootOffArchers.length > 1 && (
+                                <button
+                                  onClick={() => toggleEnkinDefeated(archerId)}
+                                  className={`btn-sm ${enkinDefeated.has(archerId) ? 'btn-secondary' : 'btn-danger'}`}
+                                >
+                                  {enkinDefeated.has(archerId) ? '復活' : '敗退'}
+                                </button>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
