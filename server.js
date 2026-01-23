@@ -414,6 +414,33 @@ app.get('/api/ranking/enkin/:tournamentId', async (req, res) => {
   }
 });
 
+// 14. 全ての順位決定戦の結果を取得
+app.get('/api/ranking/shootoff/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    // 射詰競射の結果を取得
+    const shichumaResult = await db.collection('shichuma_results').findOne({ tournamentId });
+    
+    // 遠近競射の結果を取得
+    const enkinResult = await db.collection('enkin_results').findOne({ tournamentId });
+
+    const allResults = {
+      tournamentId,
+      shichuma: shichumaResult || null,
+      enkin: enkinResult || null,
+      updatedAt: new Date()
+    };
+
+    res.status(200).json({ success: true, data: allResults });
+
+  } catch (error) {
+    console.error('❌ GET /api/ranking/shootoff error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // サーバー起動
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
