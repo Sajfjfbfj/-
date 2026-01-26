@@ -214,10 +214,13 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
     fetchArchers();
   }, [selectedTournamentId]);
 
-  const divisions = useMemo(() => {
-    const ds = tournament?.data?.divisions;
-    return Array.isArray(ds) ? ds : [];
-  }, [tournament]);
+  const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+  const localDefaultDivisions = [
+    { id: 'lower', label: '級位~三段以下の部' },
+    { id: 'middle', label: '四・五段の部' },
+    { id: 'title', label: '称号者の部' }
+  ];
+  const divisions = (selectedTournament && selectedTournament.data && selectedTournament.data.divisions) ? selectedTournament.data.divisions : localDefaultDivisions;
 
   const awardRankLimit = tournament?.data?.awardRankLimit || 3;
 
@@ -2729,6 +2732,7 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   const [eliminationOrder, setEliminationOrder] = useState([]);
   const [simultaneousEliminations, setSimultaneousEliminations] = useState([]);
   const [isShootOffActive, setIsShootOffActive] = useState(false);
+  const [isSavingShichuma, setIsSavingShichuma] = useState(false); // 追加
   const [enkinResults, setEnkinResults] = useState({});
   const [enkinTargetRank, setEnkinTargetRank] = useState(null);
   const [showEnkinOption, setShowEnkinOption] = useState(false);
@@ -2763,12 +2767,12 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
 
   // リアルタイム同期(3秒ごとに他の端末の入力を反映)
   useEffect(() => {
-    if (!selectedTournamentId) return;
+    if (!selectedTournamentId || isShootOffActive) return; // 射詰中は同期しない
     const interval = setInterval(() => {
       fetchArchers(true);
     }, 3000);
     return () => clearInterval(interval);
-  }, [selectedTournamentId]);
+  }, [selectedTournamentId, isShootOffActive]); // 依存配列に追加
 
   const fetchArchers = async (background = false) => {
     if (!selectedTournamentId) {
@@ -3073,7 +3077,7 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
     }
   };
 
-  const handleShichumaShot = (archerId, arrowIdx, result) => {
+  const handleShichumaShot = async (archerId, arrowIdx, result) => {
   // 1. 最新の結果を含めた状態を作成
   const updatedResults = { ...shichumaResults };
   const currentResults = updatedResults[archerId] || [];
@@ -3222,23 +3226,18 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
 
     setEliminationOrder(finalEliminationOrder);
 
-    // === 同点グループがある場合のみ遠近競射を表示 ===
+    // === ここから修正：遠近不要ならすぐに保存、遠近必要なら表示のみ ===
     if (needsEnkin.length > 0) {
+      // 遠近競射が必要：UI表示のみで、まだ保存しない
       const enkinArchers = currentShootOffArchers.filter(a => needsEnkin.includes(a.archerId));
       setRemainingAfterFourArrows(enkinArchers);
       setShowEnkinOption(true);
-      setIsShootOffActive(true); // 遠近UIを表示するために true のままにする
-      console.log('遠近競射を開始します（同点者グループの順位決定用）');
-      
-      // 遠近競射が必要な場合でも射詰競射の結果を保存
-      saveFinalShichumaResults(finalEliminationOrder, updatedResults);
+      setIsShootOffActive(true);
     } else {
-      // 遠近不要 → 記録をAPIに保存
-      console.log('遠近競射なし（脱落順で全順位決定）');
+      // 遠近不要：ここで最終結果を保存（一度だけ）
+      console.log('🎯 遠近競射なし - 射詰競射結果を保存');
+      await saveFinalShichumaResults(finalEliminationOrder, updatedResults);
       setIsShootOffActive(false);
-      
-      // 射詰競射の最終結果をAPIに保存
-      saveFinalShichumaResults(finalEliminationOrder, updatedResults);
     }
     
     return;
@@ -3596,9 +3595,21 @@ const categorizedGroups = useMemo(() => {
   const getEnkinTitle = () => {
     if (enkinTargetRank !== null) {
       // 射詰競射からの遠近競射の場合
-      // 同点で脱落した複数名の順位を決定するもの
-      // なので表示は「〇位決定戦」でOK
-      return `${enkinTargetRank}位決定戦（遠近競射）`;
+      // 表彰範囲外かチェック
+      const awardRankLimit = tournament?.data?.awardRankLimit || 3;
+      const willHaveDefeated = (enkinTargetRank + currentShootOffArchers.length - 1) > awardRankLimit;
+      
+      if (willHaveDefeated) {
+        // 敗退者を含む場合（表彰範囲外）→ 単一順位表示
+        return `${enkinTargetRank}位決定戦（遠近競射）`;
+      } else if (currentShootOffArchers.length > 1) {
+        // 表彰範囲内で複数名の場合 → 範囲表示
+        const endRank = enkinTargetRank + currentShootOffArchers.length - 1;
+        return `${enkinTargetRank}位～${endRank}位決定戦（遠近競射）`;
+      } else {
+        // 1名の場合 → 単一順位表示
+        return `${enkinTargetRank}位決定戦（遠近競射）`;
+      }
     }
     return '遠近競射';
   };
@@ -3649,6 +3660,19 @@ const categorizedGroups = useMemo(() => {
     return options;
   };
 
+  // 敗退状態を切り替える関数
+  const toggleEnkinDefeated = (archerId) => {
+    setEnkinDefeated(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(archerId)) {
+        newSet.delete(archerId);
+      } else {
+        newSet.add(archerId);
+      }
+      return newSet;
+    });
+  };
+
   // 次の遠近競射対象順位を取得
   const getNextEnkinTargetRank = () => {
     if (eliminationOrder.length > 0) {
@@ -3674,6 +3698,9 @@ const categorizedGroups = useMemo(() => {
 
   // 射詰競射の最終結果をAPIに保存する関数
   const saveFinalShichumaResults = async (finalRanking, allResults) => {
+    if (isSavingShichuma) return; // 二重実行防止
+    
+    setIsSavingShichuma(true);
     try {
       const shichumaFinalData = finalRanking.map(rankInfo => ({
         archerId: rankInfo.archerId,
@@ -3701,8 +3728,11 @@ const categorizedGroups = useMemo(() => {
       const result = await response.json();
       console.log('射詰競射結果をサーバーに保存しました:', result);
       
-      // 保存成功後に結果を再取得して表示を更新
-      await fetchShootOffResults();
+      // ローカル状態を更新（APIを呼ばずに）
+      setShichumaFinalResults({
+        completedAt: new Date().toISOString(),
+        results: shichumaFinalData
+      });
       
       // ユーザーに通知
       alert('射詰競射の結果を保存しました');
@@ -3710,6 +3740,8 @@ const categorizedGroups = useMemo(() => {
     } catch (error) {
       console.error('射詰競射結果保存エラー:', error);
       alert('射詰競射結果の保存に失敗しました: ' + error.message);
+    } finally {
+      setIsSavingShichuma(false);
     }
   };
 
@@ -3781,14 +3813,24 @@ const categorizedGroups = useMemo(() => {
 
     const mergedResults = [];
     const processedArchers = new Set();
+    const usedRanks = new Set(); // 使用済み順位を追跡
 
-    // 1. 射詰競射の結果を全て追加（優勝者、単独脱落者、遠近対象者含む全員）
+    // 1. 射詰競射の結果を追加（重複チェック付き）
     if (shichumaFinalResults && shichumaFinalResults.results) {
-      shichumaFinalResults.results
+      const uniqueResults = shichumaFinalResults.results.filter((result, index, self) => 
+        self.findIndex(r => r.archerId === result.archerId) === index
+      );
+      
+      uniqueResults
         .sort((a, b) => a.rank - b.rank)
         .forEach(result => {
           const archer = archers.find(a => a.archerId === result.archerId);
           if (!archer) return;
+
+          // 射詰競技で確定した順位は使用済みとして記録
+          if (typeof result.rank === 'number') {
+            usedRanks.add(result.rank);
+          }
 
           mergedResults.push({
             archerId: result.archerId,
@@ -3825,68 +3867,64 @@ const categorizedGroups = useMemo(() => {
       Object.entries(enkinByTargetRank).forEach(([targetRank, results]) => {
         const targetRankNum = parseInt(targetRank);
         
+        // 射詰競技から遠近競射に進んだ選手は全員処理
+        // （敗退した選手も含む）
+        const allResults = results;
+        
         // そのグループ内で順位付け
-        results
+        allResults
           .sort((a, b) => {
-            // 敗退していない者を上位とする
-            if (!a.isDefeated && b.isDefeated) return -1;
-            if (a.isDefeated && !b.isDefeated) return 1;
-            
-            // どちらも敗退していない場合は、rankの順序で並べる
-            if (!a.isDefeated && !b.isDefeated) {
-              return parseInt(a.rank) - parseInt(b.rank);
-            }
-            
-            return 0;
+            // rankの順序で並べる
+            return parseInt(a.rank) - parseInt(b.rank);
           })
           .forEach((enkinResult, indexInGroup) => {
             const archer = archers.find(a => a.archerId === enkinResult.archerId);
             if (!archer) return;
 
-            // ★ 遠近競射の最終順位を計算 ★
-            let finalRank;
-            if (enkinResult.isDefeated) {
-              finalRank = '敗退';
-            } else {
-              finalRank = targetRankNum + indexInGroup;
-              // 表彰範囲外なら敗退扱い
-              if (finalRank > awardRankLimit) {
-                finalRank = '敗退';
-              }
-            }
-
-            // 既存の射詰競射の結果を見つけて上書き
+            // ★ 遠近競射の最終順位を計算（入力された順位を使用）★
+            // enkinResult.rankが遠近競射で入力された実際の順位
+            let finalRank = parseInt(enkinResult.rank);
+            
+            // 射詰競技から遠近競射に進んだ選手の場合、射詰の順位を優先的に削除
             const existingIndex = mergedResults.findIndex(r => r.archerId === enkinResult.archerId);
             
             if (existingIndex !== -1) {
-              // 射詰で存在していた選手 → 順位を上書き（射詰の情報は保持）
-              mergedResults[existingIndex] = {
-                ...mergedResults[existingIndex],
-                rank: finalRank,
-                rank_source: 'enkin',
-                shootOffType: 'enkin',
-                isDefeated: enkinResult.isDefeated || finalRank === '敗退',
-                arrowType: enkinResult.arrowType,
-                targetRank: targetRankNum,
-                indexInGroup: indexInGroup,
-                isFromEnkin: true  // 遠近で順位が決定したフラグ
-              };
-            } else {
-              // 新規追加（射詰には出現しなかった選手）
-              mergedResults.push({
-                archerId: enkinResult.archerId,
-                name: archer.name,
-                affiliation: archer.affiliation,
-                rank: finalRank,
-                rank_source: 'enkin',
-                shootOffType: 'enkin',
-                isDefeated: enkinResult.isDefeated || finalRank === '敗退',
-                arrowType: enkinResult.arrowType,
-                targetRank: targetRankNum,
-                indexInGroup: indexInGroup,
-                isFromEnkin: true
-              });
+              // 射詰で存在していた選手 → 射詰の結果を削除
+              const existingResult = mergedResults[existingIndex];
+              // 使用済み順位からも削除
+              if (typeof existingResult.rank === 'number') {
+                usedRanks.delete(existingResult.rank);
+              }
+              mergedResults.splice(existingIndex, 1);
             }
+            
+            // ただし、重複する順位の場合は調整
+            while (usedRanks.has(finalRank)) {
+              finalRank++;
+            }
+            
+            // 表彰範囲外なら敗退扱い（この関数では除外される）
+            if (finalRank > awardRankLimit) {
+              return; // 敗退者は追加しない
+            }
+            
+            // 遠近競射の結果として新規追加
+            mergedResults.push({
+              archerId: enkinResult.archerId,
+              name: archer.name,
+              affiliation: archer.affiliation,
+              rank: finalRank,
+              rank_source: 'enkin',
+              shootOffType: 'enkin',
+              isDefeated: enkinResult.isDefeated || finalRank === '敗退',
+              arrowType: enkinResult.arrowType,
+              targetRank: targetRankNum,
+              indexInGroup: indexInGroup,
+              isFromEnkin: true  // 遠近で順位が決定したフラグ
+            });
+            
+            // 使用済み順位を更新
+            usedRanks.add(finalRank);
 
             processedArchers.add(enkinResult.archerId);
           });
@@ -3928,7 +3966,7 @@ const categorizedGroups = useMemo(() => {
             </thead>
             <tbody>
               {mergedResults.map((result, index) => (
-                <tr key={result.archerId} className={`hover:bg-green-50 ${
+                <tr key={`${result.archerId}-${result.shootOffType || 'unknown'}`} className={`hover:bg-green-50 ${
                   result.isDefeated ? 'bg-red-50' : ''
                 }`}>
                   <td className="border border-green-300 px-4 py-2 font-bold">
@@ -3963,7 +4001,7 @@ const categorizedGroups = useMemo(() => {
                     {result.shootOffType === 'shichuma' && (
                       <div>
                         {result.isWinner && (
-                          <span className="text-yellow-700 font-bold">🏆</span>
+                          <span className="text-yellow-700 font-bold">🏆 優勝</span>
                         )}
                         {result.eliminatedAt && (
                           <span className="text-red-700">{result.eliminatedAt}本目脱落</span>
@@ -3971,15 +4009,46 @@ const categorizedGroups = useMemo(() => {
                         {!result.isWinner && !result.eliminatedAt && (
                           <span>4本完射</span>
                         )}
+                        {result.isFromEnkin && (
+                          <span className="text-blue-600 ml-2">→遠近で{result.rank}位確定</span>
+                        )}
                       </div>
                     )}
                     {result.shootOffType === 'enkin' && (
                       <div>
-                        {result.isDefeated ? (
-                          <span className="text-red-700">敗退</span>
-                        ) : (
-                          <span>-</span>
-                        )}
+                        <span className="text-orange-700">
+                          {(() => {
+                            // enkinFinalResultsから同じtargetRankの選手を取得
+                            const sameTargetRankResults = enkinFinalResults?.results?.filter(r => r.targetRank === result.targetRank) || [];
+                            const groupSize = sameTargetRankResults.length;
+                            
+                            // 表彰範囲外かチェック（タイトル表示と同じロジック）
+                            const awardRankLimit = tournament?.data?.awardRankLimit || 3;
+                            const willHaveDefeated = (result.targetRank + groupSize - 1) > awardRankLimit;
+                            
+                            // 射射詰→遠近の選手がいるかチェック
+                            const hasShichumaToEnkin = sameTargetRankResults.some(r => 
+                              shichumaFinalResults?.results?.some(s => s.archerId === r.archerId)
+                            );
+                            
+                            if (willHaveDefeated) {
+                              // 敗退者を含む場合（表彰範囲外）→ 単一順位表示
+                              return `${result.targetRank}位決定戦`;
+                            } else if (hasShichumaToEnkin && groupSize > 1) {
+                              // 射射詰→遠近で複数名の場合（表彰範囲内）→ 範囲表示
+                              const endRank = result.targetRank + groupSize - 1;
+                              return `${result.targetRank}位～${endRank}位決定戦`;
+                            } else if (groupSize > 1) {
+                              // 通常の複数名の場合（表彰範囲内）→ 範囲表示
+                              const endRank = result.targetRank + groupSize - 1;
+                              return `${result.targetRank}位～${endRank}位決定戦`;
+                            } else {
+                              // 1名の場合 → 単一順位表示
+                              return `${result.targetRank}位決定戦`;
+                            }
+                          })()}
+                        </span>
+                        <span className="text-gray-600 ml-1">→{result.rank}位</span>
                       </div>
                     )}
                   </td>
@@ -4054,7 +4123,42 @@ const categorizedGroups = useMemo(() => {
                 {categorizedGroups.enkin.map(({ hitCount, group, rank }) => (
                   <div key={`${rank}_enkin`} className="mb-4 bg-orange-50 p-3 rounded">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="font-bold">{rank}位決定戦 ({hitCount}本) - {group.length}名</span>
+                      <span className="font-bold">
+                        {(() => {
+                          // 敗退者がいるかチェック（group内に射詰から来た選手がいるか）
+                          const hasShichumaToEnkin = group.some(archer => 
+                            shichumaFinalResults?.results?.some(r => r.archerId === archer.archerId)
+                          );
+                          
+                          // 敗退者を含むかチェック（表彰範囲外になる可能性）
+                          const awardRankLimit = tournament?.data?.awardRankLimit || 3;
+                          const willHaveDefeated = (rank + group.length - 1) > awardRankLimit;
+                          
+                          // デバッグ用コンソール出力
+                          console.log('タイトル判定:', {
+                            rank,
+                            groupLength: group.length,
+                            hasShichumaToEnkin,
+                            willHaveDefeated,
+                            archerIds: group.map(a => a.archerId),
+                            shichumaResults: shichumaFinalResults?.results?.map(r => r.archerId)
+                          });
+
+                          if (willHaveDefeated) {
+                            // 敗退者を含む場合（表彰範囲外）→ 単一順位表示
+                            return `${rank}位決定戦 - ${group.length}名`;
+                          } else if (hasShichumaToEnkin && group.length > 1) {
+                            // 射射詰→遠近で複数名の場合（表彰範囲内）→ 範囲表示
+                            return `${rank}位～${rank + group.length - 1}位決定戦 - ${group.length}名`;
+                          } else if (group.length > 1) {
+                            // 通常の複数名の場合（表彰範囲内）→ 範囲表示
+                            return `${rank}位～${rank + group.length - 1}位決定戦 - ${group.length}名`;
+                          } else {
+                            // 1名の場合 → 単一順位表示
+                            return `${rank}位決定戦 - ${group.length}名`;
+                          }
+                        })()}
+                      </span>
                       <button 
                         onClick={() => startEnkinShootOff(group, false, rank)}
                         className="btn-primary bg-orange-600 hover:bg-orange-700"
