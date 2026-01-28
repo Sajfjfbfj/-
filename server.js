@@ -366,16 +366,33 @@ app.get('/api/ranking/shichuma/:tournamentId', async (req, res) => {
 app.post('/api/ranking/enkin/final', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { tournamentId, shootOffType, results } = req.body;
+    const { tournamentId, shootOffType, targetRank, results } = req.body;
 
     if (!tournamentId || !results) {
       return res.status(400).json({ success: false, message: 'Missing parameters' });
     }
 
+    // 既存のデータを取得
+    const existingData = await db.collection('enkin_results').findOne({ tournamentId });
+    
+    let mergedResults = [];
+    if (existingData && existingData.results) {
+      // 既存の結果から同じtargetRankのものを除外
+      mergedResults = existingData.results.filter(r => r.targetRank !== targetRank);
+    }
+    
+    // 新しい結果を追加
+    mergedResults = [...mergedResults, ...results];
+    
+    console.log(`🔄 Enkin Results Merge: tournamentId=${tournamentId}, targetRank=${targetRank}`);
+    console.log(`  既存データ: ${existingData?.results?.length || 0}件`);
+    console.log(`  新規データ: ${results.length}件`);
+    console.log(`  マージ後: ${mergedResults.length}件`);
+
     const finalData = {
       tournamentId,
       shootOffType,
-      results,
+      results: mergedResults,
       completedAt: new Date()
     };
 
@@ -385,7 +402,7 @@ app.post('/api/ranking/enkin/final', async (req, res) => {
       { upsert: true }
     );
 
-    console.log(`🎯 Enkin Final Results Saved: ${tournamentId}`);
+    console.log(`✅ Enkin Final Results Saved: ${tournamentId}`);
     res.status(200).json({ success: true, data: finalData });
 
   } catch (error) {
