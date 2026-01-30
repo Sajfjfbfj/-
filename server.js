@@ -320,10 +320,27 @@ app.post('/api/ranking/shichuma/final', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing parameters' });
     }
 
+    // 既存のデータを取得
+    const existingData = await db.collection('shichuma_results').findOne({ tournamentId });
+    
+    let mergedResults = [];
+    if (existingData && existingData.results) {
+      // 既存の結果から同じdivisionIdのものを除外（遠近競射と同じパターン）
+      mergedResults = existingData.results.filter(r => !results.some(newResult => newResult.divisionId === r.divisionId));
+    }
+    
+    // 新しい結果を追加
+    mergedResults = [...mergedResults, ...results];
+    
+    console.log(`🔄 Shichuma Results Merge: tournamentId=${tournamentId}`);
+    console.log(`  既存データ: ${existingData?.results?.length || 0}件`);
+    console.log(`  新規データ: ${results.length}件`);
+    console.log(`  マージ後: ${mergedResults.length}件`);
+
     const finalData = {
       tournamentId,
       shootOffType,
-      results,
+      results: mergedResults,
       completedAt: new Date()
     };
 
