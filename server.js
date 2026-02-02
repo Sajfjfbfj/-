@@ -475,6 +475,33 @@ app.get('/api/ranking/shootoff/:tournamentId', async (req, res) => {
   }
 });
 
+// 15. 選手の性別情報を更新
+app.patch('/api/applicants/:archerId/gender', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { archerId } = req.params;
+    const { gender } = req.body;
+
+    if (!archerId || !gender || !['male', 'female'].includes(gender)) {
+      return res.status(400).json({ success: false, message: 'Invalid request data' });
+    }
+
+    const result = await db.collection('applicants').updateOne(
+      { archerId },
+      { $set: { gender, updatedAt: new Date() } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, message: '選手が見つかりません' });
+    }
+
+    res.status(200).json({ success: true, message: '性別情報を更新しました' });
+  } catch (error) {
+    console.error('❌ PATCH /api/applicants/:archerId/gender error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // サーバー起動
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

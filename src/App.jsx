@@ -113,6 +113,7 @@ const normalizeTournamentFormData = (data, defaultDivisions, attachments) => {
     remarks: d.remarks ?? '',
     attachments: Array.isArray(attachments) ? attachments : [],
     divisions: Array.isArray(d.divisions) ? d.divisions : (Array.isArray(defaultDivisions) ? defaultDivisions : []),
+    enableGenderSeparation: d.enableGenderSeparation ?? false,
   };
 };
 
@@ -229,17 +230,48 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
   const divisions = (selectedTournament && selectedTournament.data && selectedTournament.data.divisions) ? selectedTournament.data.divisions : localDefaultDivisions;
 
   const awardRankLimit = tournament?.data?.awardRankLimit || 3;
+  const enableGenderSeparation = selectedTournament?.data?.enableGenderSeparation || false;
 
   const divisionRankings = useMemo(() => {
     const groups = {};
-    for (const d of divisions) groups[d.id] = { division: d, rows: [] };
-    if (!groups.unassigned) groups.unassigned = { division: { id: 'unassigned', label: '未分類' }, rows: [] };
+    
+    // Create gender-separated groups if enabled
+    if (enableGenderSeparation) {
+      for (const d of divisions) {
+        groups[`${d.id}_male`] = { division: { ...d, id: `${d.id}_male`, label: `${d.label}（男子）` }, rows: [] };
+        groups[`${d.id}_female`] = { division: { ...d, id: `${d.id}_female`, label: `${d.label}（女子）` }, rows: [] };
+      }
+      groups['unassigned_male'] = { division: { id: 'unassigned_male', label: '未分類（男子）' }, rows: [] };
+      groups['unassigned_female'] = { division: { id: 'unassigned_female', label: '未分類（女子）' }, rows: [] };
+    } else {
+      for (const d of divisions) groups[d.id] = { division: d, rows: [] };
+      if (!groups.unassigned) groups.unassigned = { division: { id: 'unassigned', label: '未分類' }, rows: [] };
+    }
 
     for (const a of archers) {
       const divId = getDivisionIdForArcher(a, divisions);
       const hitCount = getTotalHitCountAllStands(a);
-      if (!groups[divId]) groups[divId] = { division: { id: divId, label: divId }, rows: [] };
-      groups[divId].rows.push({
+      const gender = a.gender || 'male'; // Default to male if not specified
+      
+      let targetGroupId;
+      if (enableGenderSeparation) {
+        targetGroupId = `${divId}_${gender}`;
+      } else {
+        targetGroupId = divId;
+      }
+      
+      if (!groups[targetGroupId]) {
+        if (enableGenderSeparation) {
+          groups[targetGroupId] = { 
+            division: { id: targetGroupId, label: `${divId}（${gender === 'male' ? '男子' : '女子'}）` }, 
+            rows: [] 
+          };
+        } else {
+          groups[targetGroupId] = { division: { id: targetGroupId, label: targetGroupId }, rows: [] };
+        }
+      }
+      
+      groups[targetGroupId].rows.push({
         archer: a,
         hitCount,
       });
@@ -248,20 +280,44 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
     const result = [];
     for (const key of Object.keys(groups)) {
       const g = groups[key];
+      if (g.rows.length === 0) continue; // Skip empty groups
       const ranked = calculateRanksWithTies(g.rows.map(r => ({ ...r })));
       result.push({
         division: g.division,
         ranked,
       });
     }
-    // keep the original division order first
+    
+    // Sort groups: maintain original division order, with male before female for each division
     result.sort((a, b) => {
-      const ai = divisions.findIndex(d => d.id === a.division.id);
-      const bi = divisions.findIndex(d => d.id === b.division.id);
-      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      const getBaseDivisionId = (id) => {
+        if (enableGenderSeparation) {
+          return id.replace(/_male$|_female$/, '');
+        }
+        return id;
+      };
+      
+      const getGenderOrder = (id) => {
+        if (enableGenderSeparation) {
+          return id.endsWith('_male') ? 0 : 1;
+        }
+        return 0;
+      };
+      
+      const baseA = getBaseDivisionId(a.division.id);
+      const baseB = getBaseDivisionId(b.division.id);
+      const ai = divisions.findIndex(d => d.id === baseA);
+      const bi = divisions.findIndex(d => d.id === baseB);
+      
+      if (ai !== bi) {
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      }
+      
+      return getGenderOrder(a.division.id) - getGenderOrder(b.division.id);
     });
+    
     return result;
-  }, [archers, divisions, getDivisionIdForArcher, getTotalHitCountAllStands, calculateRanksWithTies]);
+  }, [archers, divisions, getDivisionIdForArcher, getTotalHitCountAllStands, calculateRanksWithTies, enableGenderSeparation]);
 
   return (
     <div className="view-container">
@@ -2650,6 +2706,44 @@ const CheckInView = ({ state, dispatch }) => {
                         <p className="qr-name">{currentQRCodeData.name} 様</p>
                         <p className="qr-details">{currentQRCodeData.affiliation}</p>
                         <p className="qr-details">{currentQRCodeData.rank}</p>
+                        
+                        {/* 性別選択・更新機能 */}
+                        <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f8f9fa', borderRadius: '0.5rem' }}>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                            性別情報の設定・更新
+                          </label>
+                          <select 
+                            value={currentQRCodeData.gender || 'male'} 
+                            onChange={async (e) => {
+                              const newGender = e.target.value;
+                              try {
+                                const response = await fetch(`${API_URL}/applicants/${currentQRCodeData.id}/gender`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ gender: newGender })
+                                });
+                                
+                                if (response.ok) {
+                                  setCurrentQRCodeData(prev => ({ ...prev, gender: newGender }));
+                                  alert('性別情報を更新しました');
+                                } else {
+                                  alert('更新に失敗しました');
+                                }
+                              } catch (error) {
+                                console.error('性別情報更新エラー:', error);
+                                alert('更新中にエラーが発生しました');
+                              }
+                            }}
+                            className="input"
+                            style={{ width: '100%', marginBottom: '0.5rem' }}
+                          >
+                            <option value="male">男子</option>
+                            <option value="female">女子</option>
+                          </select>
+                          <p className="text-sm text-gray-600">
+                            現在の設定: {currentQRCodeData.gender === 'female' ? '女子' : '男子'}
+                          </p>
+                        </div>
                       </div>
                     </div>
                     
@@ -5950,6 +6044,23 @@ const TournamentSetupView = ({ state, dispatch }) => {
             <input type="text" value={formData.remarks} onChange={(e) => handleInputChange('remarks', e.target.value)} placeholder="その他必要事項 *" className="input" />
             
             <div style={{ marginTop: '0.75rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={formData.enableGenderSeparation || false}
+                  onChange={(e) => handleInputChange('enableGenderSeparation', e.target.checked)}
+                  style={{ width: '1rem', height: '1rem' }}
+                />
+                <span className="label">各部門で男女を分ける</span>
+              </label>
+              {formData.enableGenderSeparation && (
+                <p className="text-sm text-gray-600" style={{ marginTop: '0.25rem' }}>
+                  有効にすると、各部門で男子と女子の順位を別々に表示します
+                </p>
+              )}
+            </div>
+            
+            <div style={{ marginTop: '0.75rem' }}>
               <p className="label">部門設定</p>
               {formData.divisions && (() => {
                 const rankOptions = ['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
@@ -6023,6 +6134,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
     affiliation: '', 
     rank: '初段', 
     rankAcquiredDate: '',
+    gender: 'male',
     isOfficialOnly: false
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -6103,7 +6215,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
 
   const handleInputChange = (field, value) => { setFormData(prev => ({ ...prev, [field]: value })); };
 
-  const showQRCode = (id, name, type, tournamentName = '', affiliation = '', rank = '') => {
+  const showQRCode = (id, name, type, tournamentName = '', affiliation = '', rank = '', gender = 'male') => {
     setQrCodeData({ 
       id, 
       name, 
@@ -6111,6 +6223,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
       tournamentName,
       affiliation,
       rank,
+      gender,
       registrationDate: new Date().toISOString()
     });
     setShowQRModal(true);
@@ -6143,6 +6256,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
         affiliation: formData.affiliation,
         rank: formData.rank,
         rankAcquiredDate: formData.rankAcquiredDate,
+        gender: formData.gender,
         isStaff: isStaff,
         isOfficialOnly: formData.isOfficialOnly,
         archerId: archerId,
@@ -6172,7 +6286,8 @@ const ArcherSignupView = ({ state, dispatch }) => {
           isStaff ? '役員' : '選手',
           tournament?.data?.name || '不明な大会',
           formData.affiliation,
-          formData.rank
+          formData.rank,
+          formData.gender
         );
 
         localStorage.setItem('kyudo_tournament_device_id', deviceId);
@@ -6183,6 +6298,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
           affiliation: '',
           rank: '初段',
           rankAcquiredDate: '',
+          gender: 'male',
           isOfficialOnly: false
         });
         setIsStaff(false);
@@ -6238,6 +6354,13 @@ const ArcherSignupView = ({ state, dispatch }) => {
             <select value={formData.rank} onChange={(e) => handleInputChange('rank', e.target.value)} className="input">
               {rankOrder.map(rank => (<option key={rank} value={rank}>{rank}</option>))}
             </select>
+            <div>
+              <label>性別 *</label>
+              <select value={formData.gender} onChange={(e) => handleInputChange('gender', e.target.value)} className="input">
+                <option value="male">男子</option>
+                <option value="female">女子</option>
+              </select>
+            </div>
             {formData.rank !== '無指定' && (
               <div>
                 <label>段位取得日 *</label>
@@ -6278,18 +6401,51 @@ const ArcherSignupView = ({ state, dispatch }) => {
                     level="H"
                     includeMargin={true}
                   />
-                  <div style={{ marginTop: '1rem', fontWeight: 'bold', wordBreak: 'break-all' }}>
-                    ID: {qrCodeData.id}
-                  </div>
-                </div>
-                
-                <div className="qr-info-box">
-                  <p className="qr-name">{qrCodeData.name} 様</p>
-                  <p className="qr-details">{qrCodeData.affiliation}</p>
-                  <p className="qr-details">{qrCodeData.rank}</p>
                 </div>
               </div>
               
+              <div className="qr-info-box">
+                <p className="qr-name">{qrCodeData.name} 様</p>
+                <p className="qr-details">{qrCodeData.affiliation}</p>
+                <p className="qr-details">{qrCodeData.rank}</p>
+                
+                <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f8f9fa', borderRadius: '0.5rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                    性別情報の設定・更新
+                  </label>
+                  <select 
+                    value={qrCodeData.gender || 'male'} 
+                    onChange={async (e) => {
+                      const newGender = e.target.value;
+                      try {
+                        const response = await fetch(`${API_URL}/applicants/${qrCodeData.id}/gender`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ gender: newGender })
+                        });
+                        
+                        if (response.ok) {
+                          setQrCodeData(prev => ({ ...prev, gender: newGender }));
+                          alert('性別情報を更新しました');
+                        } else {
+                          alert('更新に失敗しました');
+                        }
+                      } catch (error) {
+                        console.error('性別情報更新エラー:', error);
+                        alert('更新中にエラーが発生しました');
+                      }
+                    }}
+                    className="input"
+                    style={{ width: '100%', marginBottom: '0.5rem' }}
+                  >
+                    <option value="male">男子</option>
+                    <option value="female">女子</option>
+                  </select>
+                  <p className="text-sm text-gray-600">
+                    現在の設定: {qrCodeData.gender === 'female' ? '女子' : '男子'}
+                  </p>
+                </div>
+              </div>
               <div className="qr-modal-footer">
                 <button
                   onClick={handleCloseQRModal}
