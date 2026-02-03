@@ -238,11 +238,11 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
     // Create gender-separated groups if enabled
     if (enableGenderSeparation) {
       for (const d of divisions) {
-        groups[`${d.id}_male`] = { division: { ...d, id: `${d.id}_male`, label: `${d.label}（男子）` }, rows: [] };
-        groups[`${d.id}_female`] = { division: { ...d, id: `${d.id}_female`, label: `${d.label}（女子）` }, rows: [] };
+        groups[`${d.id}_male`] = { division: { ...d, id: `${d.id}_male`, label: `${d.label}（男）` }, rows: [] };
+        groups[`${d.id}_female`] = { division: { ...d, id: `${d.id}_female`, label: `${d.label}（女）` }, rows: [] };
       }
-      groups['unassigned_male'] = { division: { id: 'unassigned_male', label: '未分類（男子）' }, rows: [] };
-      groups['unassigned_female'] = { division: { id: 'unassigned_female', label: '未分類（女子）' }, rows: [] };
+      groups['unassigned_male'] = { division: { id: 'unassigned_male', label: '未分類（男）' }, rows: [] };
+      groups['unassigned_female'] = { division: { id: 'unassigned_female', label: '未分類（女）' }, rows: [] };
     } else {
       for (const d of divisions) groups[d.id] = { division: d, rows: [] };
       if (!groups.unassigned) groups.unassigned = { division: { id: 'unassigned', label: '未分類' }, rows: [] };
@@ -263,7 +263,7 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
       if (!groups[targetGroupId]) {
         if (enableGenderSeparation) {
           groups[targetGroupId] = { 
-            division: { id: targetGroupId, label: `${divId}（${gender === 'male' ? '男子' : '女子'}）` }, 
+            division: { id: targetGroupId, label: `${divId}（${gender === 'male' ? '男' : '女'}）` }, 
             rows: [] 
           };
         } else {
@@ -550,10 +550,10 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
 
   const autoSelectTournamentByGeolocation = () => {
     if (!navigator.geolocation) {
-      setGeoStatus('❌ この端末は位置情報に対応していません');
+      setGeoStatus('? この端末は位置情報に対応していません');
       return;
     }
-    setGeoStatus('📍 位置情報を取得中...');
+    setGeoStatus('?? 位置情報を取得中...');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         try {
@@ -570,21 +570,21 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
             .sort((a, b) => a.dist - b.dist);
 
           if (candidates.length === 0) {
-            setGeoStatus('⚠️ 会場の緯度/経度が登録されている大会がありません');
+            setGeoStatus('?? 会場の緯度/経度が登録されている大会がありません');
             return;
           }
 
           const nearest = candidates[0];
           setInputValue(nearest.t.id);
           setError('');
-          setGeoStatus(`✅ 近い大会を自動選択しました（約${nearest.dist.toFixed(1)}km）`);
+          setGeoStatus(`? 近い大会を自動選択しました（約${nearest.dist.toFixed(1)}km）`);
         } catch (e) {
           console.error(e);
-          setGeoStatus('❌ 位置情報から大会の自動選択に失敗しました');
+          setGeoStatus('? 位置情報から大会の自動選択に失敗しました');
         }
       },
       (err) => {
-        const msg = err?.message ? `❌ 位置情報の取得に失敗しました: ${err.message}` : '❌ 位置情報の取得に失敗しました';
+        const msg = err?.message ? `? 位置情報の取得に失敗しました: ${err.message}` : '? 位置情報の取得に失敗しました';
         setGeoStatus(msg);
       },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
@@ -671,7 +671,7 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
             </div>
             <p className="hint">本日の大会IDを入力してください</p>
             <button onClick={autoSelectTournamentByGeolocation} className="btn-secondary" style={{ width: '100%', marginBottom: '0.5rem' }}>
-              📍 現在地から大会を自動選択
+              ?? 現在地から大会を自動選択
             </button>
             {geoStatus && <p className="text-sm text-gray-600" style={{ marginBottom: '0.5rem' }}>{geoStatus}</p>}
             <select value={inputValue} onChange={(e) => setInputValue(e.target.value)} className="input">
@@ -793,11 +793,22 @@ const TournamentView = ({ state, stands, checkInCount }) => {
         };
 
         const sortedArchers = [...checkedIn].sort((a, b) => {
+          // 男女分けが有効な場合、男を先に配置
+          const enableGenderSeparation = tournament?.data?.enableGenderSeparation || false;
+          if (enableGenderSeparation) {
+            const aGender = a.gender || "male";
+            const bGender = b.gender || "male";
+            if (aGender !== bGender) {
+              return aGender === "male" ? -1 : 1;
+            }
+          }
+
           const aRank = normalizeRank(a.rank);
           const bRank = normalizeRank(b.rank);
           const aIndex = rankOrder.indexOf(aRank);
           const bIndex = rankOrder.indexOf(bRank);
 
+          // 段位の順序：5級（低い）→範士9段（高い）の順に並べる
           if (aIndex !== bIndex) {
             if (aIndex === -1 && bIndex === -1) return 0;
             if (aIndex === -1) return 1;
@@ -805,6 +816,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
             return aIndex - bIndex;
           }
 
+          // 同じ段位内では習得日が若い順（習得日が早い順）
           const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
           const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
           return aDate.getTime() - bDate.getTime();
@@ -884,7 +896,14 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   useEffect(() => {
     const fetchShichumaResults = async () => {
       if (!selectedTournamentId) return;
-      
+      // リセット直後はサーバーの最終結果を取り込まない
+      if (Date.now() < (ignoreServerFinalsUntil || 0)) {
+        console.log('fetchShichumaResults skipped due to recent reset (suppressing server finals)');
+        setShichumaData(null);
+        setIsLoadingShichuma(false);
+        return;
+      }
+
       setIsLoadingShichuma(true);
       try {
         const response = await fetch(`${API_URL}/ranking/shichuma/${selectedTournamentId}`);
@@ -905,7 +924,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       }
     };
 
-    fetchShichumaResults();
+      fetchShichumaResults();
   }, [selectedTournamentId]);
 
   const tournament = state.tournament;
@@ -983,13 +1002,13 @@ const TournamentView = ({ state, stands, checkInCount }) => {
 
       const arrows1 = tplData?.arrowsRound1 || 0;
       const arrows2 = tplData?.arrowsRound2 || 0;
-      html += `<table><thead><tr><th>#</th><th>氏名</th><th>所属</th><th>段位</th><th>1立ち目</th><th>2立ち目</th></tr></thead><tbody>`;
+      html += `<table><thead><tr><th>#</th><th>氏名</th><th>所属</th><th>段位</th><th>性別</th><th>1立ち目</th><th>2立ち目</th></tr></thead><tbody>`;
 
       const start = p * perPage;
       const end = Math.min(start + perPage, archers.length);
       for (let i = start; i < end; i++) {
         const a = archers[i];
-        html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td>`;
+        html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td><td>${a.gender === 'female' ? '女' : '男'}</td>`;
         // 1立ち目 placeholders
         html += `<td style="white-space:nowrap">`;
         for (let x = 0; x < arrows1; x++) {
@@ -1167,7 +1186,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                                   r === 'o' ? 'bg-gray-900 text-white' : 
                                   r === 'x' ? 'bg-red-200 text-red-700' : 'bg-gray-100 text-gray-400'
                                 }`}>
-                                  {r === 'o' ? '○' : r === 'x' ? '×' : '—'}
+                                  {r === 'o' ? '○' : r === 'x' ? '×' : '?'}
                                 </div>
                               </div>
                             ))}
@@ -1261,15 +1280,16 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">所属</th>
                         <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">性別</th>
                         <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
                         <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {isLoading && archers.length === 0 ? (
-                        <tr><td colSpan="6" className="px-4 py-4 text-center">読み込み中...</td></tr>
+                        <tr><td colSpan="7" className="px-4 py-4 text-center">読み込み中...</td></tr>
                       ) : archers.length === 0 ? (
-                        <tr><td colSpan="6" className="px-4 py-4 text-center">選手が登録されていません</td></tr>
+                        <tr><td colSpan="7" className="px-4 py-4 text-center">選手が登録されていません</td></tr>
                       ) : (
                         currentArchersProgram.map(a => (
                           <tr key={a.archerId}>
@@ -1277,6 +1297,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                             <td className="px-4 py-3">{a.name}</td>
                             <td className="px-4 py-3">{a.affiliation}</td>
                             <td className="px-4 py-3 text-center">{a.rank}</td>
+                            <td className="px-4 py-3 text-center">{a.gender === 'female' ? '女' : '男'}</td>
                             <td className="px-4 py-3">
                               <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
                                 {Array.from({ length: (tplData?.arrowsRound1 || 0) }).map((_, idx) => (
@@ -1301,7 +1322,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                 {archers.length > programArchersPerPage && (
                   <div className="flex items-center justify-between mt-4">
                     <div>
-                      <p className="text-sm">{indexOfFirstProgram + 1} 〜 {Math.min(indexOfLastProgram, archers.length)} / {archers.length} 名</p>
+                      <p className="text-sm">{indexOfFirstProgram + 1} ? {Math.min(indexOfLastProgram, archers.length)} / {archers.length} 名</p>
                     </div>
                     <div className="flex space-x-1">
                       <button onClick={() => paginateProgram(Math.max(1, currentPageProgram-1))} disabled={currentPageProgram === 1} className="btn">前へ</button>
@@ -1451,6 +1472,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">支部</th>
                           <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
+                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">性別</th>
                           <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
                           <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
                           <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">結果</th>
@@ -1459,18 +1481,188 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                       <tbody className="bg-white divide-y divide-gray-200">
                         {isLoading && archers.length === 0 ? (
                           <tr>
-                            <td colSpan="7" className="px-4 py-4 text-center text-sm text-gray-500">
+                            <td colSpan="8" className="px-4 py-4 text-center text-sm text-gray-500">
                               読み込み中...
                             </td>
                           </tr>
                         ) : archers.length === 0 ? (
                           <tr>
-                            <td colSpan="7" className="px-4 py-4 text-center text-sm text-gray-500">
+                            <td colSpan="8" className="px-4 py-4 text-center text-sm text-gray-500">
                               受付済みの選手がいません
                             </td>
                           </tr>
                         ) : (
-                          currentArchers.map((archer) => {
+                          <>
+                            {(() => {
+                              const enableGenderSeparation = tournament?.data?.enableGenderSeparation || false;
+                              
+                              if (enableGenderSeparation) {
+                                // 男女分け表示
+                                const maleArchers = currentArchers.filter(a => (a.gender || 'male') === 'male');
+                                const femaleArchers = currentArchers.filter(a => a.gender === 'female');
+                                
+                                return (
+                                  <>
+                                    {maleArchers.length > 0 && (
+                                      <>
+                                        <tr>
+                                          <td colSpan="8" className="px-4 py-2 bg-blue-50 text-center font-medium text-blue-700">
+                                            男部門
+                                          </td>
+                                        </tr>
+                                        {maleArchers.map((archer) => {
+                                          const { ceremony, rank } = getRankCategory(archer.rank);
+                                          const stand1Result = archer.results?.stand1?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null);
+                                          const stand2Result = archer.results?.stand1?.slice(tournament.arrowsRound1, tournament.arrowsRound1 + tournament.arrowsRound2) || Array(tournament.arrowsRound2).fill(null);
+                                          const passed = isPassed(archer);
+                                          
+                                          return (
+                                            <tr 
+                                              key={archer.archerId} 
+                                              className={`${passed ? 'bg-green-50' : ''} hover:bg-gray-50`}
+                                            >
+                                              <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                {archer.standOrder}
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap">
+                                                <div className="flex items-center">
+                                                  <span className="font-medium">{archer.name}</span>
+                                                </div>
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                                {archer.affiliation}
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
+                                                {ceremony}{rank}
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
+                                                男
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap">
+                                                <div className="flex gap-1 justify-center">
+                                                  {stand1Result.map((result, idx) => (
+                                                    <span 
+                                                      key={idx} 
+                                                      className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
+                                                        result === 'o' ? 'bg-gray-900 text-white' : 
+                                                        result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
+                                                      }`}
+                                                    >
+                                                      {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
+                                                    </span>
+                                                  ))}
+                                                </div>
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap">
+                                                <div className="flex gap-1 justify-center">
+                                                  {stand2Result.map((result, idx) => (
+                                                    <span 
+                                                      key={idx} 
+                                                      className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
+                                                        result === 'o' ? 'bg-gray-900 text-white' : 
+                                                        result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
+                                                      }`}
+                                                    >
+                                                      {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
+                                                    </span>
+                                                  ))}
+                                                </div>
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap text-center">
+                                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                                                  passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                                }`}>
+                                                  {passed ? '合格' : '不合格'}
+                                                </span>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </>
+                                    )}
+                                    
+                                    {femaleArchers.length > 0 && (
+                                      <>
+                                        <tr>
+                                          <td colSpan="8" className="px-4 py-2 bg-pink-50 text-center font-medium text-pink-700">
+                                            女部門
+                                          </td>
+                                        </tr>
+                                        {femaleArchers.map((archer) => {
+                                          const { ceremony, rank } = getRankCategory(archer.rank);
+                                          const stand1Result = archer.results?.stand1?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null);
+                                          const stand2Result = archer.results?.stand1?.slice(tournament.arrowsRound1, tournament.arrowsRound1 + tournament.arrowsRound2) || Array(tournament.arrowsRound2).fill(null);
+                                          const passed = isPassed(archer);
+                                          
+                                          return (
+                                            <tr 
+                                              key={archer.archerId} 
+                                              className={`${passed ? 'bg-green-50' : ''} hover:bg-gray-50`}
+                                            >
+                                              <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                {archer.standOrder}
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap">
+                                                <div className="flex items-center">
+                                                  <span className="font-medium">{archer.name}</span>
+                                                </div>
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                                {archer.affiliation}
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
+                                                {ceremony}{rank}
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
+                                                女
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap">
+                                                <div className="flex gap-1 justify-center">
+                                                  {stand1Result.map((result, idx) => (
+                                                    <span 
+                                                      key={idx} 
+                                                      className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
+                                                        result === 'o' ? 'bg-gray-900 text-white' : 
+                                                        result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
+                                                      }`}
+                                                    >
+                                                      {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
+                                                    </span>
+                                                  ))}
+                                                </div>
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap">
+                                                <div className="flex gap-1 justify-center">
+                                                  {stand2Result.map((result, idx) => (
+                                                    <span 
+                                                      key={idx} 
+                                                      className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
+                                                        result === 'o' ? 'bg-gray-900 text-white' : 
+                                                        result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
+                                                      }`}
+                                                    >
+                                                      {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
+                                                    </span>
+                                                  ))}
+                                                </div>
+                                              </td>
+                                              <td className="px-4 py-3 whitespace-nowrap text-center">
+                                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                                                  passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                                }`}>
+                                                  {passed ? '合格' : '不合格'}
+                                                </span>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </>
+                                    )}
+                                  </>
+                                );
+                              } else {
+                                // 通常表示（男女混合）
+                                return currentArchers.map((archer) => {
                             const { ceremony, rank } = getRankCategory(archer.rank);
                             const stand1Result = archer.results?.stand1?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null);
                             const stand2Result = archer.results?.stand1?.slice(tournament.arrowsRound1, tournament.arrowsRound1 + tournament.arrowsRound2) || Array(tournament.arrowsRound2).fill(null);
@@ -1495,6 +1687,9 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
                                   {ceremony}{rank}
                                 </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
+                                  {archer.gender === 'female' ? '女' : '男'}
+                                </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <div className="flex gap-1 justify-center">
                                     {stand1Result.map((result, idx) => (
@@ -1505,7 +1700,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                                           result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
                                         }`}
                                       >
-                                        {result === 'o' ? '◯' : result === 'x' ? '×' : '—'}
+                                        {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
                                       </span>
                                     ))}
                                   </div>
@@ -1520,7 +1715,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                                           result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
                                         }`}
                                       >
-                                        {result === 'o' ? '◯' : result === 'x' ? '×' : '—'}
+                                        {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
                                       </span>
                                     ))}
                                   </div>
@@ -1533,7 +1728,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                                   )}
                                   {passed === false && (
                                     <span className="px-2 py-1 text-xs font-semibold text-gray-600 bg-gray-100 rounded-full">
-                                      —
+                                      ?
                                     </span>
                                   )}
                                   {passed === null && (
@@ -1544,7 +1739,10 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                                 </td>
                               </tr>
                             );
-                          })
+                          });
+                              }
+                            })()}
+                          </>
                         )}
                       </tbody>
                     </table>
@@ -1556,7 +1754,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                   <div className="flex items-center justify-between mt-4">
                     <div>
                       <p className="text-sm text-gray-700">
-                        <span className="font-medium">{indexOfFirstArcher + 1}</span> 〜 <span className="font-medium">
+                        <span className="font-medium">{indexOfFirstArcher + 1}</span> ? <span className="font-medium">
                           {Math.min(indexOfLastArcher, archers.length)}
                         </span> / <span className="font-medium">{archers.length}</span> 名
                       </p>
@@ -1622,6 +1820,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
   const [selectedDivision, setSelectedDivision] = useState(() => localStorage.getItem('recording_selectedDivision') || '');
   const [selectedStand, setSelectedStand] = useState(() => parseInt(localStorage.getItem('recording_selectedStand')) || 1);
   const [selectedRound, setSelectedRound] = useState(() => parseInt(localStorage.getItem('recording_selectedRound')) || 1); // 1: 1立ち目, 2: 2立ち目
+  const [selectedGender, setSelectedGender] = useState(() => localStorage.getItem('recording_selectedGender') || 'all'); // 'all' | 'male' | 'female'
   const [archers, setArchers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -1634,9 +1833,10 @@ const RecordingView = ({ state, dispatch, stands }) => {
   useEffect(() => { localStorage.setItem('recording_selectedDivision', selectedDivision || ''); }, [selectedDivision]);
   useEffect(() => { localStorage.setItem('recording_selectedStand', selectedStand); }, [selectedStand]);
   useEffect(() => { localStorage.setItem('recording_selectedRound', selectedRound); }, [selectedRound]);
+  useEffect(() => { localStorage.setItem('recording_selectedGender', selectedGender || 'all'); }, [selectedGender]);
 
   const tournament = state.tournament;
-  const rankOrder = ['無指定', '五級', '四級', '三級', '弁級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
+  const rankOrder = ['無指定', '五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
 
   const normalizeRank = (rank) => {
     if (!rank) return '';
@@ -1747,11 +1947,22 @@ const RecordingView = ({ state, dispatch, stands }) => {
         };
 
         const sortedArchers = [...checkedIn].sort((a, b) => {
+          // 男女分けが有効な場合、男を先に配置
+          const enableGenderSeparation = tournament?.data?.enableGenderSeparation || false;
+          if (enableGenderSeparation) {
+            const aGender = a.gender || "male";
+            const bGender = b.gender || "male";
+            if (aGender !== bGender) {
+              return aGender === "male" ? -1 : 1;
+            }
+          }
+
           const aRank = normalizeRank(a.rank);
           const bRank = normalizeRank(b.rank);
           const aIndex = rankOrder.indexOf(aRank);
           const bIndex = rankOrder.indexOf(bRank);
 
+          // 段位の順序：5級（低い）→範士9段（高い）の順に並べる
           if (aIndex !== bIndex) {
             if (aIndex === -1 && bIndex === -1) return 0;
             if (aIndex === -1) return 1;
@@ -1759,6 +1970,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
             return aIndex - bIndex;
           }
 
+          // 同じ段位内では習得日が若い順（習得日が早い順）
           const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
           const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
           return aDate.getTime() - bDate.getTime();
@@ -1814,9 +2026,17 @@ const RecordingView = ({ state, dispatch, stands }) => {
   }, [selectedTournamentId]);
 
   const filteredTournaments = state.registeredTournaments;
+  const enableGenderSeparation = selectedTournament?.data?.enableGenderSeparation || false;
+
   const divisionArchers = archers.filter(a => {
     const archerDivisions = getDivisionIdsForArcher(a, divisions);
-    return archerDivisions.includes(selectedDivision);
+    if (!archerDivisions.includes(selectedDivision)) return false;
+    if (!enableGenderSeparation) return true;
+    if (selectedGender === 'all') return true;
+    const g = (a.gender || 'male');
+    if (selectedGender === 'male') return g === 'male';
+    if (selectedGender === 'female') return g === 'female';
+    return true;
   });
 
   const getArchersForStand = (standNumber) => {
@@ -2016,6 +2236,13 @@ const RecordingView = ({ state, dispatch, stands }) => {
                   </button>
                 ))}
               </div>
+              {enableGenderSeparation && (
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  <button onClick={() => setSelectedGender('all')} className={`btn ${selectedGender === 'all' ? 'btn-active' : ''}`} style={{ flex: 1 }}>全員</button>
+                  <button onClick={() => setSelectedGender('male')} className={`btn ${selectedGender === 'male' ? 'btn-active' : ''}`} style={{ flex: 1 }}>男子</button>
+                  <button onClick={() => setSelectedGender('female')} className={`btn ${selectedGender === 'female' ? 'btn-active' : ''}`} style={{ flex: 1 }}>女子</button>
+                </div>
+              )}
               <p className="hint" style={{ marginTop: '0.5rem' }}>この部門の選手数: {divisionArchers.length}人</p>
             </div>
 
@@ -2128,10 +2355,10 @@ const CheckInView = ({ state, dispatch }) => {
 
   const autoSelectTournamentByGeolocation = async () => {
     if (!navigator.geolocation) {
-      setGeoStatus('❌ この端末は位置情報に対応していません');
+      setGeoStatus('? この端末は位置情報に対応していません');
       return;
     }
-    setGeoStatus('📍 位置情報を取得中...');
+    setGeoStatus('?? 位置情報を取得中...');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         try {
@@ -2148,20 +2375,20 @@ const CheckInView = ({ state, dispatch }) => {
             .sort((a, b) => a.dist - b.dist);
 
           if (candidates.length === 0) {
-            setGeoStatus('⚠️ 会場の緯度/経度が登録されている大会がありません');
+            setGeoStatus('?? 会場の緯度/経度が登録されている大会がありません');
             return;
           }
 
           const nearest = candidates[0];
           setSelectedTournamentId(nearest.t.id);
-          setGeoStatus(`✅ 近い大会を自動選択しました（約${nearest.dist.toFixed(1)}km）`);
+          setGeoStatus(`? 近い大会を自動選択しました（約${nearest.dist.toFixed(1)}km）`);
         } catch (e) {
           console.error(e);
-          setGeoStatus('❌ 位置情報から大会の自動選択に失敗しました');
+          setGeoStatus('? 位置情報から大会の自動選択に失敗しました');
         }
       },
       (err) => {
-        const msg = err?.message ? `❌ 位置情報の取得に失敗しました: ${err.message}` : '❌ 位置情報の取得に失敗しました';
+        const msg = err?.message ? `? 位置情報の取得に失敗しました: ${err.message}` : '? 位置情報の取得に失敗しました';
         setGeoStatus(msg);
       },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
@@ -2216,7 +2443,7 @@ const CheckInView = ({ state, dispatch }) => {
       }
     } catch (error) {
       console.error('データの取得に失敗しました:', error);
-      setMessage('❌ データの取得に失敗しました');
+      setMessage('? データの取得に失敗しました');
     } finally {
       setIsLoading(false);
     }
@@ -2325,13 +2552,13 @@ const CheckInView = ({ state, dispatch }) => {
         handleCheckIn(archerId);
       }, 100);
     } catch (error) {
-      setMessage('❌ QRコードの読み込みに失敗しました');
+      setMessage('? QRコードの読み込みに失敗しました');
     }
   };
 
   const openQRScanner = () => {
     if (!selectedTournamentId) {
-      setMessage('❌ 大会を選択してください');
+      setMessage('? 大会を選択してください');
       return;
     }
     setShowQRScanner(true);
@@ -2339,13 +2566,13 @@ const CheckInView = ({ state, dispatch }) => {
 
   const handleCheckIn = async (scannedArcherId = null) => {
     if (!selectedTournamentId) {
-      setMessage('❌ 大会を選択してください');
+      setMessage('? 大会を選択してください');
       return;
     }
 
     const archerId = (scannedArcherId || scannedQR).trim();
     if (!archerId) {
-      setMessage('❌ 選手IDを入力するか、QRコードをスキャンしてください');
+      setMessage('? 選手IDを入力するか、QRコードをスキャンしてください');
       return;
     }
 
@@ -2362,7 +2589,7 @@ const CheckInView = ({ state, dispatch }) => {
 
       const applicant = result.data.find(a => a.archerId === archerId);
       if (!applicant) {
-        setMessage('❌ 該当する選手が見つかりません');
+        setMessage('? 該当する選手が見つかりません');
         return;
       }
 
@@ -2376,8 +2603,8 @@ const CheckInView = ({ state, dispatch }) => {
       
       if (checkInResult.success) {
         const successMessage = checkInResult.data.isCheckedIn 
-          ? `✅ ${checkInResult.data.name}さんは既に受付済みです`
-          : `✅ ${checkInResult.data.name}さんの受付が完了しました`;
+          ? `? ${checkInResult.data.name}さんは既に受付済みです`
+          : `? ${checkInResult.data.name}さんの受付が完了しました`;
         
         setMessage(successMessage);
         setScannedQR('');
@@ -2390,10 +2617,10 @@ const CheckInView = ({ state, dispatch }) => {
           }
         }, 300);
       } else {
-        setMessage(`❌ ${checkInResult.message || '受付に失敗しました'}`);
+        setMessage(`? ${checkInResult.message || '受付に失敗しました'}`);
       }
     } catch (error) {
-      setMessage(`❌ エラーが発生しました: ${error.message}`);
+      setMessage(`? エラーが発生しました: ${error.message}`);
     } finally {
       setIsLoading(false);
       setTimeout(() => setMessage(''), 5000);
@@ -2428,16 +2655,16 @@ const CheckInView = ({ state, dispatch }) => {
         <h1>受付</h1>
         {selectedTournament ? (
           <div className="tournament-info">
-            <p>• {selectedTournament.data?.name || '大会名不明'}</p>
-            <p>• {formatTournamentDate(selectedTournament)}</p>
+            <p>? {selectedTournament.data?.name || '大会名不明'}</p>
+            <p>? {formatTournamentDate(selectedTournament)}</p>
             {myApplicantData && (
-              <p>• {Array.isArray(myApplicantData) ? '複数登録あり' : 
+              <p>? {Array.isArray(myApplicantData) ? '複数登録あり' : 
                 `${myApplicantData.isStaff ? '役員' : '選手'}ID: ${myApplicantData.archerId}`}</p>
             )}
           </div>
         ) : (
           <div className="tournament-info">
-            <p>• 大会を選択してください</p>
+            <p>? 大会を選択してください</p>
           </div>
         )}
       </div>
@@ -2453,7 +2680,7 @@ const CheckInView = ({ state, dispatch }) => {
               className="input w-full mb-2"
             />
             <button onClick={autoSelectTournamentByGeolocation} className="btn-secondary" style={{ width: '100%', marginBottom: '0.5rem' }}>
-              📍 現在地から大会を自動選択
+              ?? 現在地から大会を自動選択
             </button>
             {geoStatus && (
               <p className="text-sm text-gray-600" style={{ marginBottom: '0.5rem' }}>{geoStatus}</p>
@@ -2529,7 +2756,7 @@ const CheckInView = ({ state, dispatch }) => {
                         }}
                       >
                         <QrCode size={24} style={{ marginRight: '0.5rem' }} />
-                        🎫 自分のQRコードを表示
+                        ?? 自分のQRコードを表示
                       </button>
                     </>
                   )}
@@ -2539,7 +2766,7 @@ const CheckInView = ({ state, dispatch }) => {
                       onClick={() => setShowManualInput(true)}
                       style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '0.875rem', textDecoration: 'underline', marginTop: '0.5rem' }}
                     >
-                      📝 ID手動入力・スキャン(係員用)
+                      ?? ID手動入力・スキャン(係員用)
                     </button>
                   ) : (
                     <button 
@@ -2595,7 +2822,7 @@ const CheckInView = ({ state, dispatch }) => {
               )}
 
               {message && (
-                <div className={`message ${message.startsWith('✅') ? 'message-success' : message.startsWith('❌') ? 'message-error' : 'message-warning'}`} style={{ marginTop: '1rem' }}>
+                <div className={`message ${message.startsWith('?') ? 'message-success' : message.startsWith('?') ? 'message-error' : 'message-warning'}`} style={{ marginTop: '1rem' }}>
                   {message}
                 </div>
               )}
@@ -2603,7 +2830,7 @@ const CheckInView = ({ state, dispatch }) => {
               {showQRScanner && (
                 <QRCodeScanner
                   onScanSuccess={handleQRCodeScanned}
-                  onError={(msg) => setMessage('❌ ' + msg)}
+                  onError={(msg) => setMessage('? ' + msg)}
                   onClose={() => setShowQRScanner(false)}
                 />
               )}
@@ -2737,11 +2964,11 @@ const CheckInView = ({ state, dispatch }) => {
                             className="input"
                             style={{ width: '100%', marginBottom: '0.5rem' }}
                           >
-                            <option value="male">男子</option>
-                            <option value="female">女子</option>
+                            <option value="male">男</option>
+                            <option value="female">女</option>
                           </select>
                           <p className="text-sm text-gray-600">
-                            現在の設定: {currentQRCodeData.gender === 'female' ? '女子' : '男子'}
+                            現在の設定: {currentQRCodeData.gender === 'female' ? '女' : '男'}
                           </p>
                         </div>
                       </div>
@@ -2863,6 +3090,7 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [shootOffType, setShootOffType] = useState(''); // 'shichuma' or 'enkin'
   const [selectedDivision, setSelectedDivision] = useState(''); // 部門選択用
+  const [selectedGender, setSelectedGender] = useState(() => localStorage.getItem('ranking_selectedGender') || 'all'); // 'all' | 'male' | 'female'
   const [currentShichumaRound, setCurrentShichumaRound] = useState(1); // 現在の射数（1～4）
   const [shichumaResults, setShichumaResults] = useState({}); // {archerId: ['o', 'x', null, null]}
   const [eliminatedArchers, setEliminatedArchers] = useState(new Set()); // 脱落者ID
@@ -2884,6 +3112,10 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   const [enkinFinalResults, setEnkinFinalResults] = useState(null); // 遠近競射の最終結果
   const [isLoadingResults, setIsLoadingResults] = useState(false); // 結果読み込み状態
   const [savedEnkinRanks, setSavedEnkinRanks] = useState(new Set()); // 保存済みの遠近競射枠
+  const [skipShootOffFetchUntil, setSkipShootOffFetchUntil] = useState(0);
+  const [ignoreServerFinalsUntil, setIgnoreServerFinalsUntil] = useState(0);
+  const [suppressMergedDisplayUntil, setSuppressMergedDisplayUntil] = useState(0);
+  const [useLocalOnlyFinals, setUseLocalOnlyFinals] = useState(false);
 
   const tournaments = state.registeredTournaments || [];
   const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
@@ -2896,6 +3128,8 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
     { id: 'title', label: '称号者の部' }
   ];
   const divisions = (selectedTournament && selectedTournament.data && selectedTournament.data.divisions) ? selectedTournament.data.divisions : localDefaultDivisions;
+
+  const enableGenderSeparation = selectedTournament?.data?.enableGenderSeparation || false;
 
   // 順位の正規化
   const normalizeRank = (rank) => {
@@ -3027,14 +3261,28 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   };
 
   useEffect(() => {
-    fetchArchers();
-    fetchShootOffResults();
+    if (!useLocalOnlyFinals) {
+      fetchArchers();
+      fetchShootOffResults();
+    } else {
+      console.log('Server sync disabled: skipping initial fetch of shoot-off results');
+    }
   }, [selectedTournamentId]);
+
+  useEffect(() => { localStorage.setItem('ranking_selectedGender', selectedGender || 'all'); }, [selectedGender]);
 
   // 順位決定戦結果を取得
   // 全ての順位決定戦の結果を取得
   const fetchShootOffResults = async () => {
     if (!selectedTournamentId) return;
+    if (useLocalOnlyFinals) {
+      console.log('fetchShootOffResults skipped because useLocalOnlyFinals is enabled');
+      return;
+    }
+    if (Date.now() < (skipShootOffFetchUntil || 0)) {
+      console.log('fetchShootOffResults skipped due to recent reset');
+      return;
+    }
     
     setIsLoadingResults(true);
     try {
@@ -3042,8 +3290,21 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
       
       if (response.ok) {
         const result = await response.json();
+        // リセット直後など、サーバーの最終結果で上書きしたくない場合は、サーバーの結果反映を抑止する
+        if (Date.now() < (ignoreServerFinalsUntil || 0)) {
+          console.log('fetchShootOffResults received server data but suppressing application due to recent reset');
+          // still update savedEnkinRanks from whatever server returned to avoid UI errors
+          const maybeEnkin = result.data?.enkin;
+          const savedRanks = new Set();
+          if (maybeEnkin && maybeEnkin.results) {
+            maybeEnkin.results.forEach(r => { if (r.targetRank) savedRanks.add(r.targetRank); });
+          }
+          setSavedEnkinRanks(savedRanks);
+          setIsLoadingResults(false);
+          return;
+        }
         if (result.success) {
-          console.log('📥 fetchShootOffResults - サーバーから取得したデータ:', {
+          console.log('?? fetchShootOffResults - サーバーから取得したデータ:', {
             shichuma: result.data.shichuma,
             enkin: result.data.enkin?.results?.map(r => ({
               archerId: r.archerId,
@@ -3063,7 +3324,7 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
               }))
             };
             
-            console.log('🔍 射詰結果の詳細（補完後）:', shichumaResultsWithShootOffType.results.map(r => ({
+            console.log('?? 射詰結果の詳細（補完後）:', shichumaResultsWithShootOffType.results.map(r => ({
               archerId: r.archerId,
               rank: r.rank,
               shootOffType: r.shootOffType,
@@ -3103,7 +3364,18 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   };
   const fetchEnkinResults = async () => {
     if (!selectedTournamentId) return;
-    
+    if (useLocalOnlyFinals) {
+      console.log('fetchEnkinResults skipped because useLocalOnlyFinals is enabled');
+      return;
+    }
+
+    // リセット直後はサーバーの最終結果を取り込まない
+    if (Date.now() < (ignoreServerFinalsUntil || 0)) {
+      console.log('fetchEnkinResults skipped due to recent reset (suppressing server finals)');
+      setEnkinFinalResults(null);
+      return;
+    }
+
     setIsLoadingResults(true);
     try {
       const response = await fetch(`${API_URL}/ranking/enkin/${selectedTournamentId}`);
@@ -3405,8 +3677,8 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
       }
     });
 
-    console.log('🎯 遠近競射対象者ID:', needsEnkin);
-    console.log('🎯 遠近競射対象者:', needsEnkin.map(id => {
+    console.log('?? 遠近競射対象者ID:', needsEnkin);
+    console.log('?? 遠近競射対象者:', needsEnkin.map(id => {
       const a = currentShootOffArchers.find(ar => ar.archerId === id);
       return a?.name || '不明';
     }));
@@ -3460,7 +3732,7 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
       setIsShootOffActive(true);
     } else {
       // 遠近不要：ここで最終結果を保存（一度だけ）
-      console.log('🎯 遠近競射なし - 射詰競射結果を保存');
+      console.log('?? 遠近競射なし - 射詰競射結果を保存');
       await saveFinalShichumaResults(finalEliminationOrder, updatedResults);
       setIsShootOffActive(false);
     }
@@ -3642,7 +3914,7 @@ const getShichumaWinner = () => {
       console.error('射詰競射結果修正エラー:', error);
     });
     
-    console.log(`🎯 Shichuma Result Edited: ${archerId} arrow${arrowIdx} changed from ${oldResult} to ${newResult}`);
+    console.log(`?? Shichuma Result Edited: ${archerId} arrow${arrowIdx} changed from ${oldResult} to ${newResult}`);
   };
 
   // 全員の記録入力が完了したかチェック
@@ -3690,6 +3962,11 @@ const getAllTiedGroups = useCallback(() => {
   const awardRankLimit = tournament?.data?.awardRankLimit || 3; // サーバーから取得
   
   archers.forEach(archer => {
+    if (enableGenderSeparation && selectedGender !== 'all') {
+      const g = (archer.gender || 'male');
+      if (selectedGender === 'male' && g !== 'male') return;
+      if (selectedGender === 'female' && g !== 'female') return;
+    }
     const hitCount = getTotalHitCountAllStands(archer);
     if (!rankGroups[hitCount]) {
       rankGroups[hitCount] = [];
@@ -3729,7 +4006,7 @@ const getAllTiedGroups = useCallback(() => {
     currentRank += group.length;
   }
   
-  console.log('🔍 getAllTiedGroups:', {
+  console.log('?? getAllTiedGroups:', {
     totalArchers: archers.length,
     awardRankLimit,
     filteredGroups: displayGroups.length,
@@ -3741,7 +4018,7 @@ const getAllTiedGroups = useCallback(() => {
   });
   
   return displayGroups;
-}, [archers, getTotalHitCountAllStands, tournament?.data?.awardRankLimit]);
+}, [archers, getTotalHitCountAllStands, tournament?.data?.awardRankLimit, selectedGender, enableGenderSeparation]);
 
   // ===== categorizedGroups を部門対応に修正 =====
 const categorizedGroups = useMemo(() => {
@@ -3759,12 +4036,20 @@ const categorizedGroups = useMemo(() => {
   const allGroups = getAllTiedGroups();
   const awardRankLimit = tournament?.data?.awardRankLimit || 3;
   
-  console.log('📊 categorizedGroups processing (by division):', allGroups.length, 'groups', 'awardRankLimit:', awardRankLimit);
+  console.log('?? categorizedGroups processing (by division):', allGroups.length, 'groups', 'awardRankLimit:', awardRankLimit);
   
   // 各部門ごとに順位計算を行う
   divisions.forEach(div => {
     // この部門の選手のみを抽出
-    const divisionArchers = archers.filter(archer => getDivisionIdForArcher(archer, divisions) === div.id);
+    const divisionArchers = archers.filter(archer => {
+      if (getDivisionIdForArcher(archer, divisions) !== div.id) return false;
+      if (!enableGenderSeparation) return true;
+      if (selectedGender === 'all') return true;
+      const g = (archer.gender || 'male');
+      if (selectedGender === 'male') return g === 'male';
+      if (selectedGender === 'female') return g === 'female';
+      return true;
+    });
     
     // 部門内での的中数でグループ化
     const divisionRankGroups = {};
@@ -3799,9 +4084,9 @@ const categorizedGroups = useMemo(() => {
           console.log(`    → 遠近競射対象（入賞圏内） (${div.label})`);
           divisionsData[div.id].enkin.push({ hitCount, group, rank: currentDivisionRank });
         } else {
-          // 入賞圏外の同率も遠近競射対象として扱う（表彰枠を超えても全員表示）
-          console.log(`    → 遠近競射対象（入賞圏外の同率） (${div.label})`);
-          divisionsData[div.id].enkin.push({ hitCount, group, rank: currentDivisionRank });
+          // 表彰圏外の同率は遠近競射の対象外とし、順位確定として扱う
+          console.log(`    → 表彰圏外の同率（順位確定扱い） (${div.label})`);
+          divisionsData[div.id].confirmed.push({ hitCount, group, rank: currentDivisionRank });
         }
       } else {
         console.log(`    → 順位確定 (${div.label})`);
@@ -3824,7 +4109,7 @@ const categorizedGroups = useMemo(() => {
     }
   });
   
-  console.log('✅ Final result (by division):', result.map(d => ({
+  console.log('? Final result (by division):', result.map(d => ({
     division: d.division.label,
     izume: d.izume.length,
     enkin: d.enkin.length,
@@ -3832,7 +4117,7 @@ const categorizedGroups = useMemo(() => {
   })));
   
   return result;
-}, [archers, getTotalHitCountAllStands, tournament?.data?.awardRankLimit, divisions, getDivisionIdForArcher]);
+}, [archers, getTotalHitCountAllStands, tournament?.data?.awardRankLimit, divisions, getDivisionIdForArcher, selectedGender, enableGenderSeparation]);
 
   // 遠近競射の順位計算
   const calculateEnkinRanking = () => {
@@ -3898,7 +4183,7 @@ const categorizedGroups = useMemo(() => {
     const awardRankLimit = tournament?.data?.awardRankLimit || 3;
     const options = [];
     
-    console.log('🎯 getEnkinRankOptions:', {
+    console.log('?? getEnkinRankOptions:', {
       startRank,
       awardRankLimit,
       enkinTargetRank,
@@ -3950,7 +4235,7 @@ const categorizedGroups = useMemo(() => {
       }
     }
     
-    console.log('🎯 Generated options:', options);
+    console.log('?? Generated options:', options);
     return options;
   };
 
@@ -3969,7 +4254,7 @@ const categorizedGroups = useMemo(() => {
 
   // 次の遠近競射対象順位を取得
   const getNextEnkinTargetRank = () => {
-    console.log('🔍 getNextEnkinTargetRank - eliminationOrder:', eliminationOrder.map(e => ({ name: e.name, rank: e.rank })));
+    console.log('?? getNextEnkinTargetRank - eliminationOrder:', eliminationOrder.map(e => ({ name: e.name, rank: e.rank })));
     
     if (eliminationOrder.length > 0) {
       // 射詰競射で確定した順位を除いた、次の空き順位を計算
@@ -3989,13 +4274,13 @@ const categorizedGroups = useMemo(() => {
         }
       });
       
-      console.log('🔍 usedRanks:', Array.from(usedRanks));
-      console.log('🔍 enkinCandidates:', Array.from(enkinCandidates));
+      console.log('?? usedRanks:', Array.from(usedRanks));
+      console.log('?? enkinCandidates:', Array.from(enkinCandidates));
       
       // 遠近競射対象のrankがある場合、そのrankを返す
       if (enkinCandidates.size > 0) {
         const targetRank = Math.min(...Array.from(enkinCandidates));
-        console.log('🎯 getNextEnkinTargetRank: 遠近競射対象のrankを返す:', targetRank);
+        console.log('?? getNextEnkinTargetRank: 遠近競射対象のrankを返す:', targetRank);
         return targetRank;
       }
       
@@ -4005,7 +4290,7 @@ const categorizedGroups = useMemo(() => {
         nextRank++;
       }
       
-      console.log('🎯 getNextEnkinTargetRank:', {
+      console.log('?? getNextEnkinTargetRank:', {
         eliminationOrder: eliminationOrder.map(e => ({ name: e.name, rank: e.rank })),
         usedRanks: Array.from(usedRanks),
         nextRank: nextRank
@@ -4013,7 +4298,7 @@ const categorizedGroups = useMemo(() => {
       
       return nextRank;
     }
-    console.log('🎯 getNextEnkinTargetRank: eliminationOrderが空なのでデフォルトの2を返す');
+    console.log('?? getNextEnkinTargetRank: eliminationOrderが空なのでデフォルトの2を返す');
     return 2; // デフォルトは2位から
   };
 
@@ -4027,7 +4312,7 @@ const categorizedGroups = useMemo(() => {
   const saveFinalShichumaResults = async (finalRanking, allResults) => {
     if (isSavingShichuma) return; // 二重実行防止
     
-    console.log('🎯 saveFinalShichumaResults called with:', {
+    console.log('?? saveFinalShichumaResults called with:', {
       finalRanking: finalRanking,
       allResults: allResults
     });
@@ -4051,8 +4336,8 @@ const categorizedGroups = useMemo(() => {
         };
       });
       
-      console.log('🎯 shichumaFinalData to save:', shichumaFinalData);
-      console.log('🎯 保存する各選手のshootOffType:', shichumaFinalData.map(d => ({
+      console.log('?? shichumaFinalData to save:', shichumaFinalData);
+      console.log('?? 保存する各選手のshootOffType:', shichumaFinalData.map(d => ({
         archerId: d.archerId,
         rank: d.rank,
         shootOffType: d.shootOffType,
@@ -4083,12 +4368,12 @@ const categorizedGroups = useMemo(() => {
         // 既存の射詰競射結果を保持
         const existingShichumaResults = prev?.results || [];
         
-        console.log('🔍 既存射詰結果:', existingShichumaResults.map(r => ({ 
+        console.log('?? 既存射詰結果:', existingShichumaResults.map(r => ({ 
           archerId: r.archerId, 
           rank: r.rank,
           divisionId: r.divisionId
         })));
-        console.log('🔍 新規射詰結果:', shichumaFinalData.map(r => ({ 
+        console.log('?? 新規射詰結果:', shichumaFinalData.map(r => ({ 
           archerId: r.archerId, 
           rank: r.rank,
           divisionId: r.divisionId
@@ -4110,7 +4395,7 @@ const categorizedGroups = useMemo(() => {
         // 新しい結果を追加
         const mergedResults = [...filteredResults, ...shichumaFinalData];
         
-        console.log('🔍 統合後射詰結果:', mergedResults.map(r => ({ 
+        console.log('?? 統合後射詰結果:', mergedResults.map(r => ({ 
           archerId: r.archerId, 
           rank: r.rank,
           divisionId: r.divisionId
@@ -4151,7 +4436,7 @@ const categorizedGroups = useMemo(() => {
         };
       });
       
-      console.log('🔍 保存する遠近競射データ:', {
+      console.log('?? 保存する遠近競射データ:', {
         targetRank,
         enkinFinalData: enkinFinalData.map(d => ({
           archerId: d.archerId,
@@ -4177,8 +4462,8 @@ const categorizedGroups = useMemo(() => {
       }
       
       const result = await response.json();
-      console.log('✅ 遠近競射結果をサーバーに保存しました:', result);
-      console.log('📥 サーバーから返ってきたデータ:', result.data);
+      console.log('? 遠近競射結果をサーバーに保存しました:', result);
+      console.log('?? サーバーから返ってきたデータ:', result.data);
       
       // 保存成功後にその枠を保存済みとして記録
       if (targetRank) {
@@ -4202,8 +4487,8 @@ const categorizedGroups = useMemo(() => {
           });
         }
         
-        console.log('🔍 射詰→遠近選手ID:', Array.from(shichumaToEnkinArcherIds));
-        console.log('🔍 現在保存データ:', enkinFinalData.map(d => ({ id: d.archerId, rank: d.rank })));
+        console.log('?? 射詰→遠近選手ID:', Array.from(shichumaToEnkinArcherIds));
+        console.log('?? 現在保存データ:', enkinFinalData.map(d => ({ id: d.archerId, rank: d.rank })));
         
         // 同じtargetRankとdivisionIdの組み合わせの結果を上書き（上書き保存を許可）
         // ただし、射詰→遠近の選手は保持する（他のtargetRankで保存されている可能性があるため）
@@ -4219,7 +4504,7 @@ const categorizedGroups = useMemo(() => {
           return !enkinFinalData.some(e => e.archerId === r.archerId);
         });
         
-        console.log('🧹 filteredResults (targetRankで除外後):', filteredResults.map(r => ({
+        console.log('?? filteredResults (targetRankで除外後):', filteredResults.map(r => ({
           archerId: r.archerId,
           rank: r.rank,
           targetRank: r.targetRank
@@ -4228,7 +4513,7 @@ const categorizedGroups = useMemo(() => {
         // 新しい結果を追加
         const mergedResults = [...filteredResults, ...enkinFinalData];
         
-        console.log('✨ mergedResults (新しい結果追加後):', mergedResults.map(r => ({
+        console.log('? mergedResults (新しい結果追加後):', mergedResults.map(r => ({
           archerId: r.archerId,
           rank: r.rank,
           targetRank: r.targetRank
@@ -4245,7 +4530,7 @@ const categorizedGroups = useMemo(() => {
       
       // 即時反映：他端末でもすぐ見れるように
       await fetchShootOffResults();
-      console.log('✅ ローカル状態更新完了 - fetchShootOffResultsは実行');
+      console.log('? ローカル状態更新完了 - fetchShootOffResultsは実行');
       
     } catch (error) {
       console.error('遠近競射結果保存エラー:', error);
@@ -4258,8 +4543,8 @@ const categorizedGroups = useMemo(() => {
     const mergedResults = [];
     // processedArchersを削除 - 部門ごとに独立して管理するため
 
-    console.log('🔄 統合結果作成開始（射詰全対応）');
-    console.log('📊 入力データ:', {
+    console.log('?? 統合結果作成開始（射詰全対応）');
+    console.log('?? 入力データ:', {
       shichumaResults: shichumaFinalResults?.results?.length || 0,
       enkinResults: enkinFinalResults?.results?.length || 0,
       archersCount: archers.length
@@ -4267,7 +4552,7 @@ const categorizedGroups = useMemo(() => {
 
     // 射詰結果の詳細をログ
     if (shichumaFinalResults?.results) {
-      console.log('🏹 射詰結果詳細:');
+      console.log('?? 射詰結果詳細:');
       shichumaFinalResults.results.forEach(result => {
         const archer = archers.find(a => a.archerId === result.archerId);
         const divisionId = archer ? getDivisionIdForArcher(archer, divisions) : '不明';
@@ -4291,8 +4576,8 @@ const categorizedGroups = useMemo(() => {
       const divisionUsedRanks = new Set(); // 部門ごとの順位管理
       const divisionProcessedArchers = new Set(); // 部門ごとの選手管理
       
-      console.log(`🏷️ 部門 ${divisionId} の結果処理開始 (${divisionArchers.length}名)`);
-      console.log(`🔍 部門 ${divisionId} の選手:`, divisionArchers.map(a => ({ name: a.name, id: a.archerId })));
+      console.log(`??? 部門 ${divisionId} の結果処理開始 (${divisionArchers.length}名)`);
+      console.log(`?? 部門 ${divisionId} の選手:`, divisionArchers.map(a => ({ name: a.name, id: a.archerId })));
 
       // 遠近競射の結果を後から処理（射詰で決定していない選手のみ）
       if (enkinFinalResults && enkinFinalResults.results) {
@@ -4306,7 +4591,7 @@ const categorizedGroups = useMemo(() => {
         });
         
         console.log(`  遠近競射結果: ${divisionEnkinResults.length}件`);
-        console.log(`  🔍 部門 ${divisionId} の遠近競射選手:`, divisionEnkinResults.map(r => ({ 
+        console.log(`  ?? 部門 ${divisionId} の遠近競射選手:`, divisionEnkinResults.map(r => ({ 
           name: divisionArchers.find(a => a.archerId === r.archerId)?.name, 
           rank: r.rank 
         })));
@@ -4322,12 +4607,12 @@ const categorizedGroups = useMemo(() => {
             return divisionArchers.some(archer => archer.archerId === result.archerId);
           });
           
-          console.log(`  🏹 射詰競射結果: ${divisionShichumaResults.length}件`);
-          console.log(`  🔍 部門 ${divisionId} の射詰競射選手:`, divisionShichumaResults.map(r => ({ 
+          console.log(`  ?? 射詰競射結果: ${divisionShichumaResults.length}件`);
+          console.log(`  ?? 部門 ${divisionId} の射詰競射選手:`, divisionShichumaResults.map(r => ({ 
             name: divisionArchers.find(a => a.archerId === r.archerId)?.name, 
             rank: r.rank 
           })));
-          console.log(`  📋 射詰結果詳細:`, divisionShichumaResults.map(r => ({
+          console.log(`  ?? 射詰結果詳細:`, divisionShichumaResults.map(r => ({
             name: divisionArchers.find(a => a.archerId === r.archerId)?.name,
             rank: r.rank,
             shootOffType: r.shootOffType,
@@ -4344,7 +4629,7 @@ const categorizedGroups = useMemo(() => {
               
               // 射詰→遠近の選手かチェック（この部門内でのみチェック）
               const isFromShichumaToEnkin = divisionEnkinResults.some(e => e.archerId === result.archerId);
-              console.log(`    🔍 射詰→遠近チェック: ${archer.name} -> ${isFromShichumaToEnkin ? '遠近あり' : '遠近なし'}`);
+              console.log(`    ?? 射詰→遠近チェック: ${archer.name} -> ${isFromShichumaToEnkin ? '遠近あり' : '遠近なし'}`);
               
               // 射詰→遠近の選手はスキップ（遠近の結果を優先）
               if (isFromShichumaToEnkin) {
@@ -4360,7 +4645,7 @@ const categorizedGroups = useMemo(() => {
               
               // 射詰で確定した順位（1位など）は遠近競射の結果があっても射詰を優先
               if (divisionUsedRanks.has(finalRank)) {
-                console.warn(`    ⚠️ 順位重複: ${finalRank}位 (${archer.name}) - 射詰競射`);
+                console.warn(`    ?? 順位重複: ${finalRank}位 (${archer.name}) - 射詰競射`);
                 // 1位など射詰で確定した重要な順位は射詰を優先
                 if (finalRank === 1 || result.isWinner) {
                   console.log(`    優先: ${archer.name} (射詰で${finalRank}位を確定)`);
@@ -4420,7 +4705,7 @@ const categorizedGroups = useMemo(() => {
             
             // 重複チェック
             if (divisionUsedRanks.has(finalRank)) {
-              console.warn(`    ⚠️ 順位重複: ${finalRank}位 (${archer.name}) - 遠近競射`);
+              console.warn(`    ?? 順位重複: ${finalRank}位 (${archer.name}) - 遠近競射`);
               return;
             }
 
@@ -4479,7 +4764,7 @@ const categorizedGroups = useMemo(() => {
       return aRank - bRank;
     });
     
-    console.log('✅ 統合結果完成:', sorted.length, '件');
+    console.log('? 統合結果完成:', sorted.length, '件');
     sorted.forEach(result => {
       console.log(`  ${result.rank}位: ${result.name} (${result.rank_source})`);
     });
@@ -4487,9 +4772,224 @@ const categorizedGroups = useMemo(() => {
     return sorted.length > 0 ? sorted : null;
   }, [shichumaFinalResults, enkinFinalResults, archers, categorizedGroups]);
 
+  // === 性別ごとの統合結果を作成する関数 ===
+  const getMergedFinalResultsForGender = useCallback((gender) => {
+    const mergedResults = [];
+    const filteredArchers = archers.filter(a => (a.gender || 'male') === gender);
+
+    // 選手を部門ごとにグループ化（性別でフィルタ済み）
+    const archersByDivision = {};
+    filteredArchers.forEach(archer => {
+      const divisionId = getDivisionIdForArcher(archer, divisions);
+      if (!archersByDivision[divisionId]) archersByDivision[divisionId] = [];
+      archersByDivision[divisionId].push(archer);
+    });
+
+    Object.keys(archersByDivision).forEach(divisionId => {
+      const divisionArchers = archersByDivision[divisionId];
+      const divisionUsedRanks = new Set();
+      const divisionProcessedArchers = new Set();
+
+      // 遠近競射の結果（この性別の選手のみ）
+      if (enkinFinalResults && enkinFinalResults.results) {
+        const divisionEnkinResults = enkinFinalResults.results.filter(result => {
+          if (result.divisionId) return result.divisionId === divisionId;
+          return divisionArchers.some(a => a.archerId === result.archerId);
+        }).filter(r => {
+          const ar = archers.find(a => a.archerId === r.archerId);
+          return ar && (ar.gender || 'male') === gender;
+        });
+
+        if (shichumaFinalResults && shichumaFinalResults.results) {
+          const divisionShichumaResults = shichumaFinalResults.results.filter(result => {
+            if (result.divisionId) return result.divisionId === divisionId;
+            return divisionArchers.some(a => a.archerId === result.archerId);
+          }).filter(r => {
+            const ar = archers.find(a => a.archerId === r.archerId);
+            return ar && (ar.gender || 'male') === gender;
+          });
+
+          divisionShichumaResults
+            .sort((a, b) => a.rank - b.rank)
+            .forEach(result => {
+              const archer = divisionArchers.find(a => a.archerId === result.archerId);
+              if (!archer) return;
+              const finalRank = result.rank;
+              const isFromShichumaToEnkin = divisionEnkinResults.some(e => e.archerId === result.archerId);
+              if (isFromShichumaToEnkin) return;
+              if (divisionProcessedArchers.has(result.archerId)) return;
+
+              mergedResults.push({
+                archerId: result.archerId,
+                name: archer.name,
+                affiliation: archer.affiliation,
+                rank: finalRank,
+                rank_source: 'shichuma',
+                shootOffType: 'shichuma',
+                isWinner: result.isWinner,
+                consecutiveHits: result.consecutiveHits,
+                eliminatedAt: result.eliminatedAt,
+                results: result.results || [],
+                divisionId: divisionId
+              });
+
+              divisionUsedRanks.add(finalRank);
+              divisionProcessedArchers.add(result.archerId);
+            });
+        }
+
+        divisionEnkinResults
+          .sort((a, b) => {
+            const aTarget = a.targetRank !== null ? a.targetRank : 9999;
+            const bTarget = b.targetRank !== null ? b.targetRank : 9999;
+            if (aTarget !== bTarget) return aTarget - bTarget;
+            const aRank = parseInt(a.rank) || 9999;
+            const bRank = parseInt(b.rank) || 9999;
+            return aRank - bRank;
+          })
+          .forEach(enkinResult => {
+            if (divisionProcessedArchers.has(enkinResult.archerId)) return;
+            const archer = divisionArchers.find(a => a.archerId === enkinResult.archerId);
+            if (!archer) return;
+            if (enkinResult.rank === '敗退' || enkinResult.isDefeated) return;
+            const finalRank = parseInt(enkinResult.rank);
+            if (divisionUsedRanks.has(finalRank)) return;
+
+            const isFromShichuma = shichumaFinalResults?.results?.some(s => s.archerId === enkinResult.archerId);
+
+            mergedResults.push({
+              archerId: enkinResult.archerId,
+              name: archer.name,
+              affiliation: archer.affiliation,
+              rank: finalRank,
+              rank_source: 'enkin',
+              shootOffType: 'enkin',
+              isDefeated: enkinResult.isDefeated,
+              arrowType: enkinResult.arrowType,
+              targetRank: enkinResult.targetRank,
+              isFromEnkin: isFromShichuma,
+              divisionId: divisionId
+            });
+
+            divisionUsedRanks.add(finalRank);
+            divisionProcessedArchers.add(enkinResult.archerId);
+          });
+      }
+    });
+
+    // 的中数で順位が確定している選手を追加（categorizedGroups内の該当性別選手のみ）
+    if (categorizedGroups && categorizedGroups.length > 0) {
+      categorizedGroups.forEach(divisionData => {
+        if (divisionData.confirmed && divisionData.confirmed.length > 0) {
+          divisionData.confirmed.forEach(({ hitCount, group, rank }) => {
+            group.filter(a => (a.gender || 'male') === gender).forEach(archer => {
+              mergedResults.push({
+                archerId: archer.archerId,
+                name: archer.name,
+                affiliation: archer.affiliation,
+                rank: rank,
+                rank_source: 'confirmed',
+                shootOffType: null,
+                hitCount: hitCount
+              });
+            });
+          });
+        }
+      });
+    }
+
+    const sorted = mergedResults.sort((a, b) => {
+      const aRank = typeof a.rank === 'number' ? a.rank : 9999;
+      const bRank = typeof b.rank === 'number' ? b.rank : 9999;
+      return aRank - bRank;
+    });
+
+    return sorted.length > 0 ? sorted : null;
+  }, [shichumaFinalResults, enkinFinalResults, archers, categorizedGroups]);
+
+  // 最終順位表を完全削除（射詰・遠近の全結果をサーバーから削除）
+  const deleteFinalResults = async () => {
+    if (!selectedTournamentId) {
+      alert('大会が選択されていません');
+      return;
+    }
+    if (!confirm('本当に最終順位表を完全削除しますか？サーバーに保存された射詰/遠近の結果がすべて削除されます。')) return;
+
+    try {
+      const urls = [
+        `${API_URL}/ranking/shichuma/${selectedTournamentId}`,
+        `${API_URL}/ranking/enkin/${selectedTournamentId}`
+      ];
+
+      const responses = await Promise.all(
+        urls.map(u => 
+          fetch(u, { method: 'DELETE' })
+            .then(r => ({ url: u, ok: r.ok, status: r.status }))
+            .catch(err => ({ url: u, ok: false, err }))
+        )
+      );
+
+      const allOk = responses.every(r => r.ok);
+      const hasFailed = responses.some(r => !r.ok);
+
+      if (allOk) {
+        // ローカル状態もクリア
+        setShichumaFinalResults(null);
+        setEnkinFinalResults(null);
+        setShichumaResults({});
+        setEnkinResults({});
+        setEliminatedArchers(new Set());
+        setEliminationOrder([]);
+        setEliminationRound({});
+        setSimultaneousEliminations([]);
+        setCurrentShootOffArchers([]);
+        setOriginalEnkinArchers(new Set());
+        setSavedEnkinRanks(new Set());
+        setEnkinTargetRank(null);
+        setShootOffType('');
+        setCurrentShichumaRound(1);
+        setShowEnkinOption(false);
+        setEnkinStartRank(2);
+        setIsShootOffActive(false);
+        setIsSavingShichuma(false);
+        setIsLoadingResults(false);
+        setEnkinDefeated(new Set());
+        setRemainingAfterFourArrows([]);
+        setEditingArrow(null);
+
+        // 最新データを再取得
+        await fetchArchers(true);
+        await fetchShootOffResults();
+        alert('最終順位表をサーバーから完全削除しました。');
+      } else {
+        console.error('削除に失敗しました', responses);
+        alert('サーバー削除に失敗しました。コンソールを確認してください。');
+      }
+    } catch (e) {
+      console.error('最終順位表削除エラー', e);
+      alert('削除処理中にエラーが発生しました。');
+    }
+  };
+
   // === 統合結果の表示 ===
   const renderMergedResults = () => {
-    const mergedResults = getMergedFinalResults();
+    if (Date.now() < (suppressMergedDisplayUntil || 0)) {
+      return (
+        <div className="card">
+          <p className="text-gray-500 text-center py-4">最終順位表はリセットされています（再表示までしばらくお待ちください）</p>
+        </div>
+      );
+    }
+    let mergedResults = null;
+
+    if (enableGenderSeparation) {
+      const gendersToCompute = selectedGender === 'all' ? ['male', 'female'] : [selectedGender];
+      const mergedLists = gendersToCompute.map(g => getMergedFinalResultsForGender(g)).filter(Boolean);
+      mergedResults = [].concat(...mergedLists);
+    } else {
+      mergedResults = getMergedFinalResults();
+    }
+
     if (!mergedResults || mergedResults.length === 0) {
       return (
         <div className="card">
@@ -4501,33 +5001,76 @@ const categorizedGroups = useMemo(() => {
     // 部門ごとに結果を分類
     const resultsByDivision = {};
     divisions.forEach(div => {
-      resultsByDivision[div.id] = { division: div, results: [] };
+      if (enableGenderSeparation) {
+        resultsByDivision[`${div.id}_male`] = { division: { ...div, id: `${div.id}_male`, label: `${div.label}（男）` }, results: [] };
+        resultsByDivision[`${div.id}_female`] = { division: { ...div, id: `${div.id}_female`, label: `${div.label}（女）` }, results: [] };
+      } else {
+        resultsByDivision[div.id] = { division: div, results: [] };
+      }
     });
-    if (!resultsByDivision.unassigned) resultsByDivision.unassigned = { division: { id: 'unassigned', label: '未分類' }, results: [] };
+    if (!resultsByDivision.unassigned) {
+      if (enableGenderSeparation) {
+        resultsByDivision['unassigned_male'] = { division: { id: 'unassigned_male', label: '未分類（男）' }, results: [] };
+        resultsByDivision['unassigned_female'] = { division: { id: 'unassigned_female', label: '未分類（女）' }, results: [] };
+      } else {
+        resultsByDivision.unassigned = { division: { id: 'unassigned', label: '未分類' }, results: [] };
+      }
+    }
 
     mergedResults.forEach(result => {
       const archer = archers.find(a => a.archerId === result.archerId);
       if (archer) {
         const divId = getDivisionIdForArcher(archer, divisions);
-        if (!resultsByDivision[divId]) {
-          resultsByDivision[divId] = { division: { id: divId, label: divId }, results: [] };
+        const gender = archer.gender || 'male';
+        const targetDivId = enableGenderSeparation ? `${divId}_${gender}` : divId;
+        if (!resultsByDivision[targetDivId]) {
+          if (enableGenderSeparation) {
+            resultsByDivision[targetDivId] = { division: { id: targetDivId, label: `${divId}（${gender === 'male' ? '男' : '女'}）` }, results: [] };
+          } else {
+            resultsByDivision[targetDivId] = { division: { id: targetDivId, label: targetDivId }, results: [] };
+          }
         }
-        resultsByDivision[divId].results.push(result);
+        resultsByDivision[targetDivId].results.push(result);
       }
     });
 
     // 部門順を維持して配列に変換
     const divisionResults = [];
     divisions.forEach(div => {
-      if (resultsByDivision[div.id] && resultsByDivision[div.id].results.length > 0) {
-        divisionResults.push(resultsByDivision[div.id]);
+      if (enableGenderSeparation) {
+        if (resultsByDivision[`${div.id}_male`] && resultsByDivision[`${div.id}_male`].results.length > 0) {
+          divisionResults.push(resultsByDivision[`${div.id}_male`]);
+        }
+        if (resultsByDivision[`${div.id}_female`] && resultsByDivision[`${div.id}_female`].results.length > 0) {
+          divisionResults.push(resultsByDivision[`${div.id}_female`]);
+        }
+      } else {
+        if (resultsByDivision[div.id] && resultsByDivision[div.id].results.length > 0) {
+          divisionResults.push(resultsByDivision[div.id]);
+        }
       }
     });
 
-    // 選択した部門でフィルタリング
-    const displayResults = selectedDivision === '' 
-      ? divisionResults 
-      : divisionResults.filter(d => d.division.id === selectedDivision);
+    // 選択した部門でフィルタリング（部門＋性別を考慮）
+    let displayResults;
+    if (selectedDivision === '') {
+      // 全部門表示：性別フィルタが有効なら該当性別のみ表示
+      if (enableGenderSeparation && selectedGender !== 'all') {
+        displayResults = divisionResults.filter(d => d.division.id.endsWith(`_${selectedGender}`));
+      } else {
+        displayResults = divisionResults;
+      }
+    } else {
+      if (enableGenderSeparation) {
+        if (selectedGender === 'all') {
+          displayResults = divisionResults.filter(d => d.division.id.replace(/_male$|_female$/, '') === selectedDivision);
+        } else {
+          displayResults = divisionResults.filter(d => d.division.id === `${selectedDivision}_${selectedGender}`);
+        }
+      } else {
+        displayResults = divisionResults.filter(d => d.division.id === selectedDivision);
+      }
+    }
 
     if (displayResults.length === 0) {
       return (
@@ -4543,7 +5086,7 @@ const categorizedGroups = useMemo(() => {
       <>
         {displayResults.map(divisionData => (
           <div key={divisionData.division.id} className="card border-l-4 border-green-500">
-            <h3 className="card-title text-green-700 mb-4">✅ 最終順位表 - {divisionData.division.label}</h3>
+            <h3 className="card-title text-green-700 mb-4">? 最終順位表 - {divisionData.division.label}</h3>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse border border-green-300">
                 <thead>
@@ -4624,7 +5167,7 @@ const categorizedGroups = useMemo(() => {
                               if (hasShichumaResults && !hasEnkinResults && allDeterminedByShootOff) {
                                 // 射詰だけで全順位が決定された場合の表記
                                 if (result.isWinner) {
-                                  return <span className="text-yellow-700 font-bold">🏆 優勝</span>;
+                                  return <span className="text-yellow-700 font-bold">?? 優勝</span>;
                                 } else {
                                   return <span className="text-blue-700 font-bold">射詰{result.rank}位</span>;
                                 }
@@ -4633,7 +5176,7 @@ const categorizedGroups = useMemo(() => {
                                 return (
                                   <>
                                     {result.isWinner && (
-                                      <span className="text-yellow-700 font-bold">🏆 優勝</span>
+                                      <span className="text-yellow-700 font-bold">?? 優勝</span>
                                     )}
                                     {result.eliminatedAt && (
                                       <span className="text-red-700">{result.eliminatedAt}本目脱落</span>
@@ -4717,6 +5260,9 @@ const categorizedGroups = useMemo(() => {
               同期中
             </span>
           )}
+          <button onClick={deleteFinalResults} className="btn" style={{ marginLeft: '0.5rem', backgroundColor: '#ef4444', color: '#fff' }}>
+            最終順位表を完全削除
+          </button>
         </div>
       </div>
       <div className="view-content">
@@ -4748,10 +5294,18 @@ const categorizedGroups = useMemo(() => {
                   </button>
                 ))}
               </div>
+              {enableGenderSeparation && (
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  <button onClick={() => setSelectedGender('all')} className={`btn ${selectedGender === 'all' ? 'btn-active' : ''}`} style={{ flex: 1 }}>全員</button>
+                  <button onClick={() => setSelectedGender('male')} className={`btn ${selectedGender === 'male' ? 'btn-active' : ''}`} style={{ flex: 1 }}>男子</button>
+                  <button onClick={() => setSelectedGender('female')} className={`btn ${selectedGender === 'female' ? 'btn-active' : ''}`} style={{ flex: 1 }}>女子</button>
+                </div>
+              )}
+
               <p className="hint" style={{ marginTop: '0.5rem' }}>
                 {selectedDivision === '' 
-                  ? `全部門の選手: ${archers.length}人`
-                  : `${divisions.find(d => d.id === selectedDivision)?.label || selectedDivision}: ${archers.filter(a => getDivisionIdForArcher(a, divisions) === selectedDivision).length}人`
+                  ? `全部門の選手: ${enableGenderSeparation && selectedGender !== 'all' ? archers.filter(a => (a.gender || 'male') === selectedGender).length : archers.length}人`
+                  : `${divisions.find(d => d.id === selectedDivision)?.label || selectedDivision}: ${archers.filter(a => getDivisionIdForArcher(a, divisions) === selectedDivision && ( !enableGenderSeparation || selectedGender === 'all' || (a.gender || 'male') === selectedGender )).length}人`
                 }
               </p>
             </div>
@@ -4761,12 +5315,12 @@ const categorizedGroups = useMemo(() => {
               <div key={divisionData.division.id} className="space-y-4">
                 {/* 部門タイトル */}
                 <div className="card border-l-4 border-purple-500">
-                  <h2 className="card-title text-purple-700">🏆 {divisionData.division.label}</h2>
+                  <h2 className="card-title text-purple-700">?? {divisionData.division.label}</h2>
                 </div>
                 {/* === 1. 射詰競射（優勝決定戦）の表示エリア === */}
                 {divisionData.izume.length > 0 && (
                   <div className="card border-l-4 border-blue-500">
-                    <h3 className="card-title text-blue-700">🎯 射詰競射 対象（優勝決定）</h3>
+                    <h3 className="card-title text-blue-700">?? 射詰競射 対象（優勝決定）</h3>
                     <p className="text-sm text-gray-600 mb-3">
                       1位が同率のため、射詰競射を行います。
                     </p>
@@ -4797,7 +5351,7 @@ const categorizedGroups = useMemo(() => {
                 {/* === 2. 遠近競射（順位決定）の表示エリア === */}
                 {divisionData.enkin.length > 0 && (
                   <div className="card border-l-4 border-orange-500">
-                    <h3 className="card-title text-orange-700">🎯 遠近競射 対象（順位決定）</h3>
+                    <h3 className="card-title text-orange-700">?? 遠近競射 対象（順位決定）</h3>
                     <p className="text-sm text-gray-600 mb-3">
                       入賞圏内で同順位がいるため、遠近競射を行います。
                     </p>
@@ -4853,7 +5407,7 @@ const categorizedGroups = useMemo(() => {
                 {/* === 3. 順位確定者の表示エリア === */}
                 {divisionData.confirmed.length > 0 && (
                   <div className="card border-l-4 border-green-500">
-                    <h3 className="card-title text-green-700">✅ 順位確定</h3>
+                    <h3 className="card-title text-green-700">? 順位確定</h3>
                     <div className="space-y-3">
                       {divisionData.confirmed.map(({ hitCount, group, rank }) => (
                         <div key={`${divisionData.division.id}_${rank}_confirmed`} className="bg-green-50 p-2 rounded flex justify-between items-center">
@@ -5225,7 +5779,7 @@ const categorizedGroups = useMemo(() => {
             
             {/* === 最終統合結果のみ表示 === */}
             <div style={{ marginTop: '2rem' }}>
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">📊 最終順位決定表</h2>
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">?? 最終順位決定表</h2>
               {renderMergedResults()}
             </div>
 
@@ -5467,13 +6021,13 @@ const ProgramView = ({ state }) => {
 
       const arrows1 = tournament?.data?.arrowsRound1 || 0;
       const arrows2 = tournament?.data?.arrowsRound2 || 0;
-      html += `<table><thead><tr><th>#</th><th>氏名</th><th>所属</th><th>段位</th><th>1立ち目</th><th>2立ち目</th></tr></thead><tbody>`;
+      html += `<table><thead><tr><th>#</th><th>氏名</th><th>所属</th><th>段位</th><th>性別</th><th>1立ち目</th><th>2立ち目</th></tr></thead><tbody>`;
 
       const start = p * perPage;
       const end = Math.min(start + perPage, archers.length);
       for (let i = start; i < end; i++) {
         const a = archers[i];
-        html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td>`;
+        html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td><td>${a.gender === 'female' ? '女' : '男'}</td>`;
         // 1立ち目 placeholders
         html += `<td style="white-space:nowrap">`;
         for (let x = 0; x < arrows1; x++) {
@@ -5569,15 +6123,16 @@ const ProgramView = ({ state }) => {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">所属</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">性別</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {isLoading && archers.length === 0 ? (
-                      <tr><td colSpan="4" className="px-4 py-4 text-center">読み込み中...</td></tr>
+                      <tr><td colSpan="7" className="px-4 py-4 text-center">読み込み中...</td></tr>
                     ) : archers.length === 0 ? (
-                      <tr><td colSpan="4" className="px-4 py-4 text-center">選手が登録されていません</td></tr>
+                      <tr><td colSpan="7" className="px-4 py-4 text-center">選手が登録されていません</td></tr>
                     ) : (
                       currentArchers.map(a => (
                         <tr key={a.archerId}>
@@ -5585,6 +6140,7 @@ const ProgramView = ({ state }) => {
                           <td className="px-4 py-3">{a.name}</td>
                           <td className="px-4 py-3">{a.affiliation}</td>
                           <td className="px-4 py-3 text-center">{a.rank}</td>
+                          <td className="px-4 py-3 text-center">{a.gender === 'female' ? '女' : '男'}</td>
                           <td className="px-4 py-3">
                             <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
                               {Array.from({ length: (tournament?.data?.arrowsRound1 || 0) }).map((_, idx) => (
@@ -5609,7 +6165,7 @@ const ProgramView = ({ state }) => {
               {archers.length > archersPerPage && (
                 <div className="flex items-center justify-between mt-4">
                   <div>
-                    <p className="text-sm">{indexOfFirst + 1} 〜 {Math.min(indexOfLast, archers.length)} / {archers.length} 名</p>
+                    <p className="text-sm">{indexOfFirst + 1} ? {Math.min(indexOfLast, archers.length)} / {archers.length} 名</p>
                   </div>
                   <div className="flex space-x-1">
                     <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage === 1} className="btn">前へ</button>
@@ -5669,7 +6225,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
   const handleGeocodeAddress = async () => {
     const addrRaw = (formData.venueAddress || '').trim();
     if (!addrRaw) {
-      setGeocodeStatus('❌ 会場住所を入力してください');
+      setGeocodeStatus('? 会場住所を入力してください');
       return;
     }
     const postalMatch = addrRaw.match(/\b\d{3}-?\d{4}\b/);
@@ -5686,7 +6242,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
           .replace(/[：]/g, ':')
           .replace(/[（]/g, '(')
           .replace(/[）]/g, ')')
-          .replace(/[－ー―‐‑‒–—−]/g, '-')
+          .replace(/[－ー―‐?????]/g, '-')
           .replace(/[　]/g, ' ');
       };
 
@@ -5730,7 +6286,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
     if (coarse && coarse !== addr && coarse !== noBuilding && !tryQueries.includes(coarse)) tryQueries.push(coarse);
 
     setIsGeocoding(true);
-    setGeocodeStatus('📍 住所から座標を取得中...');
+    setGeocodeStatus('?? 住所から座標を取得中...');
     try {
       let found = null;
       for (const q of tryQueries) {
@@ -5769,21 +6325,21 @@ const TournamentSetupView = ({ state, dispatch }) => {
         }
 
         if (!gsiFound) {
-          setGeocodeStatus('⚠️ 住所から座標を取得できませんでした（住所を短くする/市区町村までにする/時間をおく などを試してください）');
+          setGeocodeStatus('?? 住所から座標を取得できませんでした（住所を短くする/市区町村までにする/時間をおく などを試してください）');
           return;
         }
 
         const [lng, lat] = gsiFound.geometry.coordinates;
         setFormData(prev => ({ ...prev, venueLat: String(lat), venueLng: String(lng) }));
-        setGeocodeStatus('✅ 座標を取得しました（国土地理院）');
+        setGeocodeStatus('? 座標を取得しました（国土地理院）');
         return;
       }
 
       setFormData(prev => ({ ...prev, venueLat: String(found.lat), venueLng: String(found.lon) }));
-      setGeocodeStatus('✅ 座標を取得しました（Nominatim）');
+      setGeocodeStatus('? 座標を取得しました（Nominatim）');
     } catch (e) {
       console.error('Nominatim geocode error:', e);
-      setGeocodeStatus('❌ 座標取得に失敗しました（時間をおいて再試行してください）');
+      setGeocodeStatus('? 座標取得に失敗しました（時間をおいて再試行してください）');
     } finally {
       setIsGeocoding(false);
     }
@@ -6055,7 +6611,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
               </label>
               {formData.enableGenderSeparation && (
                 <p className="text-sm text-gray-600" style={{ marginTop: '0.25rem' }}>
-                  有効にすると、各部門で男子と女子の順位を別々に表示します
+                  有効にすると、各部門で男と女の順位を別々に表示します
                 </p>
               )}
             </div>
@@ -6357,8 +6913,8 @@ const ArcherSignupView = ({ state, dispatch }) => {
             <div>
               <label>性別 *</label>
               <select value={formData.gender} onChange={(e) => handleInputChange('gender', e.target.value)} className="input">
-                <option value="male">男子</option>
-                <option value="female">女子</option>
+                <option value="male">男</option>
+                <option value="female">女</option>
               </select>
             </div>
             {formData.rank !== '無指定' && (
@@ -6438,11 +6994,11 @@ const ArcherSignupView = ({ state, dispatch }) => {
                     className="input"
                     style={{ width: '100%', marginBottom: '0.5rem' }}
                   >
-                    <option value="male">男子</option>
-                    <option value="female">女子</option>
+                    <option value="male">男</option>
+                    <option value="female">女</option>
                   </select>
                   <p className="text-sm text-gray-600">
-                    現在の設定: {qrCodeData.gender === 'female' ? '女子' : '男子'}
+                    現在の設定: {qrCodeData.gender === 'female' ? '女' : '男'}
                   </p>
                 </div>
               </div>

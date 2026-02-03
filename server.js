@@ -379,6 +379,28 @@ app.get('/api/ranking/shichuma/:tournamentId', async (req, res) => {
   }
 });
 
+// 11b. 射詰競射の結果削除（完全削除）
+app.delete('/api/ranking/shichuma/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const result = await db.collection('shichuma_results').deleteOne({ tournamentId });
+
+    if (result.deletedCount === 0) {
+      console.log(`⚠️ Shichuma results not found for deletion: ${tournamentId}`);
+      return res.status(404).json({ success: false, message: 'No shichuma results found to delete' });
+    }
+
+    console.log(`🗑️ Shichuma Results Deleted: ${tournamentId}`);
+    res.status(200).json({ success: true, message: 'Shichuma results deleted successfully' });
+
+  } catch (error) {
+    console.error('❌ DELETE /api/ranking/shichuma error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 12. 遠近競射の最終結果保存
 app.post('/api/ranking/enkin/final', async (req, res) => {
   try {
@@ -444,6 +466,28 @@ app.get('/api/ranking/enkin/:tournamentId', async (req, res) => {
 
   } catch (error) {
     console.error('❌ GET /api/ranking/enkin error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 13b. 遠近競射の結果削除（完全削除）
+app.delete('/api/ranking/enkin/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const result = await db.collection('enkin_results').deleteOne({ tournamentId });
+
+    if (result.deletedCount === 0) {
+      console.log(`⚠️ Enkin results not found for deletion: ${tournamentId}`);
+      return res.status(404).json({ success: false, message: 'No enkin results found to delete' });
+    }
+
+    console.log(`🗑️ Enkin Results Deleted: ${tournamentId}`);
+    res.status(200).json({ success: true, message: 'Enkin results deleted successfully' });
+
+  } catch (error) {
+    console.error('❌ DELETE /api/ranking/enkin error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
