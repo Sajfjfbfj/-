@@ -498,6 +498,8 @@ app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
     const db = await connectToDatabase();
     const { tournamentId } = req.params;
 
+    console.log(`\n🗑️🗑️🗑️ POST /api/ranking/clear 実行開始: ${tournamentId}`);
+
     // 該当大会の全選手の射詰・遠近関連フィールド＆記録をクリア
     const initialResults = {
       stand1: Array(10).fill(null),
@@ -507,6 +509,20 @@ app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
       stand5: Array(10).fill(null),
       stand6: Array(10).fill(null)
     };
+
+    // 削除前の状態を確認
+    const beforeCount = await db.collection('applicants').countDocuments({
+      tournamentId,
+      $or: [
+        { 'results': { $ne: initialResults } },
+        { 'shichumaResults': { $exists: true } },
+        { 'enkinRank': { $exists: true } },
+        { 'shichumaFinalRank': { $exists: true } },
+        { 'shichumaWinner': { $exists: true } },
+        { 'enkinFinalRank': { $exists: true } }
+      ]
+    });
+    console.log(`  削除前: ${beforeCount}件の選手が結果データを保持`);
 
     const result = await db.collection('applicants').updateMany(
       { tournamentId },
@@ -525,8 +541,49 @@ app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
       }
     );
 
-    console.log(`🗑️ Archer shootoff fields cleared: ${tournamentId} - ${result.modifiedCount} archers`);
-    res.status(200).json({ success: true, message: `Cleared shootoff fields and results for ${result.modifiedCount} archers` });
+    console.log(`  更新対象: ${result.matchedCount}件`);
+    console.log(`  実際に更新: ${result.modifiedCount}件`);
+
+    // 削除後の状態を確認
+    const afterCount = await db.collection('applicants').countDocuments({
+      tournamentId,
+      $or: [
+        { 'shichumaResults': { $exists: true } },
+        { 'enkinRank': { $exists: true } },
+        { 'shichumaFinalRank': { $exists: true } },
+        { 'shichumaWinner': { $exists: true } },
+        { 'enkinFinalRank': { $exists: true } }
+      ]
+    });
+    console.log(`  削除後: ${afterCount}件の選手が残存フィールドを保持（エラー時）`);
+
+    // 確認：すべての選手が results を持っているか
+    const resultsCheck = await db.collection('applicants').countDocuments({
+      tournamentId,
+      results: { $exists: true }
+    });
+    console.log(`  results フィールド確認: ${resultsCheck}件が初期化済み`);
+
+    // サンプルデータで実際の状態を確認
+    const sampleArcher = await db.collection('applicants').findOne({ tournamentId });
+    if (sampleArcher) {
+      console.log(`  サンプル検証 (${sampleArcher.archerId}):`);
+      console.log(`    - results 存在: ${sampleArcher.results ? '✅' : '❌'}`);
+      console.log(`    - shichumaResults 存在: ${sampleArcher.shichumaResults ? '⚠️' : '✅'}`);
+      console.log(`    - enkinRank 存在: ${sampleArcher.enkinRank ? '⚠️' : '✅'}`);
+    }
+
+    console.log(`✅ Archer shootoff fields cleared: ${tournamentId} - ${result.modifiedCount} archers\n`);
+    res.status(200).json({ 
+      success: true, 
+      message: `Cleared shootoff fields and results for ${result.modifiedCount} archers`,
+      stats: {
+        matched: result.matchedCount,
+        modified: result.modifiedCount,
+        beforeCount: beforeCount,
+        afterCount: afterCount
+      }
+    });
 
   } catch (error) {
     console.error('❌ POST /api/ranking/clear error:', error);

@@ -4886,27 +4886,61 @@ const categorizedGroups = useMemo(() => {
       alert('大会が選択されていません');
       return;
     }
-    if (!confirm('本当に最終順位表を完全削除しますか？サーバーに保存された射詰/遠近の結果がすべて削除されます。')) return;
+    const confirmed = window.confirm('🗑️ 最終順位表のすべての記録を完全削除しますか？\n\nこの操作は以下をすべて削除します：\n• 射詰（シチューマ）の結果\n• 遠近競射の結果\n• 選手の記録フィールド\n\n元に戻すことはできません。本当に実行しますか？');
+    if (!confirmed) return;
 
     try {
+      console.log('\n🗑️🗑️🗑️ 最終順位表削除開始 🗑️🗑️🗑️');
+      console.log(`  対象大会: ${selectedTournamentId}`);
+      console.log(`  削除前の状態:`);
+      console.log(`    - shichumaFinalResults: ${shichumaFinalResults ? 'あり' : 'なし'}`);
+      console.log(`    - enkinFinalResults: ${enkinFinalResults ? 'あり' : 'なし'}`);
+
       // サーバー側データ削除
       const urls = [
-        { url: `${API_URL}/ranking/shichuma/${selectedTournamentId}`, method: 'DELETE' },
-        { url: `${API_URL}/ranking/enkin/${selectedTournamentId}`, method: 'DELETE' },
-        { url: `${API_URL}/ranking/clear/${selectedTournamentId}`, method: 'POST' } // 選手フィールドクリア
+        { url: `${API_URL}/ranking/shichuma/${selectedTournamentId}`, method: 'DELETE', name: 'Shichuma' },
+        { url: `${API_URL}/ranking/enkin/${selectedTournamentId}`, method: 'DELETE', name: 'Enkin' },
+        { url: `${API_URL}/ranking/clear/${selectedTournamentId}`, method: 'POST', name: 'Clear' } // 選手フィールドクリア
       ];
+
+      console.log(`  実行するエンドポイント:`);
+      urls.forEach(u => console.log(`    - ${u.name}: ${u.method} ${u.url}`));
 
       const responses = await Promise.all(
         urls.map(req => 
           fetch(req.url, { method: req.method, headers: { 'Content-Type': 'application/json' } })
-            .then(r => ({ url: req.url, ok: r.ok, status: r.status }))
-            .catch(err => ({ url: req.url, ok: false, err }))
+            .then(r => r.json().then(data => ({ 
+              name: req.name,
+              url: req.url, 
+              ok: r.ok, 
+              status: r.status,
+              data: data
+            })))
+            .catch(err => ({ 
+              name: req.name,
+              url: req.url, 
+              ok: false, 
+              err,
+              status: 0
+            }))
         )
       );
+
+      // 結果をログ出力
+      console.log(`\n  📋 サーバーレスポンス:`);
+      responses.forEach(r => {
+        const status = r.status === 404 ? '✅ 404(データなし)' : (r.ok ? '✅ OK' : `❌ Error(${r.status})`);
+        console.log(`    ${r.name}: ${status}`);
+        if (r.data && r.data.stats) {
+          console.log(`      ${JSON.stringify(r.data.stats)}`);
+        }
+      });
 
       const allOk = responses.every(r => r.ok || r.status === 404); // 404はデータなしで成功扱い
 
       if (allOk) {
+        console.log(`\n  ✅ サーバー側削除成功！React状態をクリア中...`);
+        
         // React 状態をクリア
         setShichumaFinalResults(null);
         setEnkinFinalResults(null);
@@ -4933,21 +4967,29 @@ const categorizedGroups = useMemo(() => {
 
         // ローカルストレージもクリア
         localStorage.removeItem('ranking_selectedGender');
+        console.log(`  ✅ localStorage をクリア`);
 
         // 削除完了を確認するため少し待機してから再取得
-        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log(`  ⏳ 1秒待機中...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         // 最新データを再取得（削除後のサーバーデータを確実に反映）
+        console.log(`  🔄 最新データを再取得中...`);
         await fetchArchers(true);
         await fetchShootOffResults();
-        alert('最終順位表を完全削除しました。');
+        
+        console.log(`✅✅✅ 最終順位表完全削除完了 ✅✅✅\n`);
+        alert('✅ 最終順位表をすべて削除しました。\n\nページをリロードして確認します。');
+        
+        // ページをリロードして確実に反映
+        setTimeout(() => window.location.reload(), 500);
       } else {
         const failed = responses.filter(r => !r.ok && r.status !== 404);
-        console.error('削除に失敗しました', failed);
-        alert('サーバー削除に失敗しました。コンソールを確認してください。');
+        console.error('❌ 削除に失敗しました', failed);
+        alert('❌ サーバー削除に失敗しました。コンソールを確認してください。');
       }
     } catch (e) {
-      console.error('最終順位表削除エラー', e);
+      console.error('❌ 最終順位表削除エラー', e);
       alert('削除処理中にエラーが発生しました。');
     }
   };
