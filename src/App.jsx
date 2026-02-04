@@ -896,13 +896,6 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   useEffect(() => {
     const fetchShichumaResults = async () => {
       if (!selectedTournamentId) return;
-      // リセット直後はサーバーの最終結果を取り込まない
-      if (Date.now() < (ignoreServerFinalsUntil || 0)) {
-        console.log('fetchShichumaResults skipped due to recent reset (suppressing server finals)');
-        setShichumaData(null);
-        setIsLoadingShichuma(false);
-        return;
-      }
 
       setIsLoadingShichuma(true);
       try {
@@ -3290,19 +3283,6 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
       
       if (response.ok) {
         const result = await response.json();
-        // リセット直後など、サーバーの最終結果で上書きしたくない場合は、サーバーの結果反映を抑止する
-        if (Date.now() < (ignoreServerFinalsUntil || 0)) {
-          console.log('fetchShootOffResults received server data but suppressing application due to recent reset');
-          // still update savedEnkinRanks from whatever server returned to avoid UI errors
-          const maybeEnkin = result.data?.enkin;
-          const savedRanks = new Set();
-          if (maybeEnkin && maybeEnkin.results) {
-            maybeEnkin.results.forEach(r => { if (r.targetRank) savedRanks.add(r.targetRank); });
-          }
-          setSavedEnkinRanks(savedRanks);
-          setIsLoadingResults(false);
-          return;
-        }
         if (result.success) {
           console.log('?? fetchShootOffResults - サーバーから取得したデータ:', {
             shichuma: result.data.shichuma,
@@ -3366,13 +3346,6 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
     if (!selectedTournamentId) return;
     if (useLocalOnlyFinals) {
       console.log('fetchEnkinResults skipped because useLocalOnlyFinals is enabled');
-      return;
-    }
-
-    // リセット直後はサーバーの最終結果を取り込まない
-    if (Date.now() < (ignoreServerFinalsUntil || 0)) {
-      console.log('fetchEnkinResults skipped due to recent reset (suppressing server finals)');
-      setEnkinFinalResults(null);
       return;
     }
 
@@ -4907,7 +4880,7 @@ const categorizedGroups = useMemo(() => {
     return sorted.length > 0 ? sorted : null;
   }, [shichumaFinalResults, enkinFinalResults, archers, categorizedGroups]);
 
-  // 最終順位表を完全削除（射詰・遠近の全結果をサーバーから削除）
+  // 最終順位表を完全削除（射詰・遠近の全結果をサーバーから削除 + ローカルストレージ削除）
   const deleteFinalResults = async () => {
     if (!selectedTournamentId) {
       alert('大会が選択されていません');
@@ -4916,6 +4889,7 @@ const categorizedGroups = useMemo(() => {
     if (!confirm('本当に最終順位表を完全削除しますか？サーバーに保存された射詰/遠近の結果がすべて削除されます。')) return;
 
     try {
+      // サーバー側データ削除
       const urls = [
         `${API_URL}/ranking/shichuma/${selectedTournamentId}`,
         `${API_URL}/ranking/enkin/${selectedTournamentId}`
@@ -4930,10 +4904,9 @@ const categorizedGroups = useMemo(() => {
       );
 
       const allOk = responses.every(r => r.ok);
-      const hasFailed = responses.some(r => !r.ok);
 
       if (allOk) {
-        // ローカル状態もクリア
+        // React 状態をクリア
         setShichumaFinalResults(null);
         setEnkinFinalResults(null);
         setShichumaResults({});
@@ -4957,10 +4930,13 @@ const categorizedGroups = useMemo(() => {
         setRemainingAfterFourArrows([]);
         setEditingArrow(null);
 
+        // ローカルストレージもクリア
+        localStorage.removeItem('ranking_selectedGender');
+
         // 最新データを再取得
         await fetchArchers(true);
         await fetchShootOffResults();
-        alert('最終順位表をサーバーから完全削除しました。');
+        alert('最終順位表を完全削除しました。');
       } else {
         console.error('削除に失敗しました', responses);
         alert('サーバー削除に失敗しました。コンソールを確認してください。');

@@ -5,7 +5,7 @@ git pull origin main
 
 git add .
 
-git commit -m "説明メッセージ"
+git commit -m "アプリ更新"
 
 git push origin main
 
