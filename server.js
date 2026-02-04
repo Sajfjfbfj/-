@@ -73,32 +73,13 @@ async function connectToDatabase() {
 
 // --- API エンドポイント ---
 
-// ヘルスチェック
-app.get('/api/health', async (req, res) => {
-  try {
-    // MongoDB接続を試みるが、失敗しても応答は返す
-    let dbStatus = 'disconnected';
-    try {
-      const db = await connectToDatabase();
-      await db.admin().ping();
-      dbStatus = 'connected';
-    } catch (dbError) {
-      console.warn('Health check: MongoDB connection failed:', dbError.message);
-    }
-    
-    res.status(200).json({ 
-      success: true, 
-      message: 'Server is running',
-      database: dbStatus,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error',
-      error: error.message 
-    });
-  }
+// ヘルスチェック - シンプル版
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ 
+    success: true, 
+    message: 'Server is running',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // 1. 大会一覧取得
