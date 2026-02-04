@@ -4886,7 +4886,7 @@ const categorizedGroups = useMemo(() => {
       alert('大会が選択されていません');
       return;
     }
-    const confirmed = window.confirm('🗑️ 最終順位表のすべての記録を完全削除しますか？\n\nこの操作は以下をすべて削除します：\n• 射詰（シチューマ）の結果\n• 遠近競射の結果\n• 選手の記録フィールド\n\n元に戻すことはできません。本当に実行しますか？');
+    const confirmed = window.confirm('🗑️ 最終順位表のすべての記録を完全削除しますか？\n\nこの操作は以下をすべて削除します：\n• 射詰の結果\n• 遠近競射の結果\n• 選手の記録フィールド\n\n元に戻すことはできません。本当に実行しますか？');
     if (!confirmed) return;
 
     try {
