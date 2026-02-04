@@ -4891,19 +4891,20 @@ const categorizedGroups = useMemo(() => {
     try {
       // サーバー側データ削除
       const urls = [
-        `${API_URL}/ranking/shichuma/${selectedTournamentId}`,
-        `${API_URL}/ranking/enkin/${selectedTournamentId}`
+        { url: `${API_URL}/ranking/shichuma/${selectedTournamentId}`, method: 'DELETE' },
+        { url: `${API_URL}/ranking/enkin/${selectedTournamentId}`, method: 'DELETE' },
+        { url: `${API_URL}/ranking/clear/${selectedTournamentId}`, method: 'POST' } // 選手フィールドクリア
       ];
 
       const responses = await Promise.all(
-        urls.map(u => 
-          fetch(u, { method: 'DELETE' })
-            .then(r => ({ url: u, ok: r.ok, status: r.status }))
-            .catch(err => ({ url: u, ok: false, err }))
+        urls.map(req => 
+          fetch(req.url, { method: req.method, headers: { 'Content-Type': 'application/json' } })
+            .then(r => ({ url: req.url, ok: r.ok, status: r.status }))
+            .catch(err => ({ url: req.url, ok: false, err }))
         )
       );
 
-      const allOk = responses.every(r => r.ok);
+      const allOk = responses.every(r => r.ok || r.status === 404); // 404はデータなしで成功扱い
 
       if (allOk) {
         // React 状態をクリア
@@ -4938,7 +4939,8 @@ const categorizedGroups = useMemo(() => {
         await fetchShootOffResults();
         alert('最終順位表を完全削除しました。');
       } else {
-        console.error('削除に失敗しました', responses);
+        const failed = responses.filter(r => !r.ok && r.status !== 404);
+        console.error('削除に失敗しました', failed);
         alert('サーバー削除に失敗しました。コンソールを確認してください。');
       }
     } catch (e) {

@@ -492,6 +492,36 @@ app.delete('/api/ranking/enkin/:tournamentId', async (req, res) => {
   }
 });
 
+// 13c. 選手の順位決定戦フィールドをクリア（最終順位表完全削除用）
+app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    // 該当大会の全選手の射詰・遠近関連フィールドをクリア
+    const result = await db.collection('applicants').updateMany(
+      { tournamentId },
+      { 
+        $unset: { 
+          shichumaResults: '',
+          enkinRank: '',
+          enkinArrowType: '',
+          shichumaFinalRank: '',
+          shichumaWinner: '',
+          enkinFinalRank: ''
+        } 
+      }
+    );
+
+    console.log(`🗑️ Archer shootoff fields cleared: ${tournamentId} - ${result.modifiedCount} archers`);
+    res.status(200).json({ success: true, message: `Cleared shootoff fields for ${result.modifiedCount} archers` });
+
+  } catch (error) {
+    console.error('❌ POST /api/ranking/clear error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 14. 全ての順位決定戦の結果を取得
 app.get('/api/ranking/shootoff/:tournamentId', async (req, res) => {
   try {
