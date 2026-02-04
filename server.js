@@ -596,11 +596,13 @@ app.get('*', (req, res) => {
 // サーバー起動
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`\n🚀 Server ready at http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
   
+  // 初期DB接続は非同期で試行（失敗してもサーバーは起動）
   connectToDatabase()
     .then(() => console.log('✅ Initial DB connection successful\n'))
-    .catch(err => console.error('⚠️ Initial DB connection failed:', err.message));
+    .catch(err => console.log('⚠️ Initial DB connection failed (will retry on API calls):', err.message));
 });
 
 export default app;
