@@ -4892,9 +4892,18 @@ const categorizedGroups = useMemo(() => {
     try {
       console.log('\n🗑️🗑️🗑️ 最終順位表削除開始 🗑️🗑️🗑️');
       console.log(`  対象大会: ${selectedTournamentId}`);
-      console.log(`  削除前の状態:`);
-      console.log(`    - shichumaFinalResults: ${shichumaFinalResults ? 'あり' : 'なし'}`);
-      console.log(`    - enkinFinalResults: ${enkinFinalResults ? 'あり' : 'なし'}`);
+      console.log(`\n【削除前の詳細データ確認】`);
+      console.log(`  shichumaFinalResults:`, shichumaFinalResults);
+      console.log(`  enkinFinalResults:`, enkinFinalResults);
+      
+      // archers から該当者の results フィールドを確認
+      console.log(`\n【Archers の results フィールド確認】`);
+      archers.forEach(archer => {
+        const hitCount = archer.results ? Object.values(archer.results).flat().filter(r => r === 'o').length : 0;
+        if (hitCount > 0) {
+          console.log(`  ${archer.name}: ${hitCount}本的中`, archer.results);
+        }
+      });
 
       // サーバー側データ削除
       const urls = [
@@ -4969,6 +4978,12 @@ const categorizedGroups = useMemo(() => {
         localStorage.removeItem('ranking_selectedGender');
         console.log(`  ✅ localStorage をクリア`);
 
+        // 削除後の詳細確認ログ
+        console.log(`\n【削除直後の状態確認】`);
+        console.log(`  setShichumaFinalResults -> null (クリア予定)`);
+        console.log(`  setEnkinFinalResults -> null (クリア予定)`);
+
+
         // 削除完了を確認するため少し待機してから再取得
         console.log(`  ⏳ 1秒待機中...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -4978,6 +4993,19 @@ const categorizedGroups = useMemo(() => {
         await fetchArchers(true);
         await fetchShootOffResults();
         
+        // 再取得後の状態確認
+        console.log(`\n【再取得後のデータ状態確認】`);
+        console.log(`  再取得後の shichumaFinalResults:`, shichumaFinalResults);
+        console.log(`  再取得後の enkinFinalResults:`, enkinFinalResults);
+        console.log(`\n【Archers の results フィールド再確認】`);
+        archers.forEach(archer => {
+          const hitCount = archer.results ? Object.values(archer.results).flat().filter(r => r === 'o').length : 0;
+          if (hitCount > 0) {
+            console.log(`  ${archer.name}: ${hitCount}本的中 (残存状態!)`, archer.results);
+          }
+        });
+        
+
         console.log(`✅✅✅ 最終順位表完全削除完了 ✅✅✅\n`);
         alert('✅ 最終順位表をすべて削除しました。\n\nページをリロードして確認します。');
         
