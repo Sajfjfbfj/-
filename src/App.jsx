@@ -3,385 +3,135 @@ import { Lock, LogOut, RotateCcw, Copy, Check, QrCode, Maximize2, Filter, X, Use
 import { QRCodeSVG } from 'qrcode.react';
 import QRCodeScanner from './components/QRCodeScanner';
 import QualifiersView from './QualifiersView';
+import AwardsView from './components/AwardsView';
+import { tournamentsApi, applicantsApi, resultsApi, rankingApi, API_URL } from './utils/api';
+import { 
+  getLocalDateKey, 
+  distanceKm, 
+  normalizeTournamentFormData, 
+  getStoredAttachments, 
+  setStoredAttachments 
+} from './utils/tournament';
+import { 
+  judgeNearFarCompetition, 
+  calculateRanksWithTies,
+  normalizeRank,
+  getRankOrder,
+  getRankIndex,
+  getDivisionIdForArcher
+} from './utils/competition';
 import './index.css';
 
 // Ensure API URL is always absolute
-const API_BASE_URL = 'https://alluring-perfection-production-f96d.up.railway.app/api';
-const API_URL = API_BASE_URL.startsWith('http') 
-  ? API_BASE_URL 
-  : `${window.location.origin}${API_BASE_URL.startsWith('/') ? '' : '/'}${API_BASE_URL}`;
-
+// const API_BASE_URL = 'https://alluring-perfection-production-f96d.up.railway.app/api';
+// const API_URL = API_BASE_URL.startsWith('http') 
+//   ? API_BASE_URL 
+//   : `${window.location.origin}${API_BASE_URL.startsWith('/') ? '' : '/'}${API_BASE_URL}`;
 
 // 射詰競射判定ロジック
-const judgeNearFarCompetition = (results) => {
-  if (results.length === 0) return results;
+// const judgeNearFarCompetition = (results) => {
+//   if (results.length === 0) return results;
 
-  // 的中数でソート（降順）
-  const sorted = [...results].sort((a, b) => b.hitCount - a.hitCount);
+//   // 的中数でソート（降順）
+//   const sorted = [...results].sort((a, b) => b.hitCount - a.hitCount);
 
-  // 全員の的中数を確認
-  const maxHits = sorted[0].hitCount;
-  const minHits = sorted[sorted.length - 1].hitCount;
+//   // 全員の的中数を確認
+//   const maxHits = sorted[0].hitCount;
+//   const minHits = sorted[sorted.length - 1].hitCount;
 
-  // ケース1: 1位のみ全中（4本）、他が全て外れ（0本）
-  if (maxHits === 4 && minHits === 0 && sorted.some(r => r.hitCount === 4) && sorted.filter(r => r.hitCount === 0).length === sorted.length - 1) {
-    return results.map(r => ({
-      ...r,
-      isNearFarTarget: r.hitCount === 0,
-      reason: r.hitCount === 0 ? '全て外れたため遠近競射対象' : '全中のため遠近競射対象外',
-    }));
-  }
+//   // ケース1: 1位のみ全中（4本）、他が全て外れ（0本）
+//   if (maxHits === 4 && minHits === 0 && sorted.some(r => r.hitCount === 4) && sorted.filter(r => r.hitCount === 0).length === sorted.length - 1) {
+//     return results.map(r => ({
+//       ...r,
+//       isNearFarTarget: r.hitCount === 0,
+//       reason: r.hitCount === 0 ? '全て外れたため遠近競射対象' : '全中のため遠近競射対象外',
+//     }));
+//   }
 
-  // ケース2: 複数人が全中または部分的中で、最後の矢で分かれた場合
-  // 最後の矢で外れた人のみ対象（全中した人は対象外）
-  const hasFullHit = results.some(r => r.hitCount === 4);
-  const hasLastArrowMiss = results.some(r => {
-    const archer = r.archer || r;
-    const results_arr = archer.results || [];
-    return !results_arr[3];
-  });
+//   // ケース2: 複数人が全中または部分的中で、最後の矢で分かれた場合
+//   // 最後の矢で外れた人のみ対象（全中した人は対象外）
+//   const hasFullHit = results.some(r => r.hitCount === 4);
+//   const hasLastArrowMiss = results.some(r => {
+//     const archer = r.archer || r;
+//     const results_arr = archer.results || [];
+//     return !results_arr[3];
+//   });
 
-  if (hasFullHit && hasLastArrowMiss) {
-    return results.map(r => {
-      const archer = r.archer || r;
-      const results_arr = archer.results || [];
-      return {
-        ...r,
-        isNearFarTarget: !results_arr[3] && r.hitCount < 4,
-        reason: 
-          r.hitCount === 4 ? '全中のため遠近競射対象外' :
-          !results_arr[3] ? '最後の矢で外れたため遠近競射対象' :
-          '遠近競射対象外',
-      };
-    });
-  }
+//   if (hasFullHit && hasLastArrowMiss) {
+//     return results.map(r => {
+//       const archer = r.archer || r;
+//       const results_arr = archer.results || [];
+//       return {
+//         ...r,
+//         isNearFarTarget: !results_arr[3] && r.hitCount < 4,
+//         reason: 
+//           r.hitCount === 4 ? '全中のため遠近競射対象外' :
+//           !results_arr[3] ? '最後の矢で外れたため遠近競射対象' :
+//           '遠近競射対象外',
+//       };
+//     });
+//   }
 
-  // ケース3: 複数人が部分的中で順位が確定 → 遠近競射なし
-  return results.map(r => ({
-    ...r,
-    isNearFarTarget: false,
-    reason: '遠近競射なし',
-  }));
-};
+//   // ケース3: 複数人が部分的中で順位が確定 → 遠近競射なし
+//   return results.map(r => ({
+//     ...r,
+//     isNearFarTarget: false,
+//     reason: '遠近競射なし',
+//   }));
+// };
 
-const getLocalDateKey = () => {
-  // local date like 2026-01-09
-  try {
-    return new Date().toLocaleDateString('sv-SE');
-  } catch {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }
-};
+// const getLocalDateKey = () => {
+//   // local date like 2026-01-09
+//   try {
+//     return new Date().toLocaleDateString('sv-SE');
+//   } catch {
+//     const d = new Date();
+//     const y = d.getFullYear();
+//     const m = String(d.getMonth() + 1).padStart(2, '0');
+//     const day = String(d.getDate()).padStart(2, '0');
+//     return `${y}-${m}-${day}`;
+//   }
+// };
 
-const distanceKm = (lat1, lng1, lat2, lng2) => {
-  const toRad = (d) => (d * Math.PI) / 180;
-  const R = 6371;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
+// const distanceKm = (lat1, lng1, lat2, lng2) => {
+//   const toRad = (d) => (d * Math.PI) / 180;
+//   const R = 6371;
+//   const dLat = toRad(lat2 - lat1);
+//   const dLng = toRad(lng2 - lng1);
+//   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+//   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+//   return R * c;
+// };
 
-const normalizeTournamentFormData = (data, defaultDivisions, attachments) => {
-  const d = data || {};
+// const normalizeTournamentFormData = (data, defaultDivisions, attachments) => {
+//   const d = data || {};
 
-  return {
-    name: d.name ?? '',
-    datetime: d.datetime ?? '',
-    location: d.location ?? '',
-    venueAddress: d.venueAddress ?? '',
-    venueLat: d.venueLat ?? '',
-    venueLng: d.venueLng ?? '',
-    organizer: d.organizer ?? '',
-    coOrganizer: d.coOrganizer ?? '',
-    administrator: d.administrator ?? '',
-    purpose: d.purpose ?? '',
-    event: d.event ?? '',
-    type: d.type ?? '',
-    category: d.category ?? '',
-    description: d.description ?? '',
-    competitionMethod: d.competitionMethod ?? '',
-    award: d.award ?? '',
-    qualifications: d.qualifications ?? '',
-    applicableRules: d.applicableRules ?? '',
-    applicationMethod: d.applicationMethod ?? '',
-    remarks: d.remarks ?? '',
-    attachments: Array.isArray(attachments) ? attachments : [],
-    divisions: Array.isArray(d.divisions) ? d.divisions : (Array.isArray(defaultDivisions) ? defaultDivisions : []),
-    enableGenderSeparation: d.enableGenderSeparation ?? false,
-  };
-};
-
-const getStoredAttachments = (tournamentId) => {
-  if (!tournamentId) return [];
-  try {
-    const raw = localStorage.getItem(`tournamentAttachments:${tournamentId}`);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTournamentId }) => {
-  const [archers, setArchers] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const tournaments = state.registeredTournaments || [];
-  const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
-
-  const rankOrder = useMemo(() => (['無指定', '五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段']), []);
-  const normalizeRank = useCallback((rank) => {
-    if (!rank) return '';
-    return rank
-      .replace('二段', '弐段')
-      .replace('三段', '参段')
-      .replace('二級', '弐級')
-      .replace('一級', '壱級');
-  }, []);
-
-
-  // tournament selection is locked at admin login
-  const rankIndex = useCallback((rank) => {
-    const r = normalizeRank(rank);
-    const idx = rankOrder.indexOf(r);
-    return idx === -1 ? 9999 : idx;
-  }, [normalizeRank, rankOrder]);
-
-  const getDivisionIdForArcher = useCallback((archer, divisions) => {
-    const rIdx = rankIndex(archer?.rank);
-    for (const d of (divisions || [])) {
-      const minIdx = d?.minRank ? rankIndex(d.minRank) : 0;
-      const maxIdx = d?.maxRank ? rankIndex(d.maxRank) : 9999;
-      if (rIdx >= minIdx && rIdx <= maxIdx) return d.id;
-    }
-    return 'unassigned';
-  }, [rankIndex]);
-
-  const getTotalHitCountAllStands = useCallback((archer) => {
-    const arrows1 = tournament?.data?.arrowsRound1 || state.tournament.arrowsRound1 || 0;
-    const arrows2 = tournament?.data?.arrowsRound2 || state.tournament.arrowsRound2 || 0;
-    const total = arrows1 + arrows2;
-    const results = archer?.results || {};
-    let count = 0;
-    for (let s = 1; s <= 6; s++) {
-      const arr = results[`stand${s}`] || [];
-      for (let i = 0; i < Math.min(total, arr.length); i++) {
-        if (arr[i] === 'o') count++;
-      }
-    }
-    return count;
-  }, [tournament, state.tournament]);
-
-  const calculateRanksWithTies = useCallback((items) => {
-    const sorted = [...items].sort((a, b) => b.hitCount - a.hitCount);
-    let currentRank = 1;
-    let prevHitCount = null;
-    let sameRankCount = 0;  
-    return sorted.map((item, index) => {
-      if (prevHitCount !== null && item.hitCount !== prevHitCount) {
-        currentRank = index + 1;  
-        sameRankCount = 0;  
-      } else if (prevHitCount === item.hitCount) {
-        sameRankCount++;  
-      }
-      prevHitCount = item.hitCount;
-      return { ...item, rank: currentRank };
-    });
-  }, []);
-
-  useEffect(() => {
-    const fetchArchers = async () => {
-      if (!selectedTournamentId) {
-        setArchers([]);
-        return;
-      }
-      setIsLoading(true);
-      try {
-        const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
-        const result = await response.json();
-        if (result.success) {
-          const checkedIn = (result.data || []).filter(a => a.isCheckedIn);
-          setArchers(checkedIn);
-        } else {
-          setArchers([]);
-        }
-      } catch (e) {
-        console.error('AwardsView fetch error', e);
-        setArchers([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchArchers();
-  }, [selectedTournamentId]);
-
-  const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
-  const localDefaultDivisions = [
-    { id: 'lower', label: '級位~三段以下の部' },
-    { id: 'middle', label: '四・五段の部' },
-    { id: 'title', label: '称号者の部' }
-  ];
-  const divisions = (selectedTournament && selectedTournament.data && selectedTournament.data.divisions) ? selectedTournament.data.divisions : localDefaultDivisions;
-
-  const awardRankLimit = tournament?.data?.awardRankLimit || 3;
-  const enableGenderSeparation = selectedTournament?.data?.enableGenderSeparation || false;
-
-  const divisionRankings = useMemo(() => {
-    const groups = {};
-    
-    // Create gender-separated groups if enabled
-    if (enableGenderSeparation) {
-      for (const d of divisions) {
-        groups[`${d.id}_male`] = { division: { ...d, id: `${d.id}_male`, label: `${d.label}（男）` }, rows: [] };
-        groups[`${d.id}_female`] = { division: { ...d, id: `${d.id}_female`, label: `${d.label}（女）` }, rows: [] };
-      }
-      groups['unassigned_male'] = { division: { id: 'unassigned_male', label: '未分類（男）' }, rows: [] };
-      groups['unassigned_female'] = { division: { id: 'unassigned_female', label: '未分類（女）' }, rows: [] };
-    } else {
-      for (const d of divisions) groups[d.id] = { division: d, rows: [] };
-      if (!groups.unassigned) groups.unassigned = { division: { id: 'unassigned', label: '未分類' }, rows: [] };
-    }
-
-    for (const a of archers) {
-      const divId = getDivisionIdForArcher(a, divisions);
-      const hitCount = getTotalHitCountAllStands(a);
-      const gender = a.gender || 'male'; // Default to male if not specified
-      
-      let targetGroupId;
-      if (enableGenderSeparation) {
-        targetGroupId = `${divId}_${gender}`;
-      } else {
-        targetGroupId = divId;
-      }
-      
-      if (!groups[targetGroupId]) {
-        if (enableGenderSeparation) {
-          groups[targetGroupId] = { 
-            division: { id: targetGroupId, label: `${divId}（${gender === 'male' ? '男' : '女'}）` }, 
-            rows: [] 
-          };
-        } else {
-          groups[targetGroupId] = { division: { id: targetGroupId, label: targetGroupId }, rows: [] };
-        }
-      }
-      
-      groups[targetGroupId].rows.push({
-        archer: a,
-        hitCount,
-      });
-    }
-
-    const result = [];
-    for (const key of Object.keys(groups)) {
-      const g = groups[key];
-      if (g.rows.length === 0) continue; // Skip empty groups
-      const ranked = calculateRanksWithTies(g.rows.map(r => ({ ...r })));
-      result.push({
-        division: g.division,
-        ranked,
-      });
-    }
-    
-    // Sort groups: maintain original division order, with male before female for each division
-    result.sort((a, b) => {
-      const getBaseDivisionId = (id) => {
-        if (enableGenderSeparation) {
-          return id.replace(/_male$|_female$/, '');
-        }
-        return id;
-      };
-      
-      const getGenderOrder = (id) => {
-        if (enableGenderSeparation) {
-          return id.endsWith('_male') ? 0 : 1;
-        }
-        return 0;
-      };
-      
-      const baseA = getBaseDivisionId(a.division.id);
-      const baseB = getBaseDivisionId(b.division.id);
-      const ai = divisions.findIndex(d => d.id === baseA);
-      const bi = divisions.findIndex(d => d.id === baseB);
-      
-      if (ai !== bi) {
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-      }
-      
-      return getGenderOrder(a.division.id) - getGenderOrder(b.division.id);
-    });
-    
-    return result;
-  }, [archers, divisions, getDivisionIdForArcher, getTotalHitCountAllStands, calculateRanksWithTies, enableGenderSeparation]);
-
-  return (
-    <div className="view-container">
-      <div className="view-content">
-        <p className="hint" style={{ marginBottom: '1rem' }}>表彰は {awardRankLimit}位まで（同率あり）</p>
-        
-        {!selectedTournamentId ? (
-          <div className="card">大会を選択してください</div>
-        ) : isLoading ? (
-          <div className="card">読み込み中...</div>
-        ) : (
-          divisionRankings.map(block => (
-            <div key={block.division.id} className="card" style={{ marginBottom: '1rem' }}>
-              <div className="flex justify-between items-center">
-                <h2 className="card-title">{block.division.label || block.division.id}</h2>
-                <span className="text-sm text-gray-600">{block.ranked.length}名</span>
-              </div>
-
-              <div className="table-responsive">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">順位</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">所属</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">的中</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">表彰</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {block.ranked.length === 0 ? (
-                      <tr><td colSpan="6" className="px-4 py-4 text-center text-sm text-gray-500">該当者なし</td></tr>
-                    ) : (
-                      block.ranked.map((row, idx) => (
-                        <tr key={`${row.archer?.archerId || idx}`}> 
-                          <td className="px-4 py-3 text-sm font-medium">{row.rank}位</td>
-                          <td className="px-4 py-3">{row.archer?.name || ''}</td>
-                          <td className="px-4 py-3">{row.archer?.affiliation || ''}</td>
-                          <td className="px-4 py-3 text-center">{row.archer?.rank || ''}</td>
-                          <td className="px-4 py-3 text-center">{row.hitCount}</td>
-                          <td className="px-4 py-3 text-center">{row.rank <= awardRankLimit ? '○' : ''}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-};
-
-const setStoredAttachments = (tournamentId, attachments) => {
-  if (!tournamentId) return;
-  try {
-    localStorage.setItem(`tournamentAttachments:${tournamentId}`, JSON.stringify(Array.isArray(attachments) ? attachments : []));
-  } catch (e) {
-    console.error('Failed to store attachments', e);
-  }
-};
+//   return {
+//     name: d.name ?? '',
+//     datetime: d.datetime ?? '',
+//     location: d.location ?? '',
+//     venueAddress: d.venueAddress ?? '',
+//     venueLat: d.venueLat ?? '',
+//     venueLng: d.venueLng ?? '',
+//     organizer: d.organizer ?? '',
+//     coOrganizer: d.coOrganizer ?? '',
+//     administrator: d.administrator ?? '',
+//     purpose: d.purpose ?? '',
+//     event: d.event ?? '',
+//     type: d.type ?? '',
+//     category: d.category ?? '',
+//     description: d.description ?? '',
+//     competitionMethod: d.competitionMethod ?? '',
+//     award: d.award ?? '',
+//     qualifications: d.qualifications ?? '',
+//     applicableRules: d.applicableRules ?? '',
+//     applicationMethod: d.applicationMethod ?? '',
+//     remarks: d.remarks ?? '',
+//     attachments: Array.isArray(attachments) ? attachments : [],
+//     divisions: Array.isArray(d.divisions) ? d.divisions : (Array.isArray(defaultDivisions) ? defaultDivisions : []),
+//     enableGenderSeparation: d.enableGenderSeparation ?? false,
+//   };
+// };
 
 const KyudoTournamentSystem = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
@@ -423,18 +173,7 @@ const KyudoTournamentSystem = () => {
 
   const fetchTournaments = async () => {
     try {
-      const response = await fetch(`${API_URL}/tournaments`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const result = await response.json();
+      const result = await tournamentsApi.getAll();
       
       if (result.success && result.data) {
         dispatch({
@@ -899,19 +638,19 @@ const TournamentView = ({ state, stands, checkInCount }) => {
 
       setIsLoadingShichuma(true);
       try {
-        const response = await fetch(`${API_URL}/ranking/shichuma/${selectedTournamentId}`);
+        const result = await rankingApi.shichuma.get(selectedTournamentId);
         
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success) {
-            setShichumaData(result.data);
-          }
-        } else if (response.status === 404) {
-          setShichumaData(null);
+        if (result.success) {
+          setShichumaData(result.data);
         }
       } catch (error) {
-        console.error('射詰競射結果の取得エラー:', error);
-        setShichumaData(null);
+        // 404は正常な状態（まだ結果がない場合）
+        if (error.message?.includes('404') || error.status === 404) {
+          setShichumaData(null);
+        } else {
+          console.error('射詰競射結果の取得エラー:', error);
+          setShichumaData(null);
+        }
       } finally {
         setIsLoadingShichuma(false);
       }
