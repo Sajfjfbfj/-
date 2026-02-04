@@ -8,6 +8,7 @@
     "dev:client": "vite",
     "server": "node server.js",
     "build": "vite build",
+    "postinstall": "rm -rf node_modules/.cache || true",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "set NODE_ENV=production && node server.js",
