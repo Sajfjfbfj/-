@@ -379,7 +379,7 @@ app.get('/api/ranking/shichuma/:tournamentId', async (req, res) => {
   }
 });
 
-// 射詰競射の結果削除
+// 11-2. 射詰競射の結果削除
 app.delete('/api/ranking/shichuma/:tournamentId', async (req, res) => {
   try {
     const db = await connectToDatabase();
@@ -470,6 +470,28 @@ app.get('/api/ranking/enkin/:tournamentId', async (req, res) => {
   }
 });
 
+// 13-2. 遠近競射の結果削除（新規追加）
+app.delete('/api/ranking/enkin/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const result = await db.collection('enkin_results').deleteOne({ tournamentId });
+
+    if (result.deletedCount === 0) {
+      console.log(`⚠️ Enkin results not found for deletion: ${tournamentId}`);
+      return res.status(404).json({ success: false, message: 'No enkin results found to delete' });
+    }
+
+    console.log(`🗑️ Enkin Results Deleted: ${tournamentId}`);
+    res.status(200).json({ success: true, message: 'Enkin results deleted successfully' });
+
+  } catch (error) {
+    console.error('❌ DELETE /api/ranking/enkin error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 14. 全ての順位決定戦の結果を取得
 app.get('/api/ranking/shootoff/:tournamentId', async (req, res) => {
   try {
@@ -520,6 +542,41 @@ app.patch('/api/applicants/:archerId/gender', async (req, res) => {
     res.status(200).json({ success: true, message: '性別情報を更新しました' });
   } catch (error) {
     console.error('❌ PATCH /api/applicants/:archerId/gender error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 16. 順位決定戦関連フィールドをクリア（新規追加）
+app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    // 該当する大会の全選手の競射関連フィールドをクリア
+    const result = await db.collection('applicants').updateMany(
+      { tournamentId },
+      { 
+        $unset: { 
+          shichumaResults: "",
+          enkinRank: "",
+          enkinArrowType: ""
+        } 
+      }
+    );
+
+    console.log(`🗑️ Cleared shoot-off fields for ${result.modifiedCount} applicants in tournament: ${tournamentId}`);
+    
+    res.status(200).json({ 
+      success: true, 
+      message: 'Shoot-off fields cleared successfully',
+      stats: {
+        modifiedCount: result.modifiedCount,
+        matchedCount: result.matchedCount
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ POST /api/ranking/clear error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
