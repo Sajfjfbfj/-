@@ -8,6 +8,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// 静的ファイルの配信
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+app.use(express.static(join(__dirname, 'dist')));
+
 // MongoDB設定
 const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'kyudo-tournament';
@@ -578,6 +585,13 @@ app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
   } catch (error) {
     console.error('❌ POST /api/ranking/clear error:', error);
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// SPAルーティング対応 - API以外のGETリクエストはindex.htmlを返す
+app.get('*', (req, res) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(join(__dirname, 'dist', 'index.html'));
   }
 });
 
