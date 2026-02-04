@@ -76,11 +76,28 @@ async function connectToDatabase() {
 // ヘルスチェック
 app.get('/api/health', async (req, res) => {
   try {
-    const db = await connectToDatabase();
-    await db.admin().ping();
-    res.status(200).json({ success: true, message: 'Server is healthy' });
+    // MongoDB接続を試みるが、失敗しても応答は返す
+    let dbStatus = 'disconnected';
+    try {
+      const db = await connectToDatabase();
+      await db.admin().ping();
+      dbStatus = 'connected';
+    } catch (dbError) {
+      console.warn('Health check: MongoDB connection failed:', dbError.message);
+    }
+    
+    res.status(200).json({ 
+      success: true, 
+      message: 'Server is running',
+      database: dbStatus,
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Database connection failed' });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error',
+      error: error.message 
+    });
   }
 });
 
