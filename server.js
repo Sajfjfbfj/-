@@ -379,7 +379,7 @@ app.get('/api/ranking/shichuma/:tournamentId', async (req, res) => {
   }
 });
 
-// 11b. 射詰競射の結果削除（完全削除）
+// 射詰競射の結果削除
 app.delete('/api/ranking/shichuma/:tournamentId', async (req, res) => {
   try {
     const db = await connectToDatabase();
@@ -466,127 +466,6 @@ app.get('/api/ranking/enkin/:tournamentId', async (req, res) => {
 
   } catch (error) {
     console.error('❌ GET /api/ranking/enkin error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// 13b. 遠近競射の結果削除（完全削除）
-app.delete('/api/ranking/enkin/:tournamentId', async (req, res) => {
-  try {
-    const db = await connectToDatabase();
-    const { tournamentId } = req.params;
-
-    const result = await db.collection('enkin_results').deleteOne({ tournamentId });
-
-    if (result.deletedCount === 0) {
-      console.log(`⚠️ Enkin results not found for deletion: ${tournamentId}`);
-      return res.status(404).json({ success: false, message: 'No enkin results found to delete' });
-    }
-
-    console.log(`🗑️ Enkin Results Deleted: ${tournamentId}`);
-    res.status(200).json({ success: true, message: 'Enkin results deleted successfully' });
-
-  } catch (error) {
-    console.error('❌ DELETE /api/ranking/enkin error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// 13c. 選手の順位決定戦フィールドをクリア（最終順位表完全削除用）
-app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
-  try {
-    const db = await connectToDatabase();
-    const { tournamentId } = req.params;
-
-    console.log(`\n🗑️🗑️🗑️ POST /api/ranking/clear 実行開始: ${tournamentId}`);
-
-    // 該当大会の全選手の射詰・遠近関連フィールド＆記録をクリア
-    const initialResults = {
-      stand1: Array(10).fill(null),
-      stand2: Array(10).fill(null),
-      stand3: Array(10).fill(null),
-      stand4: Array(10).fill(null),
-      stand5: Array(10).fill(null),
-      stand6: Array(10).fill(null)
-    };
-
-    // 削除前の状態を確認
-    const beforeCount = await db.collection('applicants').countDocuments({
-      tournamentId,
-      $or: [
-        { 'results': { $ne: initialResults } },
-        { 'shichumaResults': { $exists: true } },
-        { 'enkinRank': { $exists: true } },
-        { 'shichumaFinalRank': { $exists: true } },
-        { 'shichumaWinner': { $exists: true } },
-        { 'enkinFinalRank': { $exists: true } }
-      ]
-    });
-    console.log(`  削除前: ${beforeCount}件の選手が結果データを保持`);
-
-    const result = await db.collection('applicants').updateMany(
-      { tournamentId },
-      { 
-        $set: {
-          results: initialResults  // 全ての記録を初期化
-        },
-        $unset: { 
-          shichumaResults: '',
-          enkinRank: '',
-          enkinArrowType: '',
-          shichumaFinalRank: '',
-          shichumaWinner: '',
-          enkinFinalRank: ''
-        } 
-      }
-    );
-
-    console.log(`  更新対象: ${result.matchedCount}件`);
-    console.log(`  実際に更新: ${result.modifiedCount}件`);
-
-    // 削除後の状態を確認
-    const afterCount = await db.collection('applicants').countDocuments({
-      tournamentId,
-      $or: [
-        { 'shichumaResults': { $exists: true } },
-        { 'enkinRank': { $exists: true } },
-        { 'shichumaFinalRank': { $exists: true } },
-        { 'shichumaWinner': { $exists: true } },
-        { 'enkinFinalRank': { $exists: true } }
-      ]
-    });
-    console.log(`  削除後: ${afterCount}件の選手が残存フィールドを保持（エラー時）`);
-
-    // 確認：すべての選手が results を持っているか
-    const resultsCheck = await db.collection('applicants').countDocuments({
-      tournamentId,
-      results: { $exists: true }
-    });
-    console.log(`  results フィールド確認: ${resultsCheck}件が初期化済み`);
-
-    // サンプルデータで実際の状態を確認
-    const sampleArcher = await db.collection('applicants').findOne({ tournamentId });
-    if (sampleArcher) {
-      console.log(`  サンプル検証 (${sampleArcher.archerId}):`);
-      console.log(`    - results 存在: ${sampleArcher.results ? '✅' : '❌'}`);
-      console.log(`    - shichumaResults 存在: ${sampleArcher.shichumaResults ? '⚠️' : '✅'}`);
-      console.log(`    - enkinRank 存在: ${sampleArcher.enkinRank ? '⚠️' : '✅'}`);
-    }
-
-    console.log(`✅ Archer shootoff fields cleared: ${tournamentId} - ${result.modifiedCount} archers\n`);
-    res.status(200).json({ 
-      success: true, 
-      message: `Cleared shootoff fields and results for ${result.modifiedCount} archers`,
-      stats: {
-        matched: result.matchedCount,
-        modified: result.modifiedCount,
-        beforeCount: beforeCount,
-        afterCount: afterCount
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ POST /api/ranking/clear error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
