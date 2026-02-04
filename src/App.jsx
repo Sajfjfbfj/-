@@ -4934,7 +4934,10 @@ const categorizedGroups = useMemo(() => {
         // ローカルストレージもクリア
         localStorage.removeItem('ranking_selectedGender');
 
-        // 最新データを再取得
+        // 削除完了を確認するため少し待機してから再取得
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // 最新データを再取得（削除後のサーバーデータを確実に反映）
         await fetchArchers(true);
         await fetchShootOffResults();
         alert('最終順位表を完全削除しました。');

@@ -498,10 +498,22 @@ app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
     const db = await connectToDatabase();
     const { tournamentId } = req.params;
 
-    // 該当大会の全選手の射詰・遠近関連フィールドをクリア
+    // 該当大会の全選手の射詰・遠近関連フィールド＆記録をクリア
+    const initialResults = {
+      stand1: Array(10).fill(null),
+      stand2: Array(10).fill(null),
+      stand3: Array(10).fill(null),
+      stand4: Array(10).fill(null),
+      stand5: Array(10).fill(null),
+      stand6: Array(10).fill(null)
+    };
+
     const result = await db.collection('applicants').updateMany(
       { tournamentId },
       { 
+        $set: {
+          results: initialResults  // 全ての記録を初期化
+        },
         $unset: { 
           shichumaResults: '',
           enkinRank: '',
@@ -514,7 +526,7 @@ app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
     );
 
     console.log(`🗑️ Archer shootoff fields cleared: ${tournamentId} - ${result.modifiedCount} archers`);
-    res.status(200).json({ success: true, message: `Cleared shootoff fields for ${result.modifiedCount} archers` });
+    res.status(200).json({ success: true, message: `Cleared shootoff fields and results for ${result.modifiedCount} archers` });
 
   } catch (error) {
     console.error('❌ POST /api/ranking/clear error:', error);
