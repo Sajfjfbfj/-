@@ -317,115 +317,6 @@ function App() {
 }
 
 export default App;
-
-  useEffect(() => {
-    fetchTournaments();
-  }, []);
-
-  useEffect(() => {
-    if (!selectedTournamentId) return;
-    const tpl = tournamentState.registeredTournaments.find(t => t.id === selectedTournamentId);
-    if (tpl && tpl.data) {
-      const allowedKeys = ['passRule', 'arrowsRound1', 'arrowsRound2', 'archersPerStand', 'name', 'date', 'id'];
-      const payload = {};
-      allowedKeys.forEach(k => { if (typeof tpl.data[k] !== 'undefined') payload[k] = tpl.data[k]; });
-      if (Object.keys(payload).length > 0) {
-        dispatch({ type: 'UPDATE_TOURNAMENT_INFO', payload });
-      }
-    }
-  }, [selectedTournamentId, tournamentState.registeredTournaments]);
-
-  const fetchTournaments = async () => {
-    try {
-      const result = await tournamentsApi.getAll();
-      
-      if (result.success && result.data) {
-        dispatch({
-
-const initialTournamentState = {
-  tournament: {
-    id: 'KYUDO_2024_0001',
-    name: '第◯回◯◯弓道大会',
-    date: '2024年12月29日',
-    stage: 'qualifiers',
-    passRule: 'all_four',
-    arrowsRound1: 2,
-    arrowsRound2: 4,
-    currentRound: 1,
-    archersPerStand: 12,
-  },
-  registeredTournaments: [],
-  applicants: [],
-  archers: [], // Now managed via API mainly
-};
-
-function tournamentReducer(state, action) {
-  switch (action.type) {
-    case 'LOAD_TOURNAMENTS': {
-      return { ...state, registeredTournaments: action.payload.map(t => ({ id: t.id, data: t.data })) };
-    }
-    case 'UPDATE_TOURNAMENT_INFO': return { ...state, tournament: { ...state.tournament, ...action.payload } };
-    case 'SAVE_TOURNAMENT_TEMPLATE': {
-      const updated = state.registeredTournaments.filter(t => t.id !== action.payload.id);
-      return { ...state, registeredTournaments: [...updated, action.payload] };
-    }
-    case 'DELETE_TOURNAMENT_TEMPLATE': return { ...state, registeredTournaments: state.registeredTournaments.filter(t => t.id !== action.payload) };
-    case 'RESET_ALL': return initialTournamentState;
-    default: return state;
-  }
-}
-
-function App() {
-  const [loading, setLoading] = useState(true);
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
-  const [isArcherVerified, setIsArcherVerified] = useState(false);
-  const [archerIdInputModal, setArcherIdInputModal] = useState('');
-  const [archerIdError, setArcherIdError] = useState('');
-  const [selectedTournamentId, setSelectedTournamentId] = useState(null);
-  const [tournamentState, dispatch] = React.useReducer(tournamentReducer, initialTournamentState);
-  const [mainView, setMainView] = useState('tournament');
-  const [adminLoginStep, setAdminLoginStep] = useState(null);
-  const [adminPassword, setAdminPassword] = useState('');
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [shichumaData, setShichumaData] = useState(null);
-  const [isLoadingShichuma, setIsLoadingShichuma] = useState(false);
-  const [view, setView] = useState('standings');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [currentPageProgram, setCurrentPageProgram] = useState(1);
-  const [programArchersPerPage, setProgramArchersPerPage] = useState(10);
-
-  useEffect(() => {
-    fetchTournaments();
-  }, []);
-
-  useEffect(() => {
-    if (!selectedTournamentId) return;
-    const tpl = tournamentState.registeredTournaments.find(t => t.id === selectedTournamentId);
-    if (tpl && tpl.data) {
-      const allowedKeys = ['passRule', 'arrowsRound1', 'arrowsRound2', 'archersPerStand', 'name', 'date', 'id'];
-      const payload = {};
-      allowedKeys.forEach(k => { if (typeof tpl.data[k] !== 'undefined') payload[k] = tpl.data[k]; });
-      if (Object.keys(payload).length > 0) {
-        dispatch({ type: 'UPDATE_TOURNAMENT_INFO', payload });
-      }
-    }
-  }, [selectedTournamentId, tournamentState.registeredTournaments]);
-
-  const fetchTournaments = async () => {
-    try {
-      const result = await tournamentsApi.getAll();
-      
-      if (result.success && result.data) {
-        dispatch({
-          type: 'LOAD_TOURNAMENTS',
-          payload: result.data
-        });
-      }
-    } catch (error) {
-      console.error('大会データの取得中にエラーが発生しました:', error);
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleArcherIdSubmit = () => {
@@ -452,10 +343,6 @@ function App() {
     setTimeout(() => { fetchAndSortArchers(); }, 50);
   };
 
-  useEffect(() => {
-    if (selectedTournamentId) {
-      setIsLoading(true);
-      fetchAndSortArchers();
     }
   }, [selectedTournamentId]);
 

@@ -5,7 +5,16 @@ import { MongoClient, ObjectId } from 'mongodb';
 
 const app = express();
 
-app.use(cors());
+// CORS設定
+app.use(cors({
+  origin: true, // すべてのオリジンを許可(開発環境用)
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
+// プリフライトリクエスト対応
+app.options('*', cors());
 app.use(express.json());
 
 // 静的ファイルの配信
