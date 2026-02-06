@@ -587,10 +587,11 @@ app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
 });
 
 // SPAルーティング対応 - API以外のGETリクエストはindex.htmlを返す
-app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(join(__dirname, 'dist', 'index.html'));
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    return next();
   }
+  res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
 // サーバー起動

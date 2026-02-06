@@ -1,4 +1,4 @@
-import React, { useState, useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
+﻿import React, { useState, useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Lock, LogOut, RotateCcw, Copy, Check, QrCode, Maximize2, Filter, X, User, Camera, RefreshCw, ChevronLeft, ChevronRight, Users } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import QRCodeScanner from './components/QRCodeScanner';
