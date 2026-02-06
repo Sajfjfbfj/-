@@ -191,14 +191,13 @@ const TournamentView = ({ state, stands, checkInCount }) => {
         
         if (result.success) {
           setShichumaData(result.data);
+        } else {
+          // Handle API response with success: false (e.g., 404)
+          setShichumaData(null);
         }
       } catch (error) {
-        if (error.message?.includes('404') || error.status === 404) {
-          setShichumaData(null);
-        } else {
-          console.error('射詰競射結果の取得エラー:', error);
-          setShichumaData(null);
-        }
+        console.error('射詰競射結果の取得エラー:', error);
+        setShichumaData(null);
       } finally {
         setIsLoadingShichuma(false);
       }
