@@ -5,16 +5,28 @@ import { MongoClient, ObjectId } from 'mongodb';
 
 const app = express();
 
-// CORS設定
-app.use(cors({
-  origin: true, // すべてのオリジンを許可(開発環境用)
+// CORS設定 - より明示的に
+const corsOptions = {
+  origin: function (origin, callback) {
+    // originがundefinedの場合(同一オリジンやPostmanなど)も許可
+    // 開発環境では全てのオリジンを許可
+    callback(null, true);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  optionsSuccessStatus: 200,
+  preflightContinue: false
+};
 
-// プリフライトリクエスト対応
-app.options('*', cors());
+// CORSミドルウェアを適用
+app.use(cors(corsOptions));
+
+// プリフライトリクエストへの対応を強化
+app.options('*', cors(corsOptions));
+
+// JSONパース
 app.use(express.json());
 
 // 静的ファイルの配信
@@ -265,8 +277,8 @@ app.post('/api/results', async (req, res) => {
       { $set: { [updatePath]: result } }
     );
 
-    console.log(`🎯 Result Updated: ${archerId} ${standKey}[${arrowIndex}] = ${result}`);
-    res.status(200).json({ success: true });
+    const updatedDoc = await db.collection('applicants').findOne({ tournamentId, archerId });
+    res.status(200).json({ success: true, data: updatedDoc });
 
   } catch (error) {
     console.error('❌ POST /api/results error:', error);
@@ -274,52 +286,70 @@ app.post('/api/results', async (req, res) => {
   }
 });
 
-// 8. 射詰競射結果保存
-app.post('/api/ranking/shichuma', async (req, res) => {
+// 8. 個別選手の結果取得
+app.get('/api/results/:tournamentId/:archerId', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { tournamentId, archerId, arrowIndex, result } = req.body;
+    const { tournamentId, archerId } = req.params;
 
-    if (!tournamentId || !archerId || arrowIndex === undefined) {
-      return res.status(400).json({ success: false, message: 'Missing parameters' });
+    const applicant = await db.collection('applicants').findOne({ tournamentId, archerId });
+
+    if (!applicant) {
+      return res.status(404).json({ success: false, message: 'Archer not found' });
     }
 
-    const updatePath = `shichumaResults.arrow${arrowIndex}`;
-
-    await db.collection('applicants').updateOne(
-      { tournamentId, archerId },
-      { $set: { [updatePath]: result } }
-    );
-
-    console.log(`🎯 Shichuma Result Updated: ${archerId} arrow${arrowIndex} = ${result}`);
-    res.status(200).json({ success: true });
+    res.status(200).json({ success: true, data: applicant });
 
   } catch (error) {
-    console.error('❌ POST /api/ranking/shichuma error:', error);
+    console.error('❌ GET /api/results error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// 9. 遠近競射結果保存
-app.post('/api/ranking/enkin', async (req, res) => {
+// 9. 成績ランキング取得
+app.get('/api/ranking/:tournamentId', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { tournamentId, archerId, rank, arrowType } = req.body;
+    const { tournamentId } = req.params;
 
-    if (!tournamentId || !archerId || rank === undefined) {
-      return res.status(400).json({ success: false, message: 'Missing parameters' });
+    const applicants = await db.collection('applicants')
+      .find({ tournamentId, isCheckedIn: true })
+      .toArray();
+
+    if (!applicants.length) {
+      return res.status(200).json({ success: true, data: [] });
     }
 
-    await db.collection('applicants').updateOne(
-      { tournamentId, archerId },
-      { $set: { enkinRank: rank, enkinArrowType: arrowType || 'normal' } }
-    );
+    // 成績計算 & ソート
+    const ranked = applicants.map(a => {
+      const results = a.results || {};
+      const stands = ['stand1', 'stand2', 'stand3', 'stand4', 'stand5', 'stand6'];
+      
+      let totalHits = 0;
+      let totalArrows = 0;
+      stands.forEach(stand => {
+        if (results[stand]) {
+          results[stand].forEach(r => {
+            if (r === 'o') totalHits++;
+            if (r !== null) totalArrows++;
+          });
+        }
+      });
 
-    console.log(`🎯 Enkin Result Updated: ${archerId} rank = ${rank}, arrowType = ${arrowType || 'normal'}`);
-    res.status(200).json({ success: true });
+      return {
+        ...a,
+        totalHits,
+        totalArrows,
+        hitRate: totalArrows > 0 ? (totalHits / totalArrows * 100).toFixed(1) : '0.0'
+      };
+    });
+
+    ranked.sort((a, b) => b.totalHits - a.totalHits);
+
+    res.status(200).json({ success: true, data: ranked });
 
   } catch (error) {
-    console.error('❌ POST /api/ranking/enkin error:', error);
+    console.error('❌ GET /api/ranking error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -328,7 +358,7 @@ app.post('/api/ranking/enkin', async (req, res) => {
 app.post('/api/ranking/shichuma/final', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { tournamentId, shootOffType, results } = req.body;
+    const { tournamentId, shootOffType, targetRank, results } = req.body;
 
     if (!tournamentId || !results) {
       return res.status(400).json({ success: false, message: 'Missing parameters' });
@@ -339,14 +369,14 @@ app.post('/api/ranking/shichuma/final', async (req, res) => {
     
     let mergedResults = [];
     if (existingData && existingData.results) {
-      // 既存の結果から同じdivisionIdのものを除外（遠近競射と同じパターン）
-      mergedResults = existingData.results.filter(r => !results.some(newResult => newResult.divisionId === r.divisionId));
+      // 既存の結果から同じtargetRankのものを除外
+      mergedResults = existingData.results.filter(r => r.targetRank !== targetRank);
     }
     
     // 新しい結果を追加
     mergedResults = [...mergedResults, ...results];
     
-    console.log(`🔄 Shichuma Results Merge: tournamentId=${tournamentId}`);
+    console.log(`🔄 Shichuma Results Merge: tournamentId=${tournamentId}, targetRank=${targetRank}`);
     console.log(`  既存データ: ${existingData?.results?.length || 0}件`);
     console.log(`  新規データ: ${results.length}件`);
     console.log(`  マージ後: ${mergedResults.length}件`);
@@ -484,7 +514,7 @@ app.get('/api/ranking/enkin/:tournamentId', async (req, res) => {
   }
 });
 
-// 13-2. 遠近競射の結果削除（新規追加）
+// 13-2. 遠近競射の結果削除(新規追加)
 app.delete('/api/ranking/enkin/:tournamentId', async (req, res) => {
   try {
     const db = await connectToDatabase();
@@ -560,7 +590,7 @@ app.patch('/api/applicants/:archerId/gender', async (req, res) => {
   }
 });
 
-// 16. 順位決定戦関連フィールドをクリア（新規追加）
+// 16. 順位決定戦関連フィールドをクリア(新規追加)
 app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
   try {
     const db = await connectToDatabase();
@@ -609,7 +639,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
   
-  // 初期DB接続は非同期で試行（失敗してもサーバーは起動）
+  // 初期DB接続は非同期で試行(失敗してもサーバーは起動)
   connectToDatabase()
     .then(() => console.log('✅ Initial DB connection successful\n'))
     .catch(err => console.log('⚠️ Initial DB connection failed (will retry on API calls):', err.message));
