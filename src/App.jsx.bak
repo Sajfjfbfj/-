@@ -1,98 +1,486 @@
-﻿import React, { useState, useReducer, useEffect } from 'react';
-import { Lock, LogOut } from 'lucide-react';
-import TournamentView from './components/TournamentView';
-import CheckInView from './components/CheckInView';
-import AdminView from './components/AdminView';
-import AdminLoginView from './components/AdminLoginView';
-import RankingView from './components/RankingView';
-import { tournamentsApi } from './utils/api';
-import { getLocalDateKey } from './utils/tournament';
+﻿import React, { useState, useReducer, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Lock, LogOut, RotateCcw, Copy, Check, QrCode, Maximize2, Filter, X, User, Camera, RefreshCw, ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import QRCodeScanner from './components/QRCodeScanner';
+import QualifiersView from './QualifiersView';
+import AwardsView from './components/AwardsView';
+import { tournamentsApi, applicantsApi, resultsApi, rankingApi, API_URL } from './utils/api';
+import { 
+  getLocalDateKey, 
+  distanceKm, 
+  normalizeTournamentFormData, 
+  getStoredAttachments, 
+  setStoredAttachments 
+} from './utils/tournament';
+import { 
+  judgeNearFarCompetition, 
+  calculateRanksWithTies,
+  normalizeRank,
+  getRankOrder,
+  getRankIndex,
+  getDivisionIdForArcher
+} from './utils/competition';
 import './index.css';
 
-// Initial state
-const initialTournamentState = {
-  tournament: {
-    id: 'KYUDO_2024_0001',
-    name: '第◯回◯◯弓道大会',
-    date: new Date().toISOString().split('T')[0],
-    passRule: 2,
-    arrowsRound1: 4,
-    arrowsRound2: 4,
-    archersPerStand: 4,
-    enableGenderSeparation: false
-  },
-  registeredTournaments: [],
-  archers: [],
-  loading: false,
-  error: null
-};
+// Ensure API URL is always absolute
+// const API_BASE_URL = 'https://alluring-perfection-production-f96d.up.railway.app/api';
+// const API_URL = API_BASE_URL.startsWith('http') 
+//   ? API_BASE_URL 
+//   : `${window.location.origin}${API_BASE_URL.startsWith('/') ? '' : '/'}${API_BASE_URL}`;
 
-// Reducer function
-function tournamentReducer(state, action) {
-  switch (action.type) {
-    case 'UPDATE_TOURNAMENT_INFO':
-      return {
-        ...state,
-        tournament: {
-          ...state.tournament,
-          ...action.payload
-        }
-      };
-    case 'SET_LOADING':
-      return { ...state, loading: action.payload };
-    case 'SET_ERROR':
-      return { ...state, error: action.payload };
-    case 'SET_TOURNAMENTS':
-      return { ...state, registeredTournaments: action.payload };
-    case 'SET_ARCHERS':
-      return { ...state, archers: action.payload };
-    case 'SAVE_TOURNAMENT_TEMPLATE': {
-      const updated = state.registeredTournaments.filter(t => t.id !== action.payload.id);
-      return { ...state, registeredTournaments: [...updated, action.payload] };
-    }
-    case 'DELETE_TOURNAMENT_TEMPLATE':
-      return { ...state, registeredTournaments: state.registeredTournaments.filter(t => t.id !== action.payload) };
-    case 'RESET_ALL':
-      return initialTournamentState;
-    default:
-      return state;
-  }
-}
+// 射詰競射判定ロジック
+// const judgeNearFarCompetition = (results) => {
+//   if (results.length === 0) return results;
 
-// Main App Component
-function App() {
+//   // 的中数でソート（降順）
+//   const sorted = [...results].sort((a, b) => b.hitCount - a.hitCount);
+
+//   // 全員の的中数を確認
+//   const maxHits = sorted[0].hitCount;
+//   const minHits = sorted[sorted.length - 1].hitCount;
+
+//   // ケース1: 1位のみ全中（4本）、他が全て外れ（0本）
+//   if (maxHits === 4 && minHits === 0 && sorted.some(r => r.hitCount === 4) && sorted.filter(r => r.hitCount === 0).length === sorted.length - 1) {
+//     return results.map(r => ({
+//       ...r,
+//       isNearFarTarget: r.hitCount === 0,
+//       reason: r.hitCount === 0 ? '全て外れたため遠近競射対象' : '全中のため遠近競射対象外',
+//     }));
+//   }
+
+//   // ケース2: 複数人が全中または部分的中で、最後の矢で分かれた場合
+//   // 最後の矢で外れた人のみ対象（全中した人は対象外）
+//   const hasFullHit = results.some(r => r.hitCount === 4);
+//   const hasLastArrowMiss = results.some(r => {
+//     const archer = r.archer || r;
+//     const results_arr = archer.results || [];
+//     return !results_arr[3];
+//   });
+
+//   if (hasFullHit && hasLastArrowMiss) {
+//     return results.map(r => {
+//       const archer = r.archer || r;
+//       const results_arr = archer.results || [];
+//       return {
+//         ...r,
+//         isNearFarTarget: !results_arr[3] && r.hitCount < 4,
+//         reason: 
+//           r.hitCount === 4 ? '全中のため遠近競射対象外' :
+//           !results_arr[3] ? '最後の矢で外れたため遠近競射対象' :
+//           '遠近競射対象外',
+//       };
+//     });
+//   }
+
+//   // ケース3: 複数人が部分的中で順位が確定 → 遠近競射なし
+//   return results.map(r => ({
+//     ...r,
+//     isNearFarTarget: false,
+//     reason: '遠近競射なし',
+//   }));
+// };
+
+// const getLocalDateKey = () => {
+//   // local date like 2026-01-09
+//   try {
+//     return new Date().toLocaleDateString('sv-SE');
+//   } catch {
+//     const d = new Date();
+//     const y = d.getFullYear();
+//     const m = String(d.getMonth() + 1).padStart(2, '0');
+//     const day = String(d.getDate()).padStart(2, '0');
+//     return `${y}-${m}-${day}`;
+//   }
+// };
+
+// const distanceKm = (lat1, lng1, lat2, lng2) => {
+//   const toRad = (d) => (d * Math.PI) / 180;
+//   const R = 6371;
+//   const dLat = toRad(lat2 - lat1);
+//   const dLng = toRad(lng2 - lng1);
+//   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+//   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+//   return R * c;
+// };
+
+// const normalizeTournamentFormData = (data, defaultDivisions, attachments) => {
+//   const d = data || {};
+
+//   return {
+//     name: d.name ?? '',
+//     datetime: d.datetime ?? '',
+//     location: d.location ?? '',
+//     venueAddress: d.venueAddress ?? '',
+//     venueLat: d.venueLat ?? '',
+//     venueLng: d.venueLng ?? '',
+//     organizer: d.organizer ?? '',
+//     coOrganizer: d.coOrganizer ?? '',
+//     administrator: d.administrator ?? '',
+//     purpose: d.purpose ?? '',
+//     event: d.event ?? '',
+//     type: d.type ?? '',
+//     category: d.category ?? '',
+//     description: d.description ?? '',
+//     competitionMethod: d.competitionMethod ?? '',
+//     award: d.award ?? '',
+//     qualifications: d.qualifications ?? '',
+//     applicableRules: d.applicableRules ?? '',
+//     applicationMethod: d.applicationMethod ?? '',
+//     remarks: d.remarks ?? '',
+//     attachments: Array.isArray(attachments) ? attachments : [],
+//     divisions: Array.isArray(d.divisions) ? d.divisions : (Array.isArray(defaultDivisions) ? defaultDivisions : []),
+//     enableGenderSeparation: d.enableGenderSeparation ?? false,
+//   };
+// };
+
+const KyudoTournamentSystem = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminPassword, setAdminPassword] = useState(null);
   const [selectedTournamentId, setSelectedTournamentId] = useState(() => {
     return localStorage.getItem('selectedTournamentId') || null;
   });
-  const [adminLoginStep, setAdminLoginStep] = useState(null);
+  const [adminLoginStep, setAdminLoginStep] = useState('password_setup');
   const [adminView, setAdminView] = useState('recording');
   const [mainView, setMainView] = useState('tournament');
+
+  useEffect(() => {
+    if (selectedTournamentId) {
+      localStorage.setItem('selectedTournamentId', selectedTournamentId);
+    } else {
+      localStorage.removeItem('selectedTournamentId');
+    }
+  }, [selectedTournamentId]);
   const [tournamentState, dispatch] = useReducer(tournamentReducer, initialTournamentState);
   const [loading, setLoading] = useState(true);
-  const [isArcherVerified, setIsArcherVerified] = useState(false);
-  const [archerIdInputModal, setArcherIdInputModal] = useState('');
-  const [archerIdError, setArcherIdError] = useState('');
 
-  // Fetch tournaments on component mount
   useEffect(() => {
-    const fetchTournaments = async () => {
-      try {
-        const response = await tournamentsApi.getAll();
-        dispatch({ type: 'SET_TOURNAMENTS', payload: response.data });
-      } catch (error) {
-        console.error('Error fetching tournaments:', error);
-        dispatch({ type: 'SET_ERROR', payload: error.message });
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchTournaments();
   }, []);
 
-  // Update selected tournament in local storage
+  // selectedTournamentId が変わったら、登録済み大会テンプレートの設定を tournamentState.tournament に反映する
+  useEffect(() => {
+    if (!selectedTournamentId) return;
+    const tpl = tournamentState.registeredTournaments.find(t => t.id === selectedTournamentId);
+    if (tpl && tpl.data) {
+      const allowedKeys = ['passRule', 'arrowsRound1', 'arrowsRound2', 'archersPerStand', 'name', 'date', 'id'];
+      const payload = {};
+      allowedKeys.forEach(k => { if (typeof tpl.data[k] !== 'undefined') payload[k] = tpl.data[k]; });
+      if (Object.keys(payload).length > 0) {
+        dispatch({ type: 'UPDATE_TOURNAMENT_INFO', payload });
+      }
+    }
+  }, [selectedTournamentId, tournamentState.registeredTournaments]);
+
+  const fetchTournaments = async () => {
+    try {
+      const result = await tournamentsApi.getAll();
+      
+      if (result.success && result.data) {
+        dispatch({
+          type: 'LOAD_TOURNAMENTS',
+          payload: result.data
+        });
+      }
+    } catch (error) {
+      console.error('大会データの取得中にエラーが発生しました:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkInCount = tournamentState.archers.filter(a => a.checkIn).length;
+  const dynamicStands = Math.max(1, Math.ceil(checkInCount / tournamentState.tournament.archersPerStand));
+
+  return (
+    <div className="app-container">
+      {loading ? (
+        <div className="login-container">
+          <div className="login-box">
+            <p className="hint">データを読み込み中...</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="nav-tabs">
+            <button onClick={() => setMainView('tournament')} className={`nav-tab ${mainView === 'tournament' ? 'nav-tab-active' : ''}`}>大会進行</button>
+            <button onClick={() => setMainView('checkin')} className={`nav-tab ${mainView === 'checkin' ? 'nav-tab-active' : ''}`}>受付</button>
+            <button onClick={() => setMainView('admin')} className={`nav-tab ${mainView === 'admin' ? 'nav-tab-active' : ''}`}><Lock size={14} />運営</button>
+            <button onClick={() => setMainView('tournament-setup')} className={`nav-tab ${mainView === 'tournament-setup' ? 'nav-tab-active' : ''}`}>大会登録</button>
+            <button onClick={() => setMainView('archer-signup')} className={`nav-tab ${mainView === 'archer-signup' ? 'nav-tab-active' : ''}`}>選手申し込み</button>
+          </div>
+
+          {mainView === 'tournament' && <TournamentView state={tournamentState} stands={dynamicStands} checkInCount={checkInCount} />}
+          {mainView === 'checkin' && <CheckInView state={tournamentState} dispatch={dispatch} />}
+          {mainView === 'admin' && !isAdminLoggedIn && <AdminLoginView adminPassword={adminPassword} setAdminPassword={setAdminPassword} adminLoginStep={adminLoginStep} setAdminLoginStep={setAdminLoginStep} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} state={tournamentState} onLogin={() => setIsAdminLoggedIn(true)} />}
+          {mainView === 'admin' && isAdminLoggedIn && <AdminView state={tournamentState} dispatch={dispatch} adminView={adminView} setAdminView={setAdminView} stands={dynamicStands} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} onLogout={() => { 
+            setIsAdminLoggedIn(false); 
+            setAdminLoginStep('password_setup'); 
+            setSelectedTournamentId(null); 
+            try {
+              localStorage.removeItem('adminSelectedTournamentDate');
+              localStorage.removeItem('adminSelectedTournamentId');
+              localStorage.removeItem('selectedTournamentId');
+            } catch {}
+          }} />}
+          {mainView === 'tournament-setup' && <TournamentSetupView state={tournamentState} dispatch={dispatch} />}
+          {mainView === 'archer-signup' && <ArcherSignupView state={tournamentState} dispatch={dispatch} />}
+        </>
+      )}
+    </div>
+  );
+};
+
+// Reducer State (Local fallback)
+const initialTournamentState = {
+  tournament: {
+    id: 'KYUDO_2024_0001',
+    name: '第◯回◯◯弓道大会',
+    date: '2024年12月29日',
+    stage: 'qualifiers',
+    passRule: 'all_four',
+    arrowsRound1: 2,
+    arrowsRound2: 4,
+    currentRound: 1,
+    archersPerStand: 12,
+  },
+  registeredTournaments: [],
+  applicants: [],
+  archers: [], // Now managed via API mainly
+};
+
+function tournamentReducer(state, action) {
+  switch (action.type) {
+    case 'LOAD_TOURNAMENTS': {
+      return { ...state, registeredTournaments: action.payload.map(t => ({ id: t.id, data: t.data })) };
+    }
+    case 'UPDATE_TOURNAMENT_INFO': return { ...state, tournament: { ...state.tournament, ...action.payload } };
+    case 'SAVE_TOURNAMENT_TEMPLATE': {
+      const updated = state.registeredTournaments.filter(t => t.id !== action.payload.id);
+      return { ...state, registeredTournaments: [...updated, action.payload] };
+    }
+    case 'DELETE_TOURNAMENT_TEMPLATE': return { ...state, registeredTournaments: state.registeredTournaments.filter(t => t.id !== action.payload) };
+    case 'RESET_ALL': return initialTournamentState;
+    default: return state;
+  }
+}
+
+const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAdminLoginStep, selectedTournamentId, setSelectedTournamentId, state, onLogin }) => {
+  const [inputValue, setInputValue] = useState('');
+  const [error, setError] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [geoStatus, setGeoStatus] = useState('');
+
+  useEffect(() => {
+    if (adminLoginStep !== 'tournament_id') return;
+    try {
+      const storedDate = localStorage.getItem('adminSelectedTournamentDate');
+      const storedTournamentId = localStorage.getItem('adminSelectedTournamentId');
+      const today = getLocalDateKey();
+      if (storedDate === today && storedTournamentId) {
+        setSelectedTournamentId(storedTournamentId);
+        setInputValue('');
+        setError('');
+        onLogin();
+      }
+    } catch {
+      // ignore
+    }
+  }, [adminLoginStep, onLogin, setSelectedTournamentId]);
+
+  const autoSelectTournamentByGeolocation = () => {
+    if (!navigator.geolocation) {
+      setGeoStatus('? この端末は位置情報に対応していません');
+      return;
+    }
+    setGeoStatus('?? 位置情報を取得中...');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        try {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const candidates = (state.registeredTournaments || [])
+            .map(t => {
+              const tLat = Number(t?.data?.venueLat);
+              const tLng = Number(t?.data?.venueLng);
+              if (!Number.isFinite(tLat) || !Number.isFinite(tLng)) return null;
+              return { t, dist: distanceKm(lat, lng, tLat, tLng) };
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.dist - b.dist);
+
+          if (candidates.length === 0) {
+            setGeoStatus('?? 会場の緯度/経度が登録されている大会がありません');
+            return;
+          }
+
+          const nearest = candidates[0];
+          setInputValue(nearest.t.id);
+          setError('');
+          setGeoStatus(`? 近い大会を自動選択しました（約${nearest.dist.toFixed(1)}km）`);
+        } catch (e) {
+          console.error(e);
+          setGeoStatus('? 位置情報から大会の自動選択に失敗しました');
+        }
+      },
+      (err) => {
+        const msg = err?.message ? `? 位置情報の取得に失敗しました: ${err.message}` : '? 位置情報の取得に失敗しました';
+        setGeoStatus(msg);
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
+    );
+  };
+
+  const handlePasswordSetup = () => {
+    if (!inputValue || !confirmPassword) {
+      setError('パスワードを入力してください');
+      return;
+    }
+    if (inputValue !== confirmPassword) {
+      setError('パスワードが一致しません');
+      return;
+    }
+    setAdminPassword(inputValue);
+    setAdminLoginStep('password_login');
+    setInputValue('');
+    setConfirmPassword('');
+    setError('');
+  };
+
+  const handlePasswordLogin = () => {
+    if (inputValue !== adminPassword) {
+      setError('パスワードが正しくありません');
+      setInputValue('');
+      return;
+    }
+    setAdminLoginStep('tournament_id');
+    setInputValue('');
+    setError('');
+  };
+
+  const handleTournamentIdInput = () => {
+    const tournament = state.registeredTournaments.find(t => t.id === inputValue.trim());
+    if (!tournament) {
+      setError('大会IDが見つかりません');
+      return;
+    }
+    setSelectedTournamentId(inputValue.trim());
+    try {
+      localStorage.setItem('adminSelectedTournamentDate', getLocalDateKey());
+      localStorage.setItem('adminSelectedTournamentId', inputValue.trim());
+    } catch {}
+    setInputValue('');
+    setError('');
+    onLogin();
+  };
+
+  return (
+    <div className="login-container">
+      <div className="login-box">
+        {adminLoginStep === 'password_setup' && (
+          <>
+            <div className="login-header">
+              <Lock size={32} />
+              <h1>運営者初期設定</h1>
+            </div>
+            <p className="hint">パスワードを設定してください</p>
+            <input type="password" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="パスワード" className="input" />
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handlePasswordSetup()} placeholder="パスワード(確認)" className="input" />
+            {error && <p className="error-text">{error}</p>}
+            <button onClick={handlePasswordSetup} className="btn-primary">設定する</button>
+          </>
+        )}
+
+        {adminLoginStep === 'password_login' && (
+          <>
+            <div className="login-header">
+              <Lock size={32} />
+              <h1>運営ログイン</h1>
+            </div>
+            <input type="password" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handlePasswordLogin()} placeholder="パスワード" className="input" />
+            {error && <p className="error-text">{error}</p>}
+            <button onClick={handlePasswordLogin} className="btn-primary">ログイン</button>
+          </>
+        )}
+
+        {adminLoginStep === 'tournament_id' && (
+          <>
+            <div className="login-header">
+              <Lock size={32} />
+              <h1>大会を選択</h1>
+            </div>
+            <p className="hint">本日の大会IDを入力してください</p>
+            <button onClick={autoSelectTournamentByGeolocation} className="btn-secondary" style={{ width: '100%', marginBottom: '0.5rem' }}>
+              ?? 現在地から大会を自動選択
+            </button>
+            {geoStatus && <p className="text-sm text-gray-600" style={{ marginBottom: '0.5rem' }}>{geoStatus}</p>}
+            <select value={inputValue} onChange={(e) => setInputValue(e.target.value)} className="input">
+              <option value="">-- 大会を選択 --</option>
+              {state.registeredTournaments.map(t => (
+                <option key={t.id} value={t.id}>{t.data.name} ({t.id})</option>
+              ))}
+            </select>
+            {error && <p className="error-text">{error}</p>}
+            <button onClick={handleTournamentIdInput} className="btn-primary">進む</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const getRankCategory = (rankStr) => {
+  if (!rankStr) return { ceremony: '', rank: '' };
+  
+  const ceremonyRanks = ['錬士', '教士', '範士'];
+  let ceremony = '';
+  let rank = rankStr;
+
+  for (const c of ceremonyRanks) {
+    if (rankStr.includes(c)) {
+      ceremony = c;
+      rank = rankStr.replace(c, '');
+      break;
+    }
+  }
+  return { ceremony, rank };
+};
+
+const TournamentView = ({ state, stands, checkInCount }) => {
+  const [view, setView] = useState('standings'); // 'standings', 'qualifiers', or 'shichuma'
+  const [selectedTournamentId, setSelectedTournamentId] = useState(() => {
+    return localStorage.getItem('selectedTournamentId') || '';
+  });
+  const [isArcherVerified, setIsArcherVerified] = useState(false);
+  const [archerIdInputModal, setArcherIdInputModal] = useState('');
+  const [archerIdError, setArcherIdError] = useState('');
+  const [archers, setArchers] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const archersPerPage = 12; // 1ページあたりの選手数
+  const programArchersPerPage = 36;
+  const [totalPages, setTotalPages] = useState(1);
+  const [indexOfFirstArcher, setIndexOfFirstArcher] = useState(0);
+  const [indexOfLastArcher, setIndexOfLastArcher] = useState(archersPerPage);
+  const [currentArchers, setCurrentArchers] = useState([]);
+  const [currentPageProgram, setCurrentPageProgram] = useState(1);
+  const [shichumaData, setShichumaData] = useState(null);
+  const [isLoadingShichuma, setIsLoadingShichuma] = useState(true);
+  
+  // ページネーションの状態を更新するエフェクト
+  useEffect(() => {
+    const indexOfLast = currentPage * archersPerPage;
+    const indexOfFirst = indexOfLast - archersPerPage;
+    setIndexOfFirstArcher(indexOfFirst);
+    setIndexOfLastArcher(indexOfLast);
+    setCurrentArchers(archers.slice(indexOfFirst, indexOfLast));
+    setTotalPages(Math.ceil(archers.length / archersPerPage));
+  }, [archers, currentPage, archersPerPage]);
+
+  useEffect(() => {
+    setCurrentPageProgram(1);
+  }, [selectedTournamentId]);
+
   useEffect(() => {
     if (selectedTournamentId) {
       localStorage.setItem('selectedTournamentId', selectedTournamentId);
@@ -101,222 +489,90 @@ function App() {
     }
   }, [selectedTournamentId]);
 
-  // Update tournament info when selected tournament changes
-  useEffect(() => {
-    if (!selectedTournamentId) return;
-    
-    const tpl = tournamentState.registeredTournaments.find(t => t.id === selectedTournamentId);
-    if (tpl && tpl.data) {
-      const allowedKeys = ['passRule', 'arrowsRound1', 'arrowsRound2', 'archersPerStand', 'name', 'date', 'id'];
-      const payload = {};
-      allowedKeys.forEach(k => { 
-        if (typeof tpl.data[k] !== 'undefined') payload[k] = tpl.data[k]; 
-      });
-      
-      if (Object.keys(payload).length > 0) {
-        dispatch({ type: 'UPDATE_TOURNAMENT_INFO', payload });
+  const filteredTournaments = state.registeredTournaments.filter(tournament => 
+    tournament.id
+  );
+
+  const rankOrder = ['無指定', '五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
+
+  const getRankCategory = (rankStr) => {
+    const ceremonyRanks = ['錬士', '教士', '範士'];
+    let ceremony = '';
+    let rank = rankStr;
+
+    for (const c of ceremonyRanks) {
+      if (rankStr && rankStr.includes(c)) {
+        ceremony = c;
+        rank = rankStr.replace(c, '');
+        break;
       }
     }
-  }, [selectedTournamentId, tournamentState.registeredTournaments]);
-
-  // Handle admin login
-  const handleAdminLogin = (password) => {
-    setAdminPassword(password);
-    setIsAdminLoggedIn(true);
-    setAdminView('admin');
-    setAdminLoginStep(null);
+    return { ceremony, rank };
   };
 
-  // Handle admin logout
-  const handleAdminLogout = () => {
-    setIsAdminLoggedIn(false);
-    setAdminPassword(null);
-    setAdminView('recording');
-  };
+  const fetchAndSortArchers = async () => {
+    if (!selectedTournamentId) return;
 
-  // Render loading state
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p>読み込み中...</p>
-        </div>
-      </div>
-    );
-  }
+    // ローディング表示は初回のみ、または手動更新時のみにする
+    // setIsLoading(true); 
+    try {
+      const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
+      const result = await response.json();
 
-  // Render error state
-  if (tournamentState.error) {
-    return (
-      <div className="p-4 text-red-600">
-        <p>エラーが発生しました: {tournamentState.error}</p>
-        <button 
-          onClick={() => window.location.reload()}
-          className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-        >
-          再読み込み
-        </button>
-      </div>
-    );
-  }
+      if (result.success) {
+        const checkedIn = result.data.filter(a => a.isCheckedIn);
+        
+        const normalizeRank = (rank) => {
+          if (!rank) return '';
+          return rank
+            .replace('二段', '弐段')
+            .replace('三段', '参段')
+            .replace('二級', '弐級')
+            .replace('一級', '壱級');
+        };
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-xl font-semibold text-gray-900">弓道大会運営システム</h1>
-          
-          {isAdminLoggedIn ? (
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">管理者モード</span>
-              <button
-                onClick={handleAdminLogout}
-                className="flex items-center text-sm text-red-600 hover:text-red-800"
-              >
-                <LogOut className="w-4 h-4 mr-1" />
-                ログアウト
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setAdminLoginStep('password')}
-              className="flex items-center text-sm text-blue-600 hover:text-blue-800"
-            >
-              <Lock className="w-4 h-4 mr-1" />
-              管理者ログイン
-            </button>
-          )}
-        </div>
-      </header>
+        const sortedArchers = [...checkedIn].sort((a, b) => {
+          // 男女分けが有効な場合、男を先に配置
+          const enableGenderSeparation = tournament?.data?.enableGenderSeparation || false;
+          if (enableGenderSeparation) {
+            const aGender = a.gender || "male";
+            const bGender = b.gender || "male";
+            if (aGender !== bGender) {
+              return aGender === "male" ? -1 : 1;
+            }
+          }
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-        {adminLoginStep === 'password' && (
-          <AdminLoginView
-            onLogin={handleAdminLogin}
-            onClose={() => setAdminLoginStep(null)}
-          />
-        )}
+          const aRank = normalizeRank(a.rank);
+          const bRank = normalizeRank(b.rank);
+          const aIndex = rankOrder.indexOf(aRank);
+          const bIndex = rankOrder.indexOf(bRank);
 
-        {!isArcherVerified ? (
-          <div className="view-container">
-            <div className="login-container">
-              <div className="login-box">
-                <h2>選手IDを入力してください</h2>
-                <input
-                  type="text"
-                  value={archerIdInputModal}
-                  onChange={(e) => setArcherIdInputModal(e.target.value)}
-                  placeholder="選手IDを入力"
-                  className="input-field"
-                />
-                {archerIdError && <p className="error-message">{archerIdError}</p>}
-                <button 
-                  onClick={() => {
-                    const val = (archerIdInputModal || '').trim();
-                    if (!val) {
-                      setArcherIdError('選手IDを入力してください');
-                      return;
-                    }
-                    const pick = tournamentState.registeredTournaments.find(t => val.startsWith(t.id));
-                    if (!pick) {
-                      setArcherIdError('該当する大会が見つかりません');
-                      return;
-                    }
-                    setSelectedTournamentId(pick.id);
-                    setIsArcherVerified(true);
-                    try {
-                      localStorage.setItem('tournamentViewVerifiedDate', getLocalDateKey());
-                      localStorage.setItem('tournamentViewVerifiedTournamentId', pick.id);
-                    } catch (error) {
-                      console.error('Error saving to localStorage:', error);
-                    }
-                    setArcherIdInputModal('');
-                    setArcherIdError('');
-                  }}
-                  className="btn-primary"
-                >
-                  確定
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : isAdminLoggedIn ? (
-          <AdminView
-            state={tournamentState}
-            dispatch={dispatch}
-            adminView={adminView}
-            setAdminView={setAdminView}
-            selectedTournamentId={selectedTournamentId}
-            setSelectedTournamentId={setSelectedTournamentId}
-            onLogout={handleAdminLogout}
-          />
-        ) : (
-          <div>
-            <nav className="flex space-x-4 border-b border-gray-200 mb-6">
-              <button
-                onClick={() => setMainView('tournament')}
-                className={`${mainView === 'tournament' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-              >
-                大会
-              </button>
-              <button
-                onClick={() => setMainView('checkin')}
-                className={`${mainView === 'checkin' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-              >
-                受付
-              </button>
-              <button
-                onClick={() => setMainView('ranking')}
-                className={`${mainView === 'ranking' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-              >
-                結果
-              </button>
-            </nav>
+          // 段位の順序：5級（低い）→範士9段（高い）の順に並べる
+          if (aIndex !== bIndex) {
+            if (aIndex === -1 && bIndex === -1) return 0;
+            if (aIndex === -1) return 1;
+            if (bIndex === -1) return -1;
+            return aIndex - bIndex;
+          }
 
-            <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                {mainView === 'tournament' && (
-                  <TournamentView
-                    state={tournamentState}
-                    selectedTournamentId={selectedTournamentId}
-                  />
-                )}
-                
-                {mainView === 'checkin' && (
-                  <CheckInView
-                    state={tournamentState}
-                    selectedTournamentId={selectedTournamentId}
-                  />
-                )}
-                
-                {mainView === 'ranking' && (
-                  <RankingView
-                    state={tournamentState}
-                    selectedTournamentId={selectedTournamentId}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
+          // 同じ段位内では習得日が若い順（習得日が早い順）
+          const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
+          const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
+          return aDate.getTime() - bDate.getTime();
+        });
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-8">
-        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <p className="text-center text-sm text-gray-500">
-            &copy; {new Date().getFullYear()} 弓道大会運営システム. All rights reserved.
-          </p>
-        </div>
-      </footer>
-    </div>
-  );
-}
+        const archersWithOrder = sortedArchers.map((archer, index) => ({
+          ...archer,
+          standOrder: index + 1
+        }));
 
-export default App;
+        setArchers(archersWithOrder);
+      }
+    } catch (error) {
+      console.error('選手データの取得に失敗しました:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleArcherIdSubmit = () => {
@@ -325,7 +581,7 @@ export default App;
       setArcherIdError('選手IDを入力してください');
       return;
     }
-    const pick = tournamentState.registeredTournaments.find(t => val.startsWith(t.id));
+    const pick = state.registeredTournaments.find(t => val.startsWith(t.id));
     if (!pick) {
       setArcherIdError('該当する大会が見つかりません');
       return;
@@ -343,6 +599,10 @@ export default App;
     setTimeout(() => { fetchAndSortArchers(); }, 50);
   };
 
+  useEffect(() => {
+    if (selectedTournamentId) {
+      setIsLoading(true);
+      fetchAndSortArchers();
     }
   }, [selectedTournamentId]);
 
@@ -396,66 +656,20 @@ export default App;
       }
     };
 
-    fetchShichumaResults();
+      fetchShichumaResults();
   }, [selectedTournamentId]);
 
-  const isPassed = useCallback((archer) => {
-    // 結果が未設定の場合は即座に判定保留
-    if (!archer.results?.stand1) return null;
-    
-    const results = archer.results.stand1;
-    const currentRound = tournamentState.tournament.currentRound || 1;
-    const isFirstRound = currentRound === 1;
-    const endIndex = isFirstRound ? tournamentState.tournament.arrowsRound1 : (tournamentState.tournament.arrowsRound1 + tournamentState.tournament.arrowsRound2);
-    
-    // 必要な部分だけを処理
-    let hitCount = 0;
-    let hasNull = false;
-    
-    for (let i = 0; i < endIndex; i++) {
-      if (i >= results.length) {
-        hasNull = true;
-        break;
-      }
-      if (results[i] === null) {
-        hasNull = true;
-        break;
-      }
-      if (results[i] === 'o') hitCount++;
-    }
-    
-    // 未入力の場合は判定保留
-    if (hasNull) return null;
-    
-    // 大会設定の通過ルールに基づいて判定
-    const passRule = tournamentState.tournament.passRule || 'all_four';
-    const currentRoundArrows = isFirstRound ? tournamentState.tournament.arrowsRound1 : tournamentState.tournament.arrowsRound2;
-    
-    if (passRule === 'all_four') {
-      return hitCount === currentRoundArrows;
-    } else if (passRule === 'four_or_more') {
-      return hitCount >= Math.min(4, currentRoundArrows);
-    } else if (passRule === 'three_or_more') {
-      return hitCount >= Math.min(3, currentRoundArrows);
-    } else if (passRule === 'two_or_more') {
-      return hitCount >= Math.min(2, currentRoundArrows);
-    }
-    
-    // デフォルトは全て的中
-    return hitCount === currentRoundArrows;
-  }, [tournamentState]);
-
-  const passedArchers = useMemo(() => {
-    return tournamentState.archers.filter(archer => isPassed(archer) === true);
-  }, [tournamentState.archers, isPassed]);
+  const tournament = state.tournament;
+  const currentRound = tournament.currentRound || 1;
+  const arrowsPerStand = currentRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
 
   const printProgram = () => {
     if (!selectedTournamentId) { alert('大会を選択してください'); return; }
     // get selected tournament data
-    const tpl = tournamentState.registeredTournaments.find(t => t.id === selectedTournamentId);
+    const tpl = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     const tplData = tpl?.data || {};
     const perPage = programArchersPerPage;
-    const pages = Math.max(1, Math.ceil(tournamentState.archers.length / perPage));
+    const pages = Math.max(1, Math.ceil(archers.length / perPage));
     const title = tplData?.name || selectedTournamentId;
     const attachments = getStoredAttachments(selectedTournamentId);
 
@@ -523,9 +737,9 @@ export default App;
       html += `<table><thead><tr><th>#</th><th>氏名</th><th>所属</th><th>段位</th><th>性別</th><th>1立ち目</th><th>2立ち目</th></tr></thead><tbody>`;
 
       const start = p * perPage;
-      const end = Math.min(start + perPage, tournamentState.archers.length);
+      const end = Math.min(start + perPage, archers.length);
       for (let i = start; i < end; i++) {
-        const a = tournamentState.archers[i];
+        const a = archers[i];
         html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td><td>${a.gender === 'female' ? '女' : '男'}</td>`;
         // 1立ち目 placeholders
         html += `<td style="white-space:nowrap">`;
@@ -556,6 +770,61 @@ export default App;
     setTimeout(() => { win.print(); }, 300);
   };
 
+  // パフォーマンス向上のため、メモ化された関数を使用
+
+  // パフォーマンス向上のため、メモ化された関数を使用
+  const isPassed = useCallback((archer) => {
+    // 結果が未設定の場合は即座に判定保留
+    if (!archer.results?.stand1) return null;
+    
+    const results = archer.results.stand1;
+    const currentRound = tournament.currentRound || 1;
+    const isFirstRound = currentRound === 1;
+    const endIndex = isFirstRound ? tournament.arrowsRound1 : (tournament.arrowsRound1 + tournament.arrowsRound2);
+    
+    // 必要な部分だけを処理
+    let hitCount = 0;
+    let hasNull = false;
+    
+    for (let i = 0; i < endIndex; i++) {
+      if (i >= results.length) {
+        hasNull = true;
+        break;
+      }
+      if (results[i] === null) {
+        hasNull = true;
+        break;
+      }
+      if (results[i] === 'o') hitCount++;
+    }
+    
+    // 未入力の場合は判定保留
+    if (hasNull) return null;
+    
+    // 大会設定の通過ルールに基づいて判定
+    const passRule = tournament.passRule || 'all_four';
+    const currentRoundArrows = isFirstRound ? tournament.arrowsRound1 : tournament.arrowsRound2;
+    
+    if (passRule === 'all_four') {
+      return hitCount === currentRoundArrows;
+    } else if (passRule === 'four_or_more') {
+      return hitCount >= Math.min(4, currentRoundArrows);
+    } else if (passRule === 'three_or_more') {
+      return hitCount >= Math.min(3, currentRoundArrows);
+    } else if (passRule === 'two_or_more') {
+      return hitCount >= Math.min(2, currentRoundArrows);
+    }
+    
+    // デフォルトは全て的中
+    return hitCount === currentRoundArrows;
+  }, [tournament]);
+
+  // パフォーマンス向上のため、メモ化
+  const passedArchers = useMemo(() => {
+    return archers.filter(archer => isPassed(archer) === true);
+  }, [archers, isPassed]);
+
+  // ページ変更ハンドラー
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
   const paginateProgram = (pageNumber) => setCurrentPageProgram(pageNumber);
 
@@ -6539,4 +6808,4 @@ const ArcherSignupView = ({ state, dispatch }) => {
   );
 };
 
-// Component exports are now in their respective files
+export default KyudoTournamentSystem;

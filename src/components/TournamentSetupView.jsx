@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
-import { Copy, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
 import { tournamentsApi, API_URL } from '../utils/api';
 import { 
   normalizeTournamentFormData, 
   getStoredAttachments, 
-  setStoredAttachments,
-  distanceKm
+  setStoredAttachments 
 } from '../utils/tournament';
 
 const TournamentSetupView = ({ state, dispatch }) => {
@@ -22,8 +20,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
       { id: 'lower', label: '級位~三段以下の部' },
       { id: 'middle', label: '四・五段の部' },
       { id: 'title', label: '称号者の部' }
-    ],
-    enableGenderSeparation: false,
+    ]
   });
 
   const filteredTournaments = state.registeredTournaments.filter(tournament => 
@@ -38,10 +35,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
     return `KYUDO_${dateStr}_${random}`;
   };
 
-  const handleInputChange = (field, value) => { 
-    setFormData(prev => ({ ...prev, [field]: value })); 
-  };
-
+  const handleInputChange = (field, value) => { setFormData(prev => ({ ...prev, [field]: value })); };
   const defaultDivisions = [
     { id: 'lower', label: '級位~三段以下の部', minRank: '五級', maxRank: '参段' },
     { id: 'middle', label: '四・五段の部', minRank: '四段', maxRank: '五段' },
@@ -59,6 +53,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
     const normalizeQuery = (s) => {
       if (!s) return '';
       const toHalfWidth = (str) => {
+        // Numbers and some symbols to half-width
         return String(str)
           .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
           .replace(/[Ａ-Ｚａ-ｚ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
@@ -80,6 +75,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
         .replace(/\b日本\b/g, ' ')
         .replace(/TEL[:：]?\s*\d{2,4}-\d{2,4}-\d{3,4}/gi, ' ')
         .replace(/\d{2,4}-\d{2,4}-\d{3,4}/g, ' ')
+        // try to normalize Japanese block numbers
         .replace(/(\d+)丁目/g, '$1-')
         .replace(/(\d+)番地?/g, '$1-')
         .replace(/(\d+)号/g, '$1')
@@ -91,17 +87,21 @@ const TournamentSetupView = ({ state, dispatch }) => {
     const tryQueries = [];
     if (addr) tryQueries.push(addr);
 
+    // If postal code exists, also try with it (Nominatim sometimes matches better)
     if (postal) {
       const formattedPostal = postal.length === 7 ? `${postal.slice(0, 3)}-${postal.slice(3)}` : postal;
       const withPostal = normalizeQuery(`${formattedPostal} ${addr}`);
       if (withPostal && !tryQueries.includes(withPostal)) tryQueries.push(withPostal);
     }
 
-    const noBuilding = normalizeQuery(addr.replace(/(武道館|体育館|道場|弓道場|会館|ホール|センター|公民館|市民会館|県立|市立)/g, ' '));
+    // Remove common building keywords (keep the rest)
+    const noBuilding = normalizeQuery(addr.replace(/(武道館|体育館|道場|弓道場|会館|ホール|センター|公民館|市民会館|県立|市立)/g, ''));
     if (noBuilding && noBuilding !== addr) tryQueries.push(noBuilding);
+    // Remove trailing block names after comma-like spaces
     const noLastToken = normalizeQuery(addr.split(' ').slice(0, -1).join(' '));
     if (noLastToken && noLastToken !== addr && noLastToken !== noBuilding) tryQueries.push(noLastToken);
 
+    // Remove number-heavy tail (often helps with Japanese addresses)
     const coarse = normalizeQuery(addr.replace(/\d[\d-]*/g, ' '));
     if (coarse && coarse !== addr && coarse !== noBuilding && !tryQueries.includes(coarse)) tryQueries.push(coarse);
 
@@ -129,6 +129,8 @@ const TournamentSetupView = ({ state, dispatch }) => {
       }
 
       if (!found) {
+        // Fallback: GSI (Geospatial Information Authority of Japan) address search
+        // https://msearch.gsi.go.jp/address-search/AddressSearch?q=...
         let gsiFound = null;
         for (const q of tryQueries) {
           const gsiUrl = `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(q)}`;
@@ -229,7 +231,6 @@ const TournamentSetupView = ({ state, dispatch }) => {
       return { ...prev, divisions: ds };
     });
   };
-
   const handleSaveTournament = async () => {
     if (!formData.name || !formData.datetime || !formData.location || !formData.purpose || !formData.organizer || !formData.coOrganizer || !formData.administrator || !formData.event || !formData.type || !formData.category || !formData.description || !formData.competitionMethod || !formData.award || !formData.qualifications || !formData.applicableRules || !formData.applicationMethod || !formData.remarks) { 
       alert('大会名、目的、主催、後援、主管、期日、会場、種目、種類、種別、内容、競技方法、表彰、参加資格、適用規則、申込方法、その他必要事項は必須です'); 
@@ -491,5 +492,6 @@ const TournamentSetupView = ({ state, dispatch }) => {
     </div>
   );
 };
+
 
 export default TournamentSetupView;
