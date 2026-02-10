@@ -2,6 +2,17 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { MongoClient, ObjectId } from 'mongodb';
+import dns from 'node:dns/promises';
+
+// Set custom DNS servers to fix MongoDB Atlas connection issues on Windows
+(async () => {
+  try {
+    await dns.setServers(['1.1.1.1', '8.8.8.8']);
+    console.log('✅ DNS servers configured successfully');
+  } catch (error) {
+    console.warn('⚠️ Failed to configure DNS servers:', error.message);
+  }
+})();
 
 const app = express();
 
@@ -24,7 +35,16 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // プリフライトリクエストへの対応を強化
-app.options('*', cors(corsOptions));
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    return res.status(200).end();
+  }
+  next();
+});
 
 // JSONパース
 app.use(express.json());
@@ -625,16 +645,19 @@ app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
   }
 });
 
-// SPAルーティング対応 - API以外のGETリクエストはindex.htmlを返す
-app.use((req, res, next) => {
-  if (req.path.startsWith('/api')) {
-    return next();
-  }
+const PORT = process.env.PORT || 3001;
+
+// 本番環境用に静的ファイルを提供
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static('dist'));
+}
+
+// SPAルーティング対応 - API以外のリクエストはindex.htmlを返す
+// 必ずAPIルートの後に配置すること
+app.use((req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
-// サーバー起動
-const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);

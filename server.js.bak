@@ -1,613 +1,671 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import session from 'express-session';
-import { v4 as uuidv4 } from 'uuid';
+import { MongoClient, ObjectId } from 'mongodb';
+import dns from 'node:dns/promises';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Set custom DNS servers to fix MongoDB Atlas connection issues on Windows
+(async () => {
+  try {
+    await dns.setServers(['1.1.1.1', '8.8.8.8']);
+    console.log('✅ DNS servers configured successfully');
+  } catch (error) {
+    console.warn('⚠️ Failed to configure DNS servers:', error.message);
+  }
+})();
 
 const app = express();
-const PORT = 3001;
-const DATA_FILE = path.join(__dirname, 'tournaments.json');
-const SESSION_SECRET = 'your-secret-key'; // 本番環境では環境変数から取得することを推奨
 
-// グローバルデータストア
-let globalState = {
-  tournaments: [],
-  sessions: {}
+// CORS設定 - より明示的に
+const corsOptions = {
+  origin: function (origin, callback) {
+    // originがundefinedの場合(同一オリジンやPostmanなど)も許可
+    // 開発環境では全てのオリジンを許可
+    callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  optionsSuccessStatus: 200,
+  preflightContinue: false
 };
 
-// CORSを有効化（すべてのオリジンからのアクセスを許可）
+// CORSミドルウェアを適用
+app.use(cors(corsOptions));
+
+// プリフライトリクエストへの対応を強化
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  // プリフライトリクエストの処理
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    return res.status(200).end();
   }
-  
   next();
 });
+
+// JSONパース
 app.use(express.json());
-app.use(session({
-  secret: SESSION_SECRET,
-  resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false } // HTTPSの場合はtrueに変更
-}));
 
-// データ同期ミドルウェア
-app.use((req, res, next) => {
-  // セッションIDがなければ新規発行
-  if (!req.session.id) {
-    req.session.id = uuidv4();
+// 静的ファイルの配信
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+app.use(express.static(join(__dirname, 'dist')));
+
+// MongoDB設定
+const MONGODB_URI = process.env.MONGODB_URI;
+const DB_NAME = 'kyudo-tournament';
+
+// デバッグ出力
+console.log('\n==========================================');
+console.log('🎯 弓道大会運営システム サーバー起動');
+console.log('==========================================');
+console.log('Node version:', process.version);
+console.log('Environment:');
+console.log('  - PORT:', process.env.PORT || 3001);
+console.log('  - MONGODB_URI exists:', !!MONGODB_URI);
+
+if (MONGODB_URI) {
+  const maskedUri = MONGODB_URI.replace(/\/\/([^:]+):([^@]+)@/, '//$1:****@');
+  console.log('  - MONGODB_URI (masked):', maskedUri);
+} else {
+  console.log('  ❌ MONGODB_URI が設定されていません!');
+  console.log('  .envファイルを確認してください');
+}
+console.log('==========================================\n');
+
+let cachedClient = null;
+let cachedDb = null;
+
+// MongoDB接続関数
+async function connectToDatabase() {
+  if (cachedDb) {
+    return cachedDb;
   }
-  
-  // グローバルステートからセッション固有のデータをアタッチ
-  if (!globalState.sessions[req.session.id]) {
-    globalState.sessions[req.session.id] = {};
+
+  if (!MONGODB_URI) {
+    throw new Error('❌ 環境変数 MONGODB_URI が設定されていません');
   }
-  
-  // データをリクエストオブジェクトにアタッチ
-  req.appState = {
-    ...globalState,
-    sessionData: globalState.sessions[req.session.id]
-  };
-  
-  next();
+
+  try {
+    const client = await MongoClient.connect(MONGODB_URI, {
+      connectTimeoutMS: 30000,
+      serverSelectionTimeoutMS: 30000,
+      maxPoolSize: 10,
+      minPoolSize: 2,
+    });
+
+    const db = client.db(DB_NAME);
+    await db.admin().ping();
+    console.log('✅ MongoDB connected successfully');
+
+    cachedClient = client;
+    cachedDb = db;
+    return db;
+  } catch (error) {
+    console.error('\n❌ MongoDB connection failed!');
+    throw error;
+  }
+}
+
+// --- API エンドポイント ---
+
+// ヘルスチェック - シンプル版
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ 
+    success: true, 
+    message: 'Server is running',
+    timestamp: new Date().toISOString()
+  });
 });
 
-// データファイルの初期化
-const initializeDataFile = () => {
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify({ tournaments: [] }, null, 2));
-  }
-};
-
-// データの読み込みと同期
-const readTournaments = (forceFromFile = false) => {
+// 1. 大会一覧取得
+app.get('/api/tournaments', async (req, res) => {
   try {
-    if (forceFromFile || globalState.tournaments.length === 0) {
-      const data = fs.readFileSync(DATA_FILE, 'utf-8');
-      globalState.tournaments = JSON.parse(data).tournaments || [];
-    }
-    return [...globalState.tournaments]; // コピーを返す
+    const db = await connectToDatabase();
+    const tournaments = await db.collection('tournaments').find({}).toArray();
+    res.status(200).json({ success: true, data: tournaments });
   } catch (error) {
-    console.error('Error reading tournaments:', error);
-    return [];
+    res.status(500).json({ success: false, message: error.message });
   }
-};
+});
 
-// データの保存
-const saveTournaments = (tournaments) => {
+// 2. 大会保存
+app.post('/api/tournaments', async (req, res) => {
   try {
-    // グローバルステートを更新
-    globalState.tournaments = [...tournaments];
-    // ファイルに保存
-    fs.writeFileSync(DATA_FILE, JSON.stringify({ tournaments }, null, 2));
+    const db = await connectToDatabase();
+    const data = req.body;
     
-    return true;
-  } catch (error) {
-    console.error('Error saving tournaments:', error);
-    return false;
-  }
-};
-
-// 初期データ読み込み
-readTournaments(true); // 起動時にファイルからデータを読み込む
-
-// 初期化
-initializeDataFile();
-
-// ========== API エンドポイント ==========
-
-// 1. 全大会を取得（セッション対応）
-app.get('/api/tournaments', (req, res) => {
-  const tournaments = readTournaments();
-  
-  // セッションに最後に取得したデータのタイムスタンプを保存
-  if (req.appState.sessionData) {
-    req.appState.sessionData.lastTournamentFetch = new Date().toISOString();
-  }
-  
-  res.json({ 
-    success: true, 
-    data: tournaments,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// 2. 大会を新規作成/更新（セッション対応）
-app.post('/api/tournaments', (req, res) => {
-  const { id, data } = req.body;
-
-  if (!id || !data) {
-    return res.status(400).json({ success: false, message: 'ID and data are required' });
-  }
-
-  let tournaments = readTournaments();
-  const existingIndex = tournaments.findIndex(t => t.id === id);
-  const now = new Date().toISOString();
-
-  if (existingIndex >= 0) {
-    // 更新
-    tournaments[existingIndex] = { 
-      ...tournaments[existingIndex],
-      data: { ...tournaments[existingIndex].data, ...data },
-      updatedAt: now 
-    };
-  } else {
-    // 新規作成
-    tournaments.push({ 
-      id, 
-      data: { 
-        ...data,
-        applicants: [],
-        checkIns: []
-      }, 
-      createdAt: now,
-      updatedAt: now
-    });
-  }
-
-  const success = saveTournaments(tournaments);
-  
-  if (success) {
-    res.json({ 
-      success: true, 
-      message: '大会の保存に成功しました',
-      id,
-      timestamp: now
-    });
-  } else {
-    res.status(500).json({ 
-      success: false, 
-      message: '大会の保存中にエラーが発生しました' 
-    });
-  }
-});
-
-// 3. 大会を削除
-app.delete('/api/tournaments/:id', (req, res) => {
-  const { id } = req.params;
-
-  let tournaments = readTournaments();
-  tournaments = tournaments.filter(t => t.id !== id);
-
-  saveTournaments(tournaments);
-  res.json({ success: true, message: 'Tournament deleted successfully' });
-});
-
-// 4. 選手申し込みを取得（セッション対応）
-app.get('/api/applicants/:tournamentId', (req, res) => {
-  const { tournamentId } = req.params;
-  const tournaments = readTournaments();
-  const tournament = tournaments.find(t => t.id === tournamentId);
-
-  if (!tournament) {
-    return res.status(404).json({ success: false, message: '大会が見つかりません' });
-  }
-
-  // データの初期化
-  if (!tournament.data.applicants) tournament.data.applicants = [];
-  if (!tournament.data.checkIns) tournament.data.checkIns = [];
-
-  // セッションに最後に取得したデータのタイムスタンプを保存
-  if (req.appState.sessionData) {
-    if (!req.appState.sessionData.lastFetch) {
-      req.appState.sessionData.lastFetch = {};
+    if (!data.id || !data.data) {
+      return res.status(400).json({ success: false, message: 'Invalid request' });
     }
-    req.appState.sessionData.lastFetch[`applicants_${tournamentId}`] = new Date().toISOString();
+
+    const result = await db.collection('tournaments').updateOne(
+      { id: data.id },
+      { $set: data },
+      { upsert: true }
+    );
+    res.status(200).json({ success: true, message: '保存成功' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
-
-  // チェックインステータスを追加
-  const applicantsWithStatus = tournament.data.applicants.map(applicant => ({
-    ...applicant,
-    isCheckedIn: tournament.data.checkIns.includes(applicant.archerId)
-  }));
-
-  res.json({ 
-    success: true, 
-    data: applicantsWithStatus,
-    tournamentName: tournament.data.name,
-    timestamp: new Date().toISOString()
-  });
 });
 
-// 5. 選手を申し込む（セッション対応）
-app.post('/api/applicants', (req, res) => {
-  const { tournamentId, archerId, applicantData } = req.body;
-  const now = new Date().toISOString();
-
-  console.log('Received applicant request:', { tournamentId, archerId, applicantData });
-
-  if (!tournamentId || !archerId || !applicantData) {
-    return res.status(400).json({ 
-      success: false, 
-      message: '必須項目が不足しています' 
-    });
+// 3. 大会削除
+app.delete('/api/tournaments/:id', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const result = await db.collection('tournaments').deleteOne({ id: req.params.id });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ success: false, message: 'Tournament not found' });
+    }
+    res.status(200).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
+});
 
-  const tournaments = readTournaments();
-  const tournamentIndex = tournaments.findIndex(t => t.id === tournamentId);
-
-  if (tournamentIndex === -1) {
-    return res.status(404).json({ 
-      success: false, 
-      message: '大会が見つかりません' 
-    });
+// 4. 申込者一覧取得
+app.get('/api/applicants/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const applicants = await db.collection('applicants')
+      .find({ tournamentId: req.params.tournamentId })
+      .toArray();
+    res.status(200).json({ success: true, data: applicants });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
+});
 
-  const tournament = tournaments[tournamentIndex];
-  
-  // データの初期化
-  if (!tournament.data.applicants) tournament.data.applicants = [];
-  
-  // 既存の申し込みを確認
-  const existingIndex = tournament.data.applicants.findIndex(
-    a => a.archerId === archerId
-  );
+// 5. 申込者登録
+app.post('/api/applicants', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, archerId, applicantData } = req.body;
 
-  const applicant = {
-    archerId,
-    ...applicantData,
-    appliedAt: now,
-    updatedAt: now
-  };
+    if (!tournamentId || !archerId || !applicantData) {
+      return res.status(400).json({ success: false, message: 'Invalid request data' });
+    }
 
-  if (existingIndex >= 0) {
-    // 既存の申し込みを更新
-    tournament.data.applicants[existingIndex] = {
-      ...tournament.data.applicants[existingIndex],
-      ...applicant,
-      updatedAt: now
+    // 新規登録時はresultsフィールドも初期化しておくと安全
+    const initialResults = {
+      stand1: Array(10).fill(null),
+      stand2: Array(10).fill(null),
+      stand3: Array(10).fill(null),
+      stand4: Array(10).fill(null),
+      stand5: Array(10).fill(null),
+      stand6: Array(10).fill(null)
     };
-  } else {
-    // 新規申し込みを追加
-    tournament.data.applicants.push(applicant);
-  }
 
-  // グローバルステートを更新
-  tournaments[tournamentIndex] = tournament;
-  const success = saveTournaments(tournaments);
-
-  if (success) {
-    console.log('Applicant saved successfully:', applicant);
-    res.json({ 
-      success: true, 
-      message: '申し込みが完了しました',
+    const updateData = {
+      ...applicantData,
+      tournamentId,
       archerId,
-      data: applicant,
-      timestamp: now
-    });
-  } else {
-    console.error('Failed to save applicant');
-    res.status(500).json({ 
-      success: false, 
-      message: '申し込みの処理中にエラーが発生しました' 
-    });
-  }
-});
-
-// 6. 選手を削除（セッション対応）
-app.delete('/api/applicants/:tournamentId/:archerId', (req, res) => {
-  const { tournamentId, archerId } = req.params;
-  const now = new Date().toISOString();
-
-  console.log('Received delete request:', { tournamentId, archerId });
-
-  const tournaments = readTournaments();
-  const tournamentIndex = tournaments.findIndex(t => t.id === tournamentId);
-
-  if (tournamentIndex === -1) {
-    return res.status(404).json({ 
-      success: false, 
-      message: '大会が見つかりません' 
-    });
-  }
-
-  const tournament = tournaments[tournamentIndex];
-  let modified = false;
-
-  // 申し込みから削除
-  if (tournament.data.applicants) {
-    const initialCount = tournament.data.applicants.length;
-    tournament.data.applicants = tournament.data.applicants.filter(
-      a => a.archerId !== archerId
-    );
-    modified = modified || (initialCount !== tournament.data.applicants.length);
-  }
-  
-  // チェックインからも削除
-  if (tournament.data.checkIns) {
-    const initialCount = tournament.data.checkIns.length;
-    tournament.data.checkIns = tournament.data.checkIns.filter(
-      id => id !== archerId
-    );
-    modified = modified || (initialCount !== tournament.data.checkIns.length);
-  }
-
-  if (modified) {
-    // グローバルステートを更新
-    tournaments[tournamentIndex] = {
-      ...tournament,
-      updatedAt: now
+      updatedAt: new Date()
     };
-    
-    const success = saveTournaments(tournaments);
-    
-    if (success) {
-      console.log('Applicant deleted successfully');
-      return res.json({ 
-        success: true, 
-        message: '選手情報を削除しました',
-        timestamp: now
-      });
-    } else {
-      return res.status(500).json({ 
-        success: false, 
-        message: '削除処理中にエラーが発生しました' 
-      });
+
+    // 既存データがある場合はresultsを上書きしないようにする
+    const existing = await db.collection('applicants').findOne({ tournamentId, archerId });
+    if (!existing) {
+      updateData.results = initialResults;
     }
-  } else {
-    return res.status(404).json({ 
-      success: false, 
-app.post('/api/checkin', (req, res) => {
-  const { tournamentId, archerId } = req.body;
-  const now = new Date().toISOString();
 
-  if (!tournamentId || !archerId) {
-    return res.status(400).json({ 
-      success: false, 
-      message: '大会IDと選手IDは必須です' 
+    await db.collection('applicants').updateOne(
+      { tournamentId, archerId },
+      { $set: updateData },
+      { upsert: true }
+    );
+
+    res.status(200).json({ success: true, data: { ...updateData } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 6. チェックイン
+app.post('/api/checkin', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, archerId } = req.body;
+
+    if (!tournamentId || !archerId) {
+      return res.status(400).json({ success: false, message: 'Required fields missing' });
+    }
+
+    const applicant = await db.collection('applicants').findOne({ tournamentId, archerId });
+    if (!applicant) {
+      return res.status(404).json({ success: false, message: '該当する選手が見つかりません' });
+    }
+
+    if (applicant.isCheckedIn) {
+      return res.status(200).json({ success: true, data: applicant, message: '既に受付済みです' });
+    }
+
+    await db.collection('applicants').updateOne(
+      { tournamentId, archerId },
+      { $set: { isCheckedIn: true, checkedInAt: new Date() } }
+    );
+
+    const updated = await db.collection('applicants').findOne({ tournamentId, archerId });
+    res.status(200).json({ success: true, data: updated, message: '受付が完了しました' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 7. 結果記録 (リアルタイム更新用)
+app.post('/api/results', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, archerId, stand, arrowIndex, result } = req.body;
+    // result: 'o' (中), 'x' (はずれ), null (取り消し)
+
+    if (!tournamentId || !archerId || !stand || arrowIndex === undefined) {
+      return res.status(400).json({ success: false, message: 'Missing parameters' });
+    }
+
+    const standKey = `stand${stand}`;
+    const updatePath = `results.${standKey}.${arrowIndex}`;
+
+    // 配列の特定インデックスを更新
+    // 注: 配列が存在しない場合はMongoDBが自動生成しない場合があるため、
+    // 必要に応じて初期化ロジックを入れるか、アプリ側で初期化されている前提とする。
+    // 今回は初期登録時にresultsを作っているので、ドット記法でいけるはず。
+    
+    // まずドキュメントが存在するか確認し、resultsフィールドが無い場合のガード
+    const doc = await db.collection('applicants').findOne({ tournamentId, archerId });
+    if (!doc) {
+      return res.status(404).json({ success: false, message: 'Archer not found' });
+    }
+
+    // resultsフィールドが無い、または該当standが無い場合の初期化
+    if (!doc.results || !doc.results[standKey]) {
+      const emptyArray = Array(10).fill(null);
+      await db.collection('applicants').updateOne(
+        { tournamentId, archerId },
+        { $set: { [`results.${standKey}`]: emptyArray } }
+      );
+    }
+
+    await db.collection('applicants').updateOne(
+      { tournamentId, archerId },
+      { $set: { [updatePath]: result } }
+    );
+
+    const updatedDoc = await db.collection('applicants').findOne({ tournamentId, archerId });
+    res.status(200).json({ success: true, data: updatedDoc });
+
+  } catch (error) {
+    console.error('❌ POST /api/results error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 8. 個別選手の結果取得
+app.get('/api/results/:tournamentId/:archerId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, archerId } = req.params;
+
+    const applicant = await db.collection('applicants').findOne({ tournamentId, archerId });
+
+    if (!applicant) {
+      return res.status(404).json({ success: false, message: 'Archer not found' });
+    }
+
+    res.status(200).json({ success: true, data: applicant });
+
+  } catch (error) {
+    console.error('❌ GET /api/results error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 9. 成績ランキング取得
+app.get('/api/ranking/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const applicants = await db.collection('applicants')
+      .find({ tournamentId, isCheckedIn: true })
+      .toArray();
+
+    if (!applicants.length) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    // 成績計算 & ソート
+    const ranked = applicants.map(a => {
+      const results = a.results || {};
+      const stands = ['stand1', 'stand2', 'stand3', 'stand4', 'stand5', 'stand6'];
+      
+      let totalHits = 0;
+      let totalArrows = 0;
+      stands.forEach(stand => {
+        if (results[stand]) {
+          results[stand].forEach(r => {
+            if (r === 'o') totalHits++;
+            if (r !== null) totalArrows++;
+          });
+        }
+      });
+
+      return {
+        ...a,
+        totalHits,
+        totalArrows,
+        hitRate: totalArrows > 0 ? (totalHits / totalArrows * 100).toFixed(1) : '0.0'
+      };
     });
-  }
 
-  const tournaments = readTournaments();
-  const tournamentIndex = tournaments.findIndex(t => t.id === tournamentId);
+    ranked.sort((a, b) => b.totalHits - a.totalHits);
 
-  if (tournamentIndex === -1) {
-    return res.status(404).json({ 
-      success: false, 
-      message: '大会が見つかりません' 
-    });
-  }
+    res.status(200).json({ success: true, data: ranked });
 
-  const tournament = tournaments[tournamentIndex];
-  
-  // 申し込み者を検索（複数ヒットする可能性がある）
-  const applicants = tournament.data.applicants?.filter(
-    a => a.archerId === archerId
-  ) || [];
-  
-  if (applicants.length === 0) {
-    return res.status(404).json({ 
-      success: false, 
-      message: '申し込みが見つかりません' 
-    });
+  } catch (error) {
+    console.error('❌ GET /api/ranking error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
+});
 
-  // チェックイン配列を初期化
-  if (!tournament.data.checkIns) {
-    tournament.data.checkIns = [];
+// 10. 射詰競射の最終結果保存
+app.post('/api/ranking/shichuma/final', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, shootOffType, targetRank, results } = req.body;
+
+    if (!tournamentId || !results) {
+      return res.status(400).json({ success: false, message: 'Missing parameters' });
+    }
+
+    // 既存のデータを取得
+    const existingData = await db.collection('shichuma_results').findOne({ tournamentId });
+    
+    let mergedResults = [];
+    if (existingData && existingData.results) {
+      // 既存の結果から同じtargetRankのものを除外
+      mergedResults = existingData.results.filter(r => r.targetRank !== targetRank);
+    }
+    
+    // 新しい結果を追加
+    mergedResults = [...mergedResults, ...results];
+    
+    console.log(`🔄 Shichuma Results Merge: tournamentId=${tournamentId}, targetRank=${targetRank}`);
+    console.log(`  既存データ: ${existingData?.results?.length || 0}件`);
+    console.log(`  新規データ: ${results.length}件`);
+    console.log(`  マージ後: ${mergedResults.length}件`);
+
+    const finalData = {
+      tournamentId,
+      shootOffType,
+      results: mergedResults,
+      completedAt: new Date()
+    };
+
+    await db.collection('shichuma_results').updateOne(
+      { tournamentId },
+      { $set: finalData },
+      { upsert: true }
+    );
+
+    console.log(`🎯 Shichuma Final Results Saved: ${tournamentId}`);
+    res.status(200).json({ success: true, data: finalData });
+
+  } catch (error) {
+    console.error('❌ POST /api/ranking/shichuma/final error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
-  
-  // 既にチェックイン済みの申し込みを確認
-  const alreadyCheckedIn = applicants.some(applicant => 
-    tournament.data.checkIns.includes(applicant.archerId)
-  );
-  
-  if (alreadyCheckedIn) {
-    return res.json({ 
+});
+
+// 11. 射詰競射の結果取得
+app.get('/api/ranking/shichuma/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const result = await db.collection('shichuma_results').findOne({ tournamentId });
+
+    if (!result) {
+      return res.status(404).json({ success: false, message: 'No shichuma results found' });
+    }
+
+    res.status(200).json({ success: true, data: result });
+
+  } catch (error) {
+    console.error('❌ GET /api/ranking/shichuma error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 11-2. 射詰競射の結果削除
+app.delete('/api/ranking/shichuma/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const result = await db.collection('shichuma_results').deleteOne({ tournamentId });
+
+    if (result.deletedCount === 0) {
+      console.log(`⚠️ Shichuma results not found for deletion: ${tournamentId}`);
+      return res.status(404).json({ success: false, message: 'No shichuma results found to delete' });
+    }
+
+    console.log(`🗑️ Shichuma Results Deleted: ${tournamentId}`);
+    res.status(200).json({ success: true, message: 'Shichuma results deleted successfully' });
+
+  } catch (error) {
+    console.error('❌ DELETE /api/ranking/shichuma error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 12. 遠近競射の最終結果保存
+app.post('/api/ranking/enkin/final', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, shootOffType, targetRank, results } = req.body;
+
+    if (!tournamentId || !results) {
+      return res.status(400).json({ success: false, message: 'Missing parameters' });
+    }
+
+    // 既存のデータを取得
+    const existingData = await db.collection('enkin_results').findOne({ tournamentId });
+    
+    let mergedResults = [];
+    if (existingData && existingData.results) {
+      // 既存の結果から同じtargetRankのものを除外
+      mergedResults = existingData.results.filter(r => r.targetRank !== targetRank);
+    }
+    
+    // 新しい結果を追加
+    mergedResults = [...mergedResults, ...results];
+    
+    console.log(`🔄 Enkin Results Merge: tournamentId=${tournamentId}, targetRank=${targetRank}`);
+    console.log(`  既存データ: ${existingData?.results?.length || 0}件`);
+    console.log(`  新規データ: ${results.length}件`);
+    console.log(`  マージ後: ${mergedResults.length}件`);
+
+    const finalData = {
+      tournamentId,
+      shootOffType,
+      results: mergedResults,
+      completedAt: new Date()
+    };
+
+    await db.collection('enkin_results').updateOne(
+      { tournamentId },
+      { $set: finalData },
+      { upsert: true }
+    );
+
+    console.log(`✅ Enkin Final Results Saved: ${tournamentId}`);
+    res.status(200).json({ success: true, data: finalData });
+
+  } catch (error) {
+    console.error('❌ POST /api/ranking/enkin/final error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 13. 遠近競射の結果取得
+app.get('/api/ranking/enkin/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const result = await db.collection('enkin_results').findOne({ tournamentId });
+
+    if (!result) {
+      return res.status(404).json({ success: false, message: 'No enkin results found' });
+    }
+
+    res.status(200).json({ success: true, data: result });
+
+  } catch (error) {
+    console.error('❌ GET /api/ranking/enkin error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 13-2. 遠近競射の結果削除(新規追加)
+app.delete('/api/ranking/enkin/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const result = await db.collection('enkin_results').deleteOne({ tournamentId });
+
+    if (result.deletedCount === 0) {
+      console.log(`⚠️ Enkin results not found for deletion: ${tournamentId}`);
+      return res.status(404).json({ success: false, message: 'No enkin results found to delete' });
+    }
+
+    console.log(`🗑️ Enkin Results Deleted: ${tournamentId}`);
+    res.status(200).json({ success: true, message: 'Enkin results deleted successfully' });
+
+  } catch (error) {
+    console.error('❌ DELETE /api/ranking/enkin error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 14. 全ての順位決定戦の結果を取得
+app.get('/api/ranking/shootoff/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    // 射詰競射の結果を取得
+    const shichumaResult = await db.collection('shichuma_results').findOne({ tournamentId });
+    
+    // 遠近競射の結果を取得
+    const enkinResult = await db.collection('enkin_results').findOne({ tournamentId });
+
+    const allResults = {
+      tournamentId,
+      shichuma: shichumaResult || null,
+      enkin: enkinResult || null,
+      updatedAt: new Date()
+    };
+
+    res.status(200).json({ success: true, data: allResults });
+
+  } catch (error) {
+    console.error('❌ GET /api/ranking/shootoff error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 15. 選手の性別情報を更新
+app.patch('/api/applicants/:archerId/gender', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { archerId } = req.params;
+    const { gender } = req.body;
+
+    if (!archerId || !gender || !['male', 'female'].includes(gender)) {
+      return res.status(400).json({ success: false, message: 'Invalid request data' });
+    }
+
+    const result = await db.collection('applicants').updateOne(
+      { archerId },
+      { $set: { gender, updatedAt: new Date() } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, message: '選手が見つかりません' });
+    }
+
+    res.status(200).json({ success: true, message: '性別情報を更新しました' });
+  } catch (error) {
+    console.error('❌ PATCH /api/applicants/:archerId/gender error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 16. 順位決定戦関連フィールドをクリア(新規追加)
+app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    // 該当する大会の全選手の競射関連フィールドをクリア
+    const result = await db.collection('applicants').updateMany(
+      { tournamentId },
+      { 
+        $unset: { 
+          shichumaResults: "",
+          enkinRank: "",
+          enkinArrowType: ""
+        } 
+      }
+    );
+
+    console.log(`🗑️ Cleared shoot-off fields for ${result.modifiedCount} applicants in tournament: ${tournamentId}`);
+    
+    res.status(200).json({ 
       success: true, 
-      message: '既に受付済みです',
-      data: applicants.map(applicant => ({
-        ...applicant,
-        isCheckedIn: tournament.data.checkIns.includes(applicant.archerId),
-        checkedInAt: tournament.data.checkedInAt?.[applicant.archerId] || now
-      })),
-      timestamp: now,
-      multiple: applicants.length > 1
+      message: 'Shoot-off fields cleared successfully',
+      stats: {
+        modifiedCount: result.modifiedCount,
+        matchedCount: result.matchedCount
+      }
     });
-  }
 
-  // 複数の申し込みがある場合は、選択を促す
-  if (applicants.length > 1) {
-    return res.json({
-      success: true,
-      message: '複数の申し込みが見つかりました',
-      data: applicants,
-      multiple: true,
-      timestamp: now
-    });
-  }
-
-  // 単一の申し込みの場合はそのままチェックイン
-  const applicant = applicants[0];
-  
-  // チェックインを記録
-  tournament.data.checkIns.push(applicant.archerId);
-  
-  // チェックイン日時を記録
-  if (!tournament.data.checkedInAt) {
-    tournament.data.checkedInAt = {};
-  }
-  tournament.data.checkedInAt[applicant.archerId] = now;
-  
-  // グローバルステートを更新
-  tournaments[tournamentIndex] = {
-    ...tournament,
-    updatedAt: now
-  };
-  
-  const success = saveTournaments(tournaments);
-
-  if (success) {
-    res.json({ 
-      success: true, 
-      message: '受付が完了しました',
-      data: { 
-        ...applicant, 
-        isCheckedIn: true,
-        checkedInAt: now
-      },
-      timestamp: now,
-      multiple: false
-    });
-  } else {
-    res.status(500).json({ 
-      success: false, 
-      message: '受付処理中にエラーが発生しました' 
-    });
+  } catch (error) {
+    console.error('❌ POST /api/ranking/clear error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// 8. 特定の申し込みをチェックイン
-app.post('/api/checkin/confirm', (req, res) => {
-  const { tournamentId, archerId, registrationId } = req.body;
-  const now = new Date().toISOString();
+const PORT = process.env.PORT || 3001;
 
-  if (!tournamentId || !archerId || !registrationId) {
-    return res.status(400).json({ 
-      success: false, 
-      message: '必須項目が不足しています' 
-    });
-  }
+// 本番環境用に静的ファイルを提供
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static('dist'));
+}
 
-  const tournaments = readTournaments();
-  const tournamentIndex = tournaments.findIndex(t => t.id === tournamentId);
-
-  if (tournamentIndex === -1) {
-    return res.status(404).json({ 
-      success: false, 
-      message: '大会が見つかりません' 
-    });
-  }
-
-  const tournament = tournaments[tournamentIndex];
-  
-  // 申し込み者を検索
-  const applicant = tournament.data.applicants?.find(
-    a => a.archerId === archerId && a.registrationId === registrationId
-  );
-  
-  if (!applicant) {
-    return res.status(404).json({ 
-      success: false, 
-      message: '申し込みが見つかりません' 
-    });
-  }
-
-  // チェックイン配列を初期化
-  if (!tournament.data.checkIns) {
-    tournament.data.checkIns = [];
-  }
-  
-  // 既にチェックイン済みか確認
-  if (tournament.data.checkIns.includes(applicant.archerId)) {
-    return res.json({ 
-      success: true, 
-      message: '既に受付済みです',
-      data: { 
-        ...applicant, 
-        isCheckedIn: true,
-        checkedInAt: tournament.data.checkedInAt?.[applicant.archerId] || now
-      },
-      timestamp: now
-    });
-  }
-
-  // チェックインを記録
-  tournament.data.checkIns.push(applicant.archerId);
-  
-  // チェックイン日時を記録
-  if (!tournament.data.checkedInAt) {
-    tournament.data.checkedInAt = {};
-  }
-  tournament.data.checkedInAt[applicant.archerId] = now;
-  
-  // グローバルステートを更新
-  tournaments[tournamentIndex] = {
-    ...tournament,
-    updatedAt: now
-  };
-  
-  const success = saveTournaments(tournaments);
-
-  if (success) {
-    res.json({ 
-      success: true, 
-      message: '受付が完了しました',
-      data: { 
-        ...applicant, 
-        isCheckedIn: true,
-        checkedInAt: now
-      },
-      timestamp: now
-    });
-  } else {
-    res.status(500).json({ 
-      success: false, 
-      message: '受付処理中にエラーが発生しました' 
-    });
-  }
-});
-
-// 8. セッション状態を取得
-app.get('/api/session', (req, res) => {
-  res.json({
-    success: true,
-    sessionId: req.session.id,
-    lastActivity: req.session.lastActivity,
-    data: req.appState.sessionData || {}
-  });
-});
-
-// 9. 最終同期状態を更新
-app.post('/api/sync', (req, res) => {
-  const { timestamp, tournamentId } = req.body;
-  
-  if (!req.appState.sessionData.lastSync) {
-    req.appState.sessionData.lastSync = {};
-  }
-  
-  if (tournamentId) {
-    req.appState.sessionData.lastSync[tournamentId] = timestamp || new Date().toISOString();
-  }
-  
-  res.json({
-    success: true,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// エラーハンドリングミドルウェアを追加
-app.use((err, req, res, next) => {
-  console.error('Server error:', err);
-  res.status(500).json({ 
-    success: false, 
-    message: 'サーバーでエラーが発生しました',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
-
-// 存在しないルートのハンドリング
+// SPAルーティング対応 - API以外のリクエストはindex.htmlを返す
+// 必ずAPIルートの後に配置すること
 app.use((req, res) => {
-  res.status(404).json({ 
-    success: false, 
-    message: '指定されたリソースが見つかりません' 
-  });
+  res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
-
-// ========== サーバー起動 ==========
 
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-  console.log(`Data file: ${DATA_FILE}`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+  
+  // 初期DB接続は非同期で試行(失敗してもサーバーは起動)
+  connectToDatabase()
+    .then(() => console.log('✅ Initial DB connection successful\n'))
+    .catch(err => console.log('⚠️ Initial DB connection failed (will retry on API calls):', err.message));
 });
+
+export default app;

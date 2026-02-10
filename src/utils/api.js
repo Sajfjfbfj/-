@@ -1,8 +1,14 @@
 // API URL configuration
-const API_BASE_URL = 'https://alluring-perfection-production-f96d.up.railway.app/api';
-export const API_URL = API_BASE_URL.startsWith('http') 
-  ? API_BASE_URL 
-  : `${window.location.origin}${API_BASE_URL.startsWith('/') ? '' : '/'}${API_BASE_URL}`;
+// 開発環境ではVite proxyを使用し、本番環境では直接URLを使用
+const isDevelopment = import.meta.env.DEV;
+const PRODUCTION_API_URL = 'https://alluring-perfection-production-f96d.up.railway.app/api';
+
+export const API_URL = isDevelopment ? '/api' : PRODUCTION_API_URL;
+
+console.log('🌐 API Configuration:', {
+  mode: isDevelopment ? 'development' : 'production',
+  apiUrl: API_URL
+});
 
 // Common API fetch function
 export const fetchApi = async (endpoint, options = {}) => {
@@ -15,8 +21,39 @@ export const fetchApi = async (endpoint, options = {}) => {
     ...options,
   };
 
-  const response = await fetch(url, config);
-  return response.json();
+  try {
+    const response = await fetch(url, config);
+    
+    // Check if response is ok
+    if (!response.ok) {
+      // Try to get error message from response
+      let errorMessage = `HTTP Error ${response.status}: ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } catch {
+        // If JSON parsing fails, try to get text
+        try {
+          const errorText = await response.text();
+          if (errorText) {
+            errorMessage = errorText;
+          }
+        } catch {
+          // Use default error message
+        }
+      }
+      throw new Error(errorMessage);
+    }
+
+    // Parse successful response
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error(`❌ API Error [${endpoint}]:`, error);
+    throw error;
+  }
 };
 
 // Tournaments API
