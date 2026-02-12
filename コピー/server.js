@@ -76,7 +76,7 @@ const __dirname = dirname(__filename);
 app.use(express.static(join(__dirname, 'dist')));
 
 // MongoDB設定
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://Ibuki:Chipdale0402@cluster0.cpkknx9.mongodb.net/kyudo-tournament?retryWrites=true&w=majority';
+const MONGODB_URI = 'mongodb+srv://Ibuki:Chipdale0402@cluster0.cpkknx9.mongodb.net/kyudo-tournament?retryWrites=true&w=majority';
 const DB_NAME = 'kyudo-tournament';
 
 // デバッグ出力
@@ -116,10 +116,6 @@ async function connectToDatabase() {
       serverSelectionTimeoutMS: 30000,
       maxPoolSize: 10,
       minPoolSize: 2,
-      ssl: true,
-      sslValidate: false,
-      tlsAllowInvalidCertificates: true,
-      tlsAllowInvalidHostnames: true
     });
 
     const db = client.db(DB_NAME);
