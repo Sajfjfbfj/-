@@ -74,7 +74,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     // ローディング表示は初回のみ、または手動更新時のみにする
     // setIsLoading(true); 
     try {
-      const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
+      const response = await fetch(`${API_URL}applicants/${selectedTournamentId}`);
       const result = await response.json();
 
       if (result.success) {
@@ -203,7 +203,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
         }
       } catch (error) {
         // 404は正常な状態（まだ結果がない場合）
-        if (error.message?.includes('404') || error.status === 404) {
+        if (error.status === 404) {
           setShichumaData(null);
         } else {
           console.error('射詰競射結果の取得エラー:', error);

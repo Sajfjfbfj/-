@@ -4,6 +4,7 @@ import cors from 'cors';
 import { MongoClient, ObjectId } from 'mongodb';
 import dns from 'node:dns/promises';
 
+
 // Set custom DNS servers to fix MongoDB Atlas connection issues on Windows
 (async () => {
   try {
@@ -16,12 +17,23 @@ import dns from 'node:dns/promises';
 
 const app = express();
 
-// CORS設定 - より明示的に
+// CORS設定 - 開発環境と本番環境の両方をサポート
 const corsOptions = {
   origin: function (origin, callback) {
-    // originがundefinedの場合(同一オリジンやPostmanなど)も許可
-    // 開発環境では全てのオリジンを許可
-    callback(null, true);
+    // 許可するオリジンのリスト
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:3000',
+      'https://alluring-perfection-production-f96d.up.railway.app'
+    ];
+    
+    // originがundefinedの場合(同一オリジンやサーバー間通信)も許可
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // 開発時は全て許可
+    }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -34,13 +46,20 @@ const corsOptions = {
 // CORSミドルウェアを適用
 app.use(cors(corsOptions));
 
-// プリフライトリクエストへの対応を強化
+// 追加のCORSヘッダーを明示的に設定
 app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  // プリフライトリクエストへの即座の応答
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
     return res.status(200).end();
   }
   next();
@@ -57,7 +76,7 @@ const __dirname = dirname(__filename);
 app.use(express.static(join(__dirname, 'dist')));
 
 // MongoDB設定
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI = 'mongodb+srv://Ibuki:Chipdale0402@cluster0.cpkknx9.mongodb.net/kyudo-tournament?retryWrites=true&w=majority';
 const DB_NAME = 'kyudo-tournament';
 
 // デバッグ出力
