@@ -15,7 +15,7 @@
     "postinstall": "npx rimraf node_modules/.cache || true",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "set NODE_ENV=production && node server.js",
+    "start": "NODE_ENV=production node server.js",
     "heroku-postbuild": "npm install && npm run build",
     "vercel-build": "npm run build"
   },

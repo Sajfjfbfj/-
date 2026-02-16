@@ -628,8 +628,13 @@ if (process.env.NODE_ENV === 'production') {
 
 // SPAルーティング対応 - API以外のリクエストはindex.htmlを返す
 // 必ずAPIルートの後に配置すること
-app.use((req, res) => {
-  res.sendFile(join(__dirname, 'dist', 'index.html'));
+app.use((req, res, next) => {
+  // APIリクエストでない場合のみindex.htmlを返す
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(join(__dirname, 'dist', 'index.html'));
+  } else {
+    next();
+  }
 });
 
 app.listen(PORT, () => {
