@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
 import { LogOut } from 'lucide-react';
+import RecordingView from './RecordingView';
+import SettingsView from './SettingsView';
+import AwardsView from './AwardsView';
+import ProgramView from './ProgramView';
+import RankingView from './RankingView';
 
 const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedTournamentId, setSelectedTournamentId, onLogout }) => {
   if (adminView === 'recording') {

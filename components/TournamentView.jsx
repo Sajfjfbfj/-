@@ -74,8 +74,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     // ローディング表示は初回のみ、または手動更新時のみにする
     // setIsLoading(true); 
     try {
-      const response = await fetch(`${API_URL}applicants/${selectedTournamentId}`);
-      const result = await response.json();
+      const result = await applicantsApi.getByTournament(selectedTournamentId);
 
       if (result.success) {
         const checkedIn = result.data.filter(a => a.isCheckedIn);

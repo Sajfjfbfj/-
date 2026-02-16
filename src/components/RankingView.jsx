@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { applicantsApi } from '../utils/api';
+import { API_URL } from '../utils/api';
 import {
   calculateRanksWithTies,
   getDivisionIdForArcher,

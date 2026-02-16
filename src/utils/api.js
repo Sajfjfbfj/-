@@ -1,7 +1,7 @@
 // API URL configuration
 // ローカル開発環境でも本番APIを使用
 const isDevelopment = import.meta.env.DEV;
-const PRODUCTION_API_URL = 'https://alluring-perfection-production-f96d.up.railway.app/api/';
+const PRODUCTION_API_URL = 'https://alluring-perfection-production-f96d.up.railway.app/api';
 
 // ローカル開発でも本番APIを使用する
 export const API_URL = PRODUCTION_API_URL;
@@ -15,7 +15,9 @@ console.log('🌐 API Configuration:', {
 
 // Common API fetch function
 export const fetchApi = async (endpoint, options = {}) => {
-  const url = `${API_URL}${endpoint}`;
+  // エンドポイントの先頭にスラッシュがない場合は追加
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${API_URL}${normalizedEndpoint}`;
   const config = {
     headers: {
       'Content-Type': 'application/json',

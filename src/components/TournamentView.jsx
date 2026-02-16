@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { LogOut, RotateCcw, Copy, Check, Filter, X, Maximize2, ChevronLeft, ChevronRight, Users, User } from 'lucide-react';
 import { applicantsApi, rankingApi, API_URL } from '../utils/api';
 import { judgeNearFarCompetition, calculateRanksWithTies } from '../utils/competition';
+import { getStoredAttachments } from '../utils/tournament';
 
 const TournamentView = ({ state, stands, checkInCount }) => {
   const [view, setView] = useState('standings'); // 'standings', 'qualifiers', or 'shichuma'
@@ -74,8 +75,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     // ローディング表示は初回のみ、または手動更新時のみにする
     // setIsLoading(true); 
     try {
-      const response = await fetch(`${API_URL}applicants/${selectedTournamentId}`);
-      const result = await response.json();
+      const result = await applicantsApi.getByTournament(selectedTournamentId);
 
       if (result.success) {
         const checkedIn = result.data.filter(a => a.isCheckedIn);
