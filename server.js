@@ -598,7 +598,6 @@ app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
           shichumaResults: "",
           enkinRank: "",
           enkinArrowType: "",
-          results: "",
           shichumaFinalRank: "",
           shichumaWinner: "",
           enkinFinalRank: ""
