@@ -116,8 +116,8 @@ async function connectToDatabase() {
       serverSelectionTimeoutMS: 30000,
       maxPoolSize: 10,
       minPoolSize: 2,
-      ssl: true,
-      sslValidate: false,
+      // SSL設定を追加（Railway環境で必要）
+      tls: true,
       tlsAllowInvalidCertificates: true,
       tlsAllowInvalidHostnames: true
     });
@@ -266,7 +266,7 @@ app.post('/api/checkin', async (req, res) => {
     }
 
     if (applicant.isCheckedIn) {
-      return res.status(200).json({ success: true, data: applicant, message: '既に受付済みです' });
+      return res.status(400).json({ success: false, message: '既にチェックイン済みです' });
     }
 
     await db.collection('applicants').updateOne(
@@ -274,125 +274,76 @@ app.post('/api/checkin', async (req, res) => {
       { $set: { isCheckedIn: true, checkedInAt: new Date() } }
     );
 
-    const updated = await db.collection('applicants').findOne({ tournamentId, archerId });
-    res.status(200).json({ success: true, data: updated, message: '受付が完了しました' });
+    res.status(200).json({ success: true, message: 'チェックイン完了' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// 7. 結果記録 (リアルタイム更新用)
+// 7. 射技結果を保存
 app.post('/api/results', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { tournamentId, archerId, stand, arrowIndex, result } = req.body;
-    // result: 'o' (中), 'x' (はずれ), null (取り消し)
+    const { tournamentId, archerId, results } = req.body;
 
-    if (!tournamentId || !archerId || !stand || arrowIndex === undefined) {
+    if (!tournamentId || !archerId || !results) {
       return res.status(400).json({ success: false, message: 'Missing parameters' });
-    }
-
-    const standKey = `stand${stand}`;
-    const updatePath = `results.${standKey}.${arrowIndex}`;
-
-    // 配列の特定インデックスを更新
-    // 注: 配列が存在しない場合はMongoDBが自動生成しない場合があるため、
-    // 必要に応じて初期化ロジックを入れるか、アプリ側で初期化されている前提とする。
-    // 今回は初期登録時にresultsを作っているので、ドット記法でいけるはず。
-    
-    // まずドキュメントが存在するか確認し、resultsフィールドが無い場合のガード
-    const doc = await db.collection('applicants').findOne({ tournamentId, archerId });
-    if (!doc) {
-      return res.status(404).json({ success: false, message: 'Archer not found' });
-    }
-
-    // resultsフィールドが無い、または該当standが無い場合の初期化
-    if (!doc.results || !doc.results[standKey]) {
-      const emptyArray = Array(10).fill(null);
-      await db.collection('applicants').updateOne(
-        { tournamentId, archerId },
-        { $set: { [`results.${standKey}`]: emptyArray } }
-      );
     }
 
     await db.collection('applicants').updateOne(
       { tournamentId, archerId },
-      { $set: { [updatePath]: result } }
+      { $set: { results, updatedAt: new Date() } }
     );
 
-    const updatedDoc = await db.collection('applicants').findOne({ tournamentId, archerId });
-    res.status(200).json({ success: true, data: updatedDoc });
-
+    res.status(200).json({ success: true, message: '結果を保存しました' });
   } catch (error) {
-    console.error('❌ POST /api/results error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// 8. 個別選手の結果取得
-app.get('/api/results/:tournamentId/:archerId', async (req, res) => {
+// 8. 選手情報を更新（段位・所属など）
+app.patch('/api/applicants/:archerId', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { tournamentId, archerId } = req.params;
+    const { archerId } = req.params;
+    const updateData = req.body;
 
-    const applicant = await db.collection('applicants').findOne({ tournamentId, archerId });
-
-    if (!applicant) {
-      return res.status(404).json({ success: false, message: 'Archer not found' });
+    if (!archerId) {
+      return res.status(400).json({ success: false, message: 'Archer ID is required' });
     }
 
-    res.status(200).json({ success: true, data: applicant });
+    const result = await db.collection('applicants').updateOne(
+      { archerId },
+      { $set: { ...updateData, updatedAt: new Date() } }
+    );
 
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, message: '選手が見つかりません' });
+    }
+
+    res.status(200).json({ success: true, message: '選手情報を更新しました' });
   } catch (error) {
-    console.error('❌ GET /api/results error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// 9. 成績ランキング取得
-app.get('/api/ranking/:tournamentId', async (req, res) => {
+// 9. 射詰競射の初期データ保存
+app.post('/api/ranking/shichuma', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { tournamentId } = req.params;
+    const { tournamentId, archerId, results, shootOffType } = req.body;
 
-    const applicants = await db.collection('applicants')
-      .find({ tournamentId, isCheckedIn: true })
-      .toArray();
-
-    if (!applicants.length) {
-      return res.status(200).json({ success: true, data: [] });
+    if (!tournamentId || !archerId) {
+      return res.status(400).json({ success: false, message: 'Missing parameters' });
     }
 
-    // 成績計算 & ソート
-    const ranked = applicants.map(a => {
-      const results = a.results || {};
-      const stands = ['stand1', 'stand2', 'stand3', 'stand4', 'stand5', 'stand6'];
-      
-      let totalHits = 0;
-      let totalArrows = 0;
-      stands.forEach(stand => {
-        if (results[stand]) {
-          results[stand].forEach(r => {
-            if (r === 'o') totalHits++;
-            if (r !== null) totalArrows++;
-          });
-        }
-      });
+    await db.collection('applicants').updateOne(
+      { tournamentId, archerId },
+      { $set: { shichumaResults: results, updatedAt: new Date() } }
+    );
 
-      return {
-        ...a,
-        totalHits,
-        totalArrows,
-        hitRate: totalArrows > 0 ? (totalHits / totalArrows * 100).toFixed(1) : '0.0'
-      };
-    });
-
-    ranked.sort((a, b) => b.totalHits - a.totalHits);
-
-    res.status(200).json({ success: true, data: ranked });
-
+    res.status(200).json({ success: true, message: '射詰競射データを保存しました' });
   } catch (error) {
-    console.error('❌ GET /api/ranking error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
