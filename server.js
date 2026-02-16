@@ -598,9 +598,11 @@ app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
           shichumaResults: "",
           enkinRank: "",
           enkinArrowType: "",
+          results: "",  // 的中記録も完全に削除
           shichumaFinalRank: "",
           shichumaWinner: "",
-          enkinFinalRank: ""
+          enkinFinalRank: "",
+          enkinDistance: null
         } 
       }
     );
