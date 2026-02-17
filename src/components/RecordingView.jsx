@@ -237,18 +237,34 @@ const RecordingView = ({ state, dispatch, stands }) => {
   // API経由で記録を保存
   const saveResultToApi = async (archerId, standNum, arrowIndex, result) => {
     try {
-      await fetch(`${API_URL}/results`, {
+      // まず現在の選手の全結果を取得
+      const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
+      const data = await response.json();
+      const archer = data.data.find(a => a.archerId === archerId);
+      
+      if (!archer) {
+        console.error('選手が見つかりません:', archerId);
+        return;
+      }
+      
+      // 現在のスタンド結果を取得
+      const currentResults = archer.results || {};
+      const standKey = `stand${standNum}`;
+      const standResults = currentResults[standKey] || Array(10).fill(null);
+      
+      // 指定された矢の結果を更新
+      standResults[arrowIndex] = result;
+      
+      // 新しいAPIエンドポイントで更新
+      await fetch(`${API_URL}/archer/${archerId}/score`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tournamentId: selectedTournamentId,
-          archerId,
           stand: standNum,
-          arrowIndex: arrowIndex,
-          result,
-          round: selectedRound // ラウンド情報を追加
+          results: standResults
         })
       });
+      
       // 更新後にデータを再取得(同期)
       fetchAndSortArchers(true);
     } catch (error) {
