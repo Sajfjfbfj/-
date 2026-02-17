@@ -265,158 +265,63 @@ app.post('/api/checkin', async (req, res) => {
       return res.status(404).json({ success: false, message: '該当する選手が見つかりません' });
     }
 
-    if (applicant.isCheckedIn) {
-      return res.status(400).json({ success: false, message: '既にチェックイン済みです' });
-    }
-
-    await db.collection('applicants').updateOne(
+    const result = await db.collection('applicants').updateOne(
       { tournamentId, archerId },
-      { $set: { isCheckedIn: true, checkedInAt: new Date() } }
+      { $set: { isCheckedIn: true, checkedInAt: new Date(), updatedAt: new Date() } }
     );
 
-    res.status(200).json({ success: true, message: 'チェックイン完了' });
+    res.status(200).json({ success: true, data: applicant });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// 7. 射技結果を保存
-app.post('/api/results', async (req, res) => {
+// 7. 得点登録
+app.post('/api/archer/:archerId/score', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { tournamentId, archerId, stand, arrowIndex, result, results } = req.body;
-
-    // 2つのパターンをサポート
-    // パターン1: 個別の矢の結果を保存（stand, arrowIndex, resultを使用）
-    // パターン2: 全体のresultsオブジェクトを保存（resultsを使用）
-
-    if (!tournamentId || !archerId) {
-      return res.status(400).json({ success: false, message: 'Missing tournamentId or archerId' });
-    }
-
-    if (results) {
-      // パターン2: 全体のresultsオブジェクトを保存
-      await db.collection('applicants').updateOne(
-        { tournamentId, archerId },
-        { $set: { results, updatedAt: new Date() } }
-      );
-    } else if (stand !== undefined && arrowIndex !== undefined && result !== undefined) {
-      // パターン1: 個別の矢の結果を保存
-      const standKey = `stand${stand}`;
-      
-      // 既存のデータを取得
-      const applicant = await db.collection('applicants').findOne({ tournamentId, archerId });
-      
-      if (!applicant) {
-        return res.status(404).json({ success: false, message: '選手が見つかりません' });
-      }
-
-      // 既存のresultsを取得、なければ初期化
-      const currentResults = applicant.results || {};
-      const standResults = currentResults[standKey] || Array(10).fill(null);
-      
-      // 指定されたarrowIndexの結果を更新
-      standResults[arrowIndex] = result;
-      
-      // 更新されたresultsを保存
-      currentResults[standKey] = standResults;
-      
-      await db.collection('applicants').updateOne(
-        { tournamentId, archerId },
-        { $set: { results: currentResults, updatedAt: new Date() } }
-      );
-    } else {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Either "results" or ("stand", "arrowIndex", "result") must be provided' 
-      });
-    }
-
-    res.status(200).json({ success: true, message: '結果を保存しました' });
-  } catch (error) {
-    console.error('❌ POST /api/results error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// 8. 選手情報を更新（段位・所属など）
-app.patch('/api/applicants/:archerId', async (req, res) => {
-  try {
-    const db = await connectToDatabase();
+    const { stand, results } = req.body;
     const { archerId } = req.params;
-    const updateData = req.body;
 
-    if (!archerId) {
-      return res.status(400).json({ success: false, message: 'Archer ID is required' });
+    if (!archerId || !stand || !results) {
+      return res.status(400).json({ success: false, message: 'Missing parameters' });
     }
+
+    const fieldName = `results.stand${stand}`;
+    const updateData = {
+      [fieldName]: results,
+      updatedAt: new Date()
+    };
 
     const result = await db.collection('applicants').updateOne(
       { archerId },
-      { $set: { ...updateData, updatedAt: new Date() } }
+      { $set: updateData }
     );
 
     if (result.matchedCount === 0) {
       return res.status(404).json({ success: false, message: '選手が見つかりません' });
     }
 
-    res.status(200).json({ success: true, message: '選手情報を更新しました' });
+    res.status(200).json({ success: true, message: '得点を登録しました' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// 9. 射詰競射の初期データ保存
-app.post('/api/ranking/shichuma', async (req, res) => {
-  try {
-    const db = await connectToDatabase();
-    const { tournamentId, archerId, results, shootOffType } = req.body;
-
-    if (!tournamentId || !archerId) {
-      return res.status(400).json({ success: false, message: 'Missing parameters' });
-    }
-
-    await db.collection('applicants').updateOne(
-      { tournamentId, archerId },
-      { $set: { shichumaResults: results, updatedAt: new Date() } }
-    );
-
-    res.status(200).json({ success: true, message: '射詰競射データを保存しました' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// 10. 射詰競射の最終結果保存
+// 8. 射詰競射の結果保存
 app.post('/api/ranking/shichuma/final', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { tournamentId, shootOffType, targetRank, results } = req.body;
+    const { tournamentId, shootOffType, results } = req.body;
 
     if (!tournamentId || !results) {
       return res.status(400).json({ success: false, message: 'Missing parameters' });
     }
 
-    // 既存のデータを取得
-    const existingData = await db.collection('shichuma_results').findOne({ tournamentId });
-    
-    let mergedResults = [];
-    if (existingData && existingData.results) {
-      // 既存の結果から同じtargetRankのものを除外
-      mergedResults = existingData.results.filter(r => r.targetRank !== targetRank);
-    }
-    
-    // 新しい結果を追加
-    mergedResults = [...mergedResults, ...results];
-    
-    console.log(`🔄 Shichuma Results Merge: tournamentId=${tournamentId}, targetRank=${targetRank}`);
-    console.log(`  既存データ: ${existingData?.results?.length || 0}件`);
-    console.log(`  新規データ: ${results.length}件`);
-    console.log(`  マージ後: ${mergedResults.length}件`);
-
     const finalData = {
       tournamentId,
       shootOffType,
-      results: mergedResults,
+      results,
       completedAt: new Date()
     };
 
@@ -622,35 +527,67 @@ app.patch('/api/applicants/:archerId/gender', async (req, res) => {
   }
 });
 
-// 16. 順位決定戦関連フィールドをクリア(新規追加)
+// 16. 順位決定戦関連フィールドをクリア - 最終順位表の情報のみ削除（修正版）
 app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
   try {
     const db = await connectToDatabase();
     const { tournamentId } = req.params;
 
-    // 該当する大会の全選手の競射関連フィールドをクリア
+    // 順位決定戦の結果から対象選手を取得
+    const shichumaResult = await db.collection('shichuma_results').findOne({ tournamentId });
+    const enkinResult = await db.collection('enkin_results').findOne({ tournamentId });
+
+    // 対象選手のIDを集約
+    const targetArcherIds = new Set();
+    
+    if (shichumaResult && shichumaResult.results) {
+      shichumaResult.results.forEach(r => {
+        if (r.archerId) targetArcherIds.add(r.archerId);
+      });
+    }
+    
+    if (enkinResult && enkinResult.results) {
+      enkinResult.results.forEach(r => {
+        if (r.archerId) targetArcherIds.add(r.archerId);
+      });
+    }
+
+    console.log(`🔍 順位決定戦対象選手数: ${targetArcherIds.size}名`);
+    console.log(`  対象選手ID: ${Array.from(targetArcherIds).join(', ')}`);
+
+    // 対象選手のみの「最終順位表に載ってる情報」をクリア
+    // 削除対象：最終順位情報のみ（入力フォーム用データは保持）
     const result = await db.collection('applicants').updateMany(
-      { tournamentId },
+      { 
+        tournamentId,
+        archerId: { $in: Array.from(targetArcherIds) }
+      },
       { 
         $unset: { 
-          shichumaResults: "",
-          enkinRank: "",
-          enkinArrowType: "",
-          results: "",  // 的中記録も完全に削除
-          shichumaFinalRank: "",
-          shichumaWinner: "",
-          enkinFinalRank: "",
-          enkinDistance: null
+          // 削除する：最終順位表に表示される情報
+          shichumaFinalRank: "",      // 射詰の最終順位
+          shichumaWinner: "",         // 射詰の優勝者フラグ
+          enkinFinalRank: "",         // 遠近の最終順位
+          enkinDistance: null,        // 遠近の距離
+          enkinArrowType: ""          // 遠近の矢のタイプ
+          
+          // 保持する（削除しない）：入力フォーム用データ
+          // shichumaResults: 射詰の各矢の結果（入力フォーム用）
+          // enkinRank: 遠近の順位入力データ（入力フォーム用）
+          // results: 選手の記録フィールド（常に保持）
         } 
       }
     );
 
-    console.log(`🗑️ Cleared shoot-off fields for ${result.modifiedCount} applicants in tournament: ${tournamentId}`);
+    console.log(`🗑️ 最終順位表の情報をクリア: ${result.modifiedCount}名`);
+    console.log(`  削除内容：最終順位、距離、矢タイプなど`);
+    console.log(`  保持内容：shichumaResults、enkinRank、results フィールド`)
     
     res.status(200).json({ 
       success: true, 
-      message: 'Shoot-off fields cleared successfully',
+      message: 'Final ranking info cleared (input forms and results kept)',
       stats: {
+        targetArcherCount: targetArcherIds.size,
         modifiedCount: result.modifiedCount,
         matchedCount: result.matchedCount
       }

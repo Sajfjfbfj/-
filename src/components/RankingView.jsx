@@ -886,24 +886,21 @@ const getAllTiedGroups = useCallback(() => {
   // 表彰範囲内のグループのみをフィルタリング（同率は全員含む）
   const displayGroups = [];
   let currentRank = 1;
-  let remainingSlots = awardRankLimit;
   
   for (const [hitCount, group] of sortedGroups) {
     const isTied = group.length > 1;
     
-    if (isTied) {
-      // 同率グループは表彰枠を超えても全員を表示
+    // 【重要】表彰範囲の判定: グループの開始順位が表彰範囲内であれば、
+    // そのグループ全体（同率を含む全員）を表彰対象とする
+    // 例: 表彰人数が3位までで、3位に5人が同率の場合 → 3位の5人全員を表彰対象
+    const isInAwardRange = currentRank <= awardRankLimit;
+    
+    if (isInAwardRange) {
+      // 表彰範囲内であれば表示（同率でも単独でも）
       displayGroups.push([hitCount, group]);
-      remainingSlots -= group.length;
     } else {
-      // 同率でない場合
-      if (remainingSlots > 0) {
-        displayGroups.push([hitCount, group]);
-        remainingSlots -= group.length;
-      } else {
-        // 表彰枠がない場合は終了
-        break;
-      }
+      // 表彰範囲外のグループは完全に除外（同率でも単独でも表示しない）
+      console.log(`  表彰範囲外のグループを除外: ${currentRank}位, ${group.length}名, ${hitCount}本`);
     }
     
     // 次のグループの開始順位を計算
@@ -976,6 +973,9 @@ const categorizedGroups = useMemo(() => {
     sortedDivisionGroups.forEach(([hitCount, group]) => {
       const isTied = group.length > 1;
       const isFirstPlace = currentDivisionRank === 1;
+      // 【重要】表彰範囲の判定: グループの開始順位が表彰範囲内であれば、
+      // そのグループ全体（同率を含む全員）を表彰対象とする
+      // 例: 表彰人数が3位までで、3位に5人が同率の場合 → 3位の5人全員を表彰対象
       const isInAwardRange = currentDivisionRank <= awardRankLimit;
       
       console.log(`  ${div.label} Group: ${hitCount}本, ${group.length}名, rank=${currentDivisionRank}, tied=${isTied}, inAwardRange=${isInAwardRange}`);
@@ -985,16 +985,23 @@ const categorizedGroups = useMemo(() => {
           console.log(`    → 射詰競射対象 (${div.label})`);
           divisionsData[div.id].izume.push({ hitCount, group, rank: currentDivisionRank });
         } else if (isInAwardRange) {
-          console.log(`    → 遠近競射対象（入賞圏内） (${div.label})`);
+          // 表彰範囲内の同率グループは遠近競射の対象（同率を含む全員）
+          console.log(`    → 遠近競射対象（入賞圏内・同率含む） (${div.label})`);
           divisionsData[div.id].enkin.push({ hitCount, group, rank: currentDivisionRank });
         } else {
-          // 表彰圏外の同率は遠近競射の対象外とし、順位確定として扱う
-          console.log(`    → 表彰圏外の同率（順位確定扱い） (${div.label})`);
-          divisionsData[div.id].confirmed.push({ hitCount, group, rank: currentDivisionRank });
+          // 表彰圏外の同率は表示しない（完全に除外）
+          console.log(`    → 表彰圏外の同率（表示対象外） (${div.label})`);
+          // confirmed には追加しない
         }
       } else {
-        console.log(`    → 順位確定 (${div.label})`);
-        divisionsData[div.id].confirmed.push({ hitCount, group, rank: currentDivisionRank });
+        // 同率でない場合は、表彰範囲内のみ順位確定として表示
+        if (isInAwardRange) {
+          console.log(`    → 順位確定（表彰範囲内） (${div.label})`);
+          divisionsData[div.id].confirmed.push({ hitCount, group, rank: currentDivisionRank });
+        } else {
+          console.log(`    → 表彰圏外（表示対象外） (${div.label})`);
+          // confirmed には追加しない
+        }
       }
       
       currentDivisionRank += group.length;
@@ -2502,6 +2509,20 @@ const categorizedGroups = useMemo(() => {
                           </div>
                         );
                       })}
+                    </div>
+                    
+                    {/* 射詰競射の結果を保存するボタン */}
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        onClick={() => {
+                          const finalRanking = getShichumaFinalRanking();
+                          saveFinalShichumaResults(finalRanking, shichumaResults);
+                        }}
+                        className="btn-primary"
+                        disabled={isSavingShichuma}
+                      >
+                        {isSavingShichuma ? '保存中...' : '射詰競射の結果を保存'}
+                      </button>
                     </div>
                   </div>
                 )}
