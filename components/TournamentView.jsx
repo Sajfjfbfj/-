@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { LogOut, RotateCcw, Copy, Check, Filter, X, Maximize2, ChevronLeft, ChevronRight, Users, User } from 'lucide-react';
 import { applicantsApi, rankingApi, API_URL } from '../utils/api';
 import { judgeNearFarCompetition, calculateRanksWithTies } from '../utils/competition';
+import { getStoredAttachments } from '../utils/tournament';
 
 const TournamentView = ({ state, stands, checkInCount }) => {
   const [view, setView] = useState('standings'); // 'standings', 'qualifiers', or 'shichuma'

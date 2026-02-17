@@ -284,19 +284,57 @@ app.post('/api/checkin', async (req, res) => {
 app.post('/api/results', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { tournamentId, archerId, results } = req.body;
+    const { tournamentId, archerId, stand, arrowIndex, result, results } = req.body;
 
-    if (!tournamentId || !archerId || !results) {
-      return res.status(400).json({ success: false, message: 'Missing parameters' });
+    // 2つのパターンをサポート
+    // パターン1: 個別の矢の結果を保存（stand, arrowIndex, resultを使用）
+    // パターン2: 全体のresultsオブジェクトを保存（resultsを使用）
+
+    if (!tournamentId || !archerId) {
+      return res.status(400).json({ success: false, message: 'Missing tournamentId or archerId' });
     }
 
-    await db.collection('applicants').updateOne(
-      { tournamentId, archerId },
-      { $set: { results, updatedAt: new Date() } }
-    );
+    if (results) {
+      // パターン2: 全体のresultsオブジェクトを保存
+      await db.collection('applicants').updateOne(
+        { tournamentId, archerId },
+        { $set: { results, updatedAt: new Date() } }
+      );
+    } else if (stand !== undefined && arrowIndex !== undefined && result !== undefined) {
+      // パターン1: 個別の矢の結果を保存
+      const standKey = `stand${stand}`;
+      
+      // 既存のデータを取得
+      const applicant = await db.collection('applicants').findOne({ tournamentId, archerId });
+      
+      if (!applicant) {
+        return res.status(404).json({ success: false, message: '選手が見つかりません' });
+      }
+
+      // 既存のresultsを取得、なければ初期化
+      const currentResults = applicant.results || {};
+      const standResults = currentResults[standKey] || Array(10).fill(null);
+      
+      // 指定されたarrowIndexの結果を更新
+      standResults[arrowIndex] = result;
+      
+      // 更新されたresultsを保存
+      currentResults[standKey] = standResults;
+      
+      await db.collection('applicants').updateOne(
+        { tournamentId, archerId },
+        { $set: { results: currentResults, updatedAt: new Date() } }
+      );
+    } else {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Either "results" or ("stand", "arrowIndex", "result") must be provided' 
+      });
+    }
 
     res.status(200).json({ success: true, message: '結果を保存しました' });
   } catch (error) {
+    console.error('❌ POST /api/results error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
