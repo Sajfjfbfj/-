@@ -340,7 +340,43 @@ app.post('/api/ranking/shichuma/final', async (req, res) => {
   }
 });
 
-// 11. 射詰競射の結果取得
+// 11-1. 射詰競射の結果保存（個別矢記録用）
+app.post('/api/ranking/shichuma', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, archerId, arrowIndex, result } = req.body;
+
+    if (!tournamentId || !archerId || arrowIndex === undefined || result === undefined) {
+      return res.status(400).json({ success: false, message: 'Missing required parameters' });
+    }
+
+    // 選手のshichumaResultsフィールドを更新
+    const fieldName = `shichumaResults.${arrowIndex}`;
+    const updateData = {
+      [fieldName]: result,
+      updatedAt: new Date()
+    };
+
+    const applicant = await db.collection('applicants').findOne({ tournamentId, archerId });
+    if (!applicant) {
+      return res.status(404).json({ success: false, message: '選手が見つかりません' });
+    }
+
+    await db.collection('applicants').updateOne(
+      { tournamentId, archerId },
+      { $set: updateData }
+    );
+
+    console.log(`🎯 Shichuma shot saved: tournamentId=${tournamentId}, archerId=${archerId}, arrowIndex=${arrowIndex}, result=${result}`);
+    res.status(200).json({ success: true, message: '射詰結果を保存しました' });
+
+  } catch (error) {
+    console.error('❌ POST /api/ranking/shichuma error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 11-2. 射詰競射の結果取得
 app.get('/api/ranking/shichuma/:tournamentId', async (req, res) => {
   try {
     const db = await connectToDatabase();
