@@ -26,7 +26,15 @@ const KyudoTournamentSystem = () => {
   const [selectedTournamentId, setSelectedTournamentId] = useState(() => {
     return localStorage.getItem('selectedTournamentId') || null;
   });
-  const [adminLoginStep, setAdminLoginStep] = useState('password_setup');
+  const [adminLoginStep, setAdminLoginStep] = useState(() => {
+    // Check if password is already set in localStorage
+    try {
+      const storedPassword = localStorage.getItem('adminPassword');
+      return storedPassword ? 'password_login' : 'password_setup';
+    } catch {
+      return 'password_setup';
+    }
+  });
   const [adminView, setAdminView] = useState('recording');
   const [mainView, setMainView] = useState('tournament');
 
@@ -37,6 +45,29 @@ const KyudoTournamentSystem = () => {
       localStorage.removeItem('selectedTournamentId');
     }
   }, [selectedTournamentId]);
+
+  // Load stored password on component mount
+  useEffect(() => {
+    try {
+      const storedPassword = localStorage.getItem('adminPassword');
+      if (storedPassword) {
+        setAdminPassword(storedPassword);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Save password to localStorage when it's set
+  useEffect(() => {
+    if (adminPassword) {
+      try {
+        localStorage.setItem('adminPassword', adminPassword);
+      } catch {
+        // ignore
+      }
+    }
+  }, [adminPassword]);
 
   const [tournamentState, dispatch] = useReducer(tournamentReducer, initialTournamentState);
   const [loading, setLoading] = useState(true);
@@ -102,12 +133,14 @@ const KyudoTournamentSystem = () => {
           {mainView === 'admin' && !isAdminLoggedIn && <AdminLoginView adminPassword={adminPassword} setAdminPassword={setAdminPassword} adminLoginStep={adminLoginStep} setAdminLoginStep={setAdminLoginStep} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} state={tournamentState} onLogin={() => setIsAdminLoggedIn(true)} />}
           {mainView === 'admin' && isAdminLoggedIn && <AdminView state={tournamentState} dispatch={dispatch} adminView={adminView} setAdminView={setAdminView} stands={dynamicStands} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} onLogout={() => { 
             setIsAdminLoggedIn(false); 
-            setAdminLoginStep('password_setup'); 
+            setAdminPassword(null); 
+            setAdminLoginStep('password_login'); 
             setSelectedTournamentId(null); 
             try {
               localStorage.removeItem('adminSelectedTournamentDate');
               localStorage.removeItem('adminSelectedTournamentId');
               localStorage.removeItem('selectedTournamentId');
+              localStorage.removeItem('adminPassword'); 
             } catch {}
           }} />}
           {mainView === 'tournament-setup' && <TournamentSetupView state={tournamentState} dispatch={dispatch} />}

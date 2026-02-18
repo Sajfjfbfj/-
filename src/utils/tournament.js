@@ -1,15 +1,26 @@
 // Tournament utility functions
 
 export const getLocalDateKey = () => {
-  // local date like 2026-01-09
+  // Get current date in Japanese timezone (JST, UTC+9)
   try {
-    return new Date().toLocaleDateString('sv-SE');
-  } catch {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
+    const now = new Date();
+    // Use Japanese locale to ensure we get the correct date for JST
+    const jstDate = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+    const y = jstDate.getFullYear();
+    const m = String(jstDate.getMonth() + 1).padStart(2, '0');
+    const day = String(jstDate.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
+  } catch {
+    // Fallback to local date if timezone conversion fails
+    try {
+      return new Date().toLocaleDateString('sv-SE');
+    } catch {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
   }
 };
 

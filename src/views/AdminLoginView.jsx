@@ -146,7 +146,7 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
               <Lock size={32} />
               <h1>大会を選択</h1>
             </div>
-            <p className="hint">本日の大会IDを入力してください</p>
+            <p className="hint">本日の大会を自動選択あるいは手動選択してください</p>
             <button onClick={autoSelectTournamentByGeolocation} className="btn-secondary" style={{ width: '100%', marginBottom: '0.5rem' }}>
               📍 現在地から大会を自動選択
             </button>
