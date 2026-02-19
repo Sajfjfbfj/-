@@ -1252,6 +1252,8 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                   </div>
                 )}
               </div>
+
+              {renderFinalResults()}
             </>
           )}
         </div>
