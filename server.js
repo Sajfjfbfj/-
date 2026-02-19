@@ -280,7 +280,7 @@ app.post('/api/checkin', async (req, res) => {
 app.post('/api/archer/:archerId/score', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { stand, results } = req.body;
+    const { stand, results, tournamentId } = req.body;
     const { archerId } = req.params;
 
     if (!archerId || !stand || !results) {
@@ -293,8 +293,11 @@ app.post('/api/archer/:archerId/score', async (req, res) => {
       updatedAt: new Date()
     };
 
+    // tournamentIdがある場合は絞り込みに使用（より正確なマッチング）
+    const query = tournamentId ? { archerId, tournamentId } : { archerId };
+
     const result = await db.collection('applicants').updateOne(
-      { archerId },
+      query,
       { $set: updateData }
     );
 

@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { LogOut, RotateCcw, Copy, Check, Filter, X, Maximize2, ChevronLeft, ChevronRight, Users, User } from 'lucide-react';
+import { LogOut, RotateCcw, Copy, Check, Filter, X, Maximize2, ChevronLeft, ChevronRight, Users, User, RefreshCw } from 'lucide-react';
 import { applicantsApi, rankingApi, API_URL } from '../utils/api';
 import { judgeNearFarCompetition, calculateRanksWithTies } from '../utils/competition';
+import { getLocalDateKey } from '../utils/tournament';
+import { getStoredAttachments } from '../utils/tournament';
+import QualifiersView from '../QualifiersView';
 
 const TournamentView = ({ state, stands, checkInCount }) => {
   const [view, setView] = useState('standings'); // 'standings', 'qualifiers', or 'shichuma'
@@ -24,6 +27,12 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   const [currentPageProgram, setCurrentPageProgram] = useState(1);
   const [shichumaData, setShichumaData] = useState(null);
   const [isLoadingShichuma, setIsLoadingShichuma] = useState(true);
+  const [finalResults, setFinalResults] = useState(null);
+  const [isLoadingFinalResults, setIsLoadingFinalResults] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [showUpdateNotification, setShowUpdateNotification] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState('');
+  const [fetchError, setFetchError] = useState(null);
   
   // ページネーションの状態を更新するエフェクト
   useEffect(() => {
@@ -68,14 +77,44 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     return { ceremony, rank };
   };
 
+  // 部門設定
+  const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+  const localDefaultDivisions = [
+    { id: 'lower', label: '級位~三段以下の部' },
+    { id: 'middle', label: '四・五段の部' },
+    { id: 'title', label: '称号者の部' }
+  ];
+  const divisions = (selectedTournament && selectedTournament.data && selectedTournament.data.divisions) ? selectedTournament.data.divisions : localDefaultDivisions;
+  const enableGenderSeparation = selectedTournament?.data?.enableGenderSeparation || false;
+
+  // 順位の正規化
+  const normalizeRank = (rank) => {
+    if (!rank) return '';
+    return rank
+      .replace('二段', '弐段')
+      .replace('三段', '参段')
+      .replace('二級', '弐級')
+      .replace('一級', '壱級');
+  };
+
+  // 部門判定ロジック
+  const getDivisionIdForArcher = useCallback((archer, divisions) => {
+    const rIdx = rankOrder.indexOf(normalizeRank(archer?.rank));
+    for (const d of (divisions || [])) {
+      const minIdx = d?.minRank ? rankOrder.indexOf(normalizeRank(d.minRank)) : 0;
+      const maxIdx = d?.maxRank ? rankOrder.indexOf(normalizeRank(d.maxRank)) : 9999;
+      if (rIdx >= minIdx && rIdx <= maxIdx) return d.id;
+    }
+    return 'unassigned';
+  }, []);
+
   const fetchAndSortArchers = async () => {
     if (!selectedTournamentId) return;
 
     // ローディング表示は初回のみ、または手動更新時のみにする
     // setIsLoading(true); 
     try {
-      const response = await fetch(`${API_URL}applicants/${selectedTournamentId}`);
-      const result = await response.json();
+      const result = await applicantsApi.getByTournament(selectedTournamentId);
 
       if (result.success) {
         const checkedIn = result.data.filter(a => a.isCheckedIn);
@@ -214,8 +253,130 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       }
     };
 
-      fetchShichumaResults();
+    const fetchFinalResults = async () => {
+      if (!selectedTournamentId) return;
+
+      setIsLoadingFinalResults(true);
+      setFetchError(null);
+      try {
+        const response = await fetch(`${API_URL}/ranking/shootoff/${selectedTournamentId}`);
+        
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            setFinalResults(result.data);
+          }
+        } else {
+          setFinalResults(null);
+          setFetchError(`最終順位表の取得に失敗しました (${response.status})`);
+        }
+      } catch (error) {
+        console.error('最終順位表の取得エラー:', error);
+        setFinalResults(null);
+        setFetchError('ネットワークエラー: 最終順位表を取得できません');
+      } finally {
+        setIsLoadingFinalResults(false);
+      }
+    };
+
+    fetchShichumaResults();
+    fetchFinalResults();
   }, [selectedTournamentId]);
+
+  // 順位決定戦ページからの更新を監視（リアルタイム更新）
+  useEffect(() => {
+    if (!selectedTournamentId || !autoRefresh) return;
+
+    const fetchFinalResultsOnly = async () => {
+      try {
+        const response = await fetch(`${API_URL}/ranking/shootoff/${selectedTournamentId}`);
+        
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            // データが変更された場合のみ更新
+            const currentData = JSON.stringify(finalResults);
+            const newData = JSON.stringify(result.data);
+            
+            if (currentData !== newData) {
+              // 変更の詳細を分析
+              const hasShichumaChanges = result.data?.shichuma && 
+                JSON.stringify(finalResults?.shichuma) !== JSON.stringify(result.data.shichuma);
+              const hasEnkinChanges = result.data?.enkin && 
+                JSON.stringify(finalResults?.enkin) !== JSON.stringify(result.data.enkin);
+              
+              let updateMessage = '🏆 最終順位表が更新されました';
+              if (hasShichumaChanges && !hasEnkinChanges) {
+                updateMessage = '🏆 射詰競射の結果が更新されました';
+              } else if (!hasShichumaChanges && hasEnkinChanges) {
+                updateMessage = '🏆 遠近競射の結果が更新されました';
+              } else if (hasShichumaChanges && hasEnkinChanges) {
+                updateMessage = '🏆 順位決定戦の結果が更新されました';
+              }
+              
+              console.log(updateMessage);
+              setFinalResults(result.data);
+              setLastUpdated(new Date());
+              setUpdateMessage(updateMessage);
+              setShowUpdateNotification(true);
+              setFetchError(null); // エラーをクリア
+              
+              // 3秒後に通知を非表示
+              setTimeout(() => {
+                setShowUpdateNotification(false);
+              }, 3000);
+            }
+          }
+        } else {
+          setFetchError(`リアルタイム更新に失敗しました (${response.status})`);
+        }
+      } catch (error) {
+        console.error('最終順位表のリアルタイム更新エラー:', error);
+        setFetchError('リアルタイム更新中にネットワークエラーが発生しました');
+      }
+    };
+
+    // 3秒ごとに最終順位表をチェック（順位決定戦ページの更新を検知）
+    const interval = setInterval(fetchFinalResultsOnly, 3000);
+    
+    return () => clearInterval(interval);
+  }, [selectedTournamentId, autoRefresh, finalResults]);
+
+  // 手動更新関数
+  const handleRefreshFinalResults = async () => {
+    if (!selectedTournamentId) return;
+    
+    setIsLoadingFinalResults(true);
+    setFetchError(null);
+    try {
+      const response = await fetch(`${API_URL}/ranking/shootoff/${selectedTournamentId}`);
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          setFinalResults(result.data);
+          setLastUpdated(new Date());
+          setUpdateMessage('🔄 最終順位表を手動更新しました');
+          setShowUpdateNotification(true);
+          console.log('🔄 最終順位表を手動更新しました');
+          
+          // 3秒後に通知を非表示
+          setTimeout(() => {
+            setShowUpdateNotification(false);
+          }, 3000);
+        }
+      } else {
+        setFinalResults(null);
+        setFetchError(`手動更新に失敗しました (${response.status})`);
+      }
+    } catch (error) {
+      console.error('最終順位表の手動更新エラー:', error);
+      setFinalResults(null);
+      setFetchError('手動更新中にネットワークエラーが発生しました');
+    } finally {
+      setIsLoadingFinalResults(false);
+    }
+  };
 
   const tournament = state.tournament;
   const currentRound = tournament.currentRound || 1;
@@ -377,6 +538,347 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     return hitCount === currentRoundArrows;
   }, [tournament]);
 
+  // 最終順位表を表示する関数（RankingViewから移植）
+  const renderFinalResults = () => {
+    // エラー表示
+    if (fetchError) {
+      return (
+        <div className="card mt-6">
+          <h3 className="card-title text-green-700 mb-4">🏆 最終順位表</h3>
+          <div className="bg-red-50 border border-red-200 rounded-md p-4">
+            <div className="flex items-center gap-2">
+              <span className="text-red-600">⚠️</span>
+              <span className="text-red-700">{fetchError}</span>
+            </div>
+            <button
+              onClick={handleRefreshFinalResults}
+              disabled={isLoadingFinalResults}
+              className="mt-2 flex items-center gap-1 px-3 py-1 text-sm bg-red-100 hover:bg-red-200 text-red-700 rounded-md transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoadingFinalResults ? 'animate-spin' : ''}`} />
+              再試行
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (isLoadingFinalResults && !finalResults) {
+      return (
+        <div className="card mt-6">
+          <h3 className="card-title text-green-700 mb-4">🏆 最終順位表</h3>
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-700"></div>
+            <p className="mt-2 text-gray-600">最終順位表を読み込み中...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!finalResults || (!finalResults.shichuma && !finalResults.enkin)) {
+      return (
+        <div className="card mt-6">
+          <h3 className="card-title text-green-700 mb-4">🏆 最終順位表</h3>
+          <p className="text-gray-500 text-center py-4">最終順位表の記録がありません</p>
+        </div>
+      );
+    }
+
+    const awardRankLimit = tournament?.data?.awardRankLimit || 3; // 表彰範囲を取得
+
+    // =====================================================================
+    // RankingView の getMergedFinalResults と同じロジックで統合結果を構築
+    // 部門ごとに処理し、divisionUsedRanks / divisionProcessedArchers で
+    // ①同一選手の重複 ②同一順位の重複 を両方防ぐ
+    // =====================================================================
+
+    // まず全選手を部門ごとに分類
+    const archersByDivision = {};
+    archers.forEach(archer => {
+      const divId = getDivisionIdForArcher(archer, divisions);
+      const gender = archer.gender || 'male';
+      const key = enableGenderSeparation ? `${divId}_${gender}` : divId;
+      if (!archersByDivision[key]) archersByDivision[key] = [];
+      archersByDivision[key].push(archer);
+    });
+
+    // 部門キーの一覧を構築（順序維持）
+    const divisionKeys = [];
+    divisions.forEach(div => {
+      if (enableGenderSeparation) {
+        divisionKeys.push({ key: `${div.id}_male`,   division: { ...div, id: `${div.id}_male`,   label: `${div.label}（男）` } });
+        divisionKeys.push({ key: `${div.id}_female`, division: { ...div, id: `${div.id}_female`, label: `${div.label}（女）` } });
+      } else {
+        divisionKeys.push({ key: div.id, division: div });
+      }
+    });
+
+    // 部門ごとに統合結果を組み立てる
+    const resultsByDivision = {};
+    divisionKeys.forEach(({ key, division }) => {
+      const divArchers = archersByDivision[key] || [];
+
+      // この部門に属する遠近結果を先に収集（射詰スキップ判定に使う）
+      const divEnkinResults = (finalResults.enkin?.results || []).filter(r => {
+        const a = archers.find(a => a.archerId === r.archerId);
+        if (!a) return false;
+        const aDivId = getDivisionIdForArcher(a, divisions);
+        const aGender = a.gender || 'male';
+        const aKey = enableGenderSeparation ? `${aDivId}_${aGender}` : aDivId;
+        return aKey === key;
+      });
+
+      const divUsedRanks = new Set();
+      const divProcessedArchers = new Set();
+      const divResults = [];
+
+      // ── 射詰結果を処理 ──────────────────────────────────────────────
+      if (finalResults.shichuma?.results) {
+        const divShichumaResults = finalResults.shichuma.results.filter(r => {
+          const a = archers.find(a => a.archerId === r.archerId);
+          if (!a) return false;
+          const aDivId = getDivisionIdForArcher(a, divisions);
+          const aGender = a.gender || 'male';
+          const aKey = enableGenderSeparation ? `${aDivId}_${aGender}` : aDivId;
+          return aKey === key;
+        });
+
+        [...divShichumaResults].sort((a, b) => a.rank - b.rank).forEach(result => {
+          // 遠近に移行する選手はスキップ（後で遠近側で処理）
+          const goesToEnkin = result.pendingEnkin || divEnkinResults.some(e => e.archerId === result.archerId);
+          if (goesToEnkin) return;
+          // 同一選手の重複スキップ
+          if (divProcessedArchers.has(result.archerId)) return;
+          // 同一順位の重複スキップ
+          const finalRank = result.rank;
+          if (divUsedRanks.has(finalRank)) return;
+
+          const archer = archers.find(a => a.archerId === result.archerId);
+          if (!archer) return;
+
+          divResults.push({
+            archerId: result.archerId,
+            name: archer.name,
+            affiliation: archer.affiliation,
+            rank: finalRank,
+            rank_source: 'shichuma',
+            shootOffType: 'shichuma',
+            isWinner: result.isWinner,
+            eliminatedAt: result.eliminatedAt,
+            consecutiveHits: result.consecutiveHits,
+            isDefeated: result.isDefeated,
+          });
+          divUsedRanks.add(finalRank);
+          divProcessedArchers.add(result.archerId);
+        });
+      }
+
+      // ── 遠近結果を処理 ──────────────────────────────────────────────
+      [...divEnkinResults]
+        .sort((a, b) => {
+          const aT = a.targetRank !== null ? a.targetRank : 9999;
+          const bT = b.targetRank !== null ? b.targetRank : 9999;
+          if (aT !== bT) return aT - bT;
+          return (parseInt(a.rank) || 9999) - (parseInt(b.rank) || 9999);
+        })
+        .forEach(result => {
+          // 敗退者スキップ
+          if (result.rank === '敗退' || result.isDefeated) return;
+          // 同一選手の重複スキップ
+          if (divProcessedArchers.has(result.archerId)) return;
+          // 同一順位の重複スキップ
+          const finalRank = parseInt(result.rank);
+          if (isNaN(finalRank) || divUsedRanks.has(finalRank)) return;
+
+          const archer = archers.find(a => a.archerId === result.archerId);
+          if (!archer) return;
+
+          divResults.push({
+            archerId: result.archerId,
+            name: archer.name,
+            affiliation: archer.affiliation,
+            rank: finalRank,
+            rank_source: 'enkin',
+            shootOffType: 'enkin',
+            targetRank: result.targetRank,
+            isDefeated: result.isDefeated,
+          });
+          divUsedRanks.add(finalRank);
+          divProcessedArchers.add(result.archerId);
+        });
+
+      // 表彰範囲でフィルタ＆ソート
+      resultsByDivision[key] = {
+        division,
+        results: divResults
+          .filter(r => typeof r.rank === 'number' && r.rank <= awardRankLimit)
+          .sort((a, b) => a.rank - b.rank)
+      };
+    });
+
+    // unassigned も念のため追加
+    if (!resultsByDivision.unassigned && !enableGenderSeparation) {
+      resultsByDivision.unassigned = { division: { id: 'unassigned', label: '未分類' }, results: [] };
+    }
+
+    const mergedResultsTotal = Object.values(resultsByDivision).reduce((sum, d) => sum + d.results.length, 0);
+    if (mergedResultsTotal === 0) {
+      return (
+        <div className="card mt-6">
+          <h3 className="card-title text-green-700 mb-4">🏆 最終順位表</h3>
+          <p className="text-gray-500 text-center py-4">最終順位表の記録がありません</p>
+        </div>
+      );
+    }
+
+    // 部門順を維持して配列に変換（すべての部門を表示）
+    const divisionResults = divisionKeys.map(({ key }) => resultsByDivision[key] || { division: divisionKeys.find(d => d.key === key)?.division || { id: key, label: key }, results: [] });
+
+    return (
+      <div className="card mt-6">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h3 className="card-title text-green-700">🏆 最終順位表</h3>
+            <p className="text-sm text-gray-600 mt-1">
+              表彰範囲：{awardRankLimit}位まで
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {showUpdateNotification && (
+              <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium animate-pulse">
+                {updateMessage || '🔄 順位決定戦ページから更新されました'}
+              </div>
+            )}
+            <button
+              onClick={handleRefreshFinalResults}
+              disabled={isLoadingFinalResults}
+              className="flex items-center gap-1 px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors disabled:opacity-50"
+              title="最終順位表を手動更新"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoadingFinalResults ? 'animate-spin' : ''}`} />
+              更新
+            </button>
+            {lastUpdated && (
+              <span className="text-xs text-gray-500">
+                最終更新: {lastUpdated.toLocaleTimeString('ja-JP')}
+              </span>
+            )}
+          </div>
+        </div>
+        {divisionResults.map(divisionData => (
+          <div key={divisionData.division.id} className="mb-6">
+            <h4 className="text-lg font-semibold text-green-600 mb-3">{divisionData.division.label}</h4>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse border border-green-300">
+                <thead>
+                  <tr className="bg-green-100">
+                    <th className="border border-green-300 px-4 py-2 text-left">順位</th>
+                    <th className="border border-green-300 px-4 py-2 text-left">氏名</th>
+                    <th className="border border-green-300 px-4 py-2 text-left">所属</th>
+                    <th className="border border-green-300 px-4 py-2 text-left">段位</th>
+                    <th className="border border-green-300 px-4 py-2 text-center">決定方法</th>
+                    <th className="border border-green-300 px-4 py-2 text-center">詳細</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {divisionData.results.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="border border-green-300 px-4 py-8 text-center text-gray-500">
+                        この部門の最終順位表の記録がありません<br/>
+                        <span className="text-xs">（表彰範囲：{awardRankLimit}位まで）</span>
+                      </td>
+                    </tr>
+                  ) : (
+                    divisionData.results.map((result, index) => {
+                    const archer = archers.find(a => a.archerId === result.archerId);
+                    return (
+                      <tr key={`${result.archerId}-${result.shootOffType || 'unknown'}`} className="hover:bg-green-50">
+                        <td className="border border-green-300 px-4 py-2 font-bold">
+                          <span className="text-green-900">{result.rank}位</span>
+                        </td>
+                        <td className="border border-green-300 px-4 py-2 font-semibold">
+                          {result.name}
+                        </td>
+                        <td className="border border-green-300 px-4 py-2 text-gray-600">
+                          {result.affiliation}
+                        </td>
+                        <td className="border border-green-300 px-4 py-2 text-gray-600">
+                          {archer?.rank || '-'}
+                        </td>
+                        <td className="border border-green-300 px-4 py-2 text-center">
+                            {(() => {
+                              if (result.shootOffType === 'shichuma') {
+                                return (
+                                  <span className="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                    射詰
+                                  </span>
+                                );
+                              } else if (result.shootOffType === 'enkin') {
+                                return (
+                                  <span className="text-sm bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                                    遠近
+                                  </span>
+                                );
+                              } else if (result.rank_source === 'confirmed') {
+                                return (
+                                  <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">
+                                    的中数
+                                  </span>
+                                );
+                              } else {
+                                return (
+                                  <span className="text-sm bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                                    -
+                                  </span>
+                                );
+                              }
+                            })()}
+                        </td>
+                      <td className="border border-green-300 px-4 py-2 text-sm text-center">
+                        {result.shootOffType === 'shichuma' && (
+                          <div>
+                            {(() => {
+                              if (result.isWinner) {
+                                return <span className="text-yellow-700 font-bold">🏆 優勝</span>;
+                              } else if (result.pendingEnkin) {
+                                return <span className="text-orange-600 font-bold">遠近待ち</span>;
+                              } else if (result.eliminatedAt) {
+                                return <span className="text-red-700">{result.eliminatedAt}本目脱落</span>;
+                              } else {
+                                return <span className="text-blue-700 font-bold">射詰{result.rank}位</span>;
+                              }
+                            })()}
+                          </div>
+                        )}
+                        {result.shootOffType === 'enkin' && (
+                          <div>
+                            <span className="text-orange-700">
+                              遠近競射{result.rank}位
+                              {result.targetRank && ` (対象順位: ${result.targetRank}位)`}
+                            </span>
+                          </div>
+                        )}
+                        {result.shootOffType === 'confirmed' && (
+                          <div>
+                            <span className="text-green-700">
+                              {result.hitCount}本的中
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      </tr>
+                    );
+                  })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   // パフォーマンス向上のため、メモ化
   const passedArchers = useMemo(() => {
     return archers.filter(archer => isPassed(archer) === true);
@@ -425,69 +927,11 @@ const TournamentView = ({ state, stands, checkInCount }) => {
           >
             <ChevronLeft className="w-4 h-4 mr-1" /> 立ち順表に戻る
           </button>
-          <h1>射詰競射結果</h1>
+          <h1>競射結果</h1>
         </div>
         <div className="view-content">
-          {isLoadingShichuma ? (
-            <div className="card">
-              <p className="text-gray-500">読み込み中...</p>
-            </div>
-          ) : !shichumaData ? (
-            <div className="card">
-              <p className="text-gray-500">射詰競射の記録がありません</p>
-            </div>
-          ) : (
-            <div className="card">
-              <div className="mb-4">
-                <p className="text-sm text-gray-600">
-                  完了日時: {new Date(shichumaData.completedAt).toLocaleString('ja-JP')}
-                </p>
-              </div>
-              
-              <div className="space-y-3">
-                {shichumaData.results
-                  .sort((a, b) => a.rank - b.rank)
-                  .map(result => {
-                    const archer = archers.find(a => a.archerId === result.archerId);
-                    if (!archer) return null;
-                    
-                    return (
-                      <div key={result.archerId} className="border rounded p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <span className="font-bold text-lg">{result.rank}位</span>
-                            <span className="font-semibold ml-3">{archer.name}</span>
-                          </div>
-                          <span className="text-sm text-gray-600">
-                            {result.isWinner 
-                              ? `優勝 (継続的中: ${result.consecutiveHits}本)` 
-                              : `${result.eliminatedAt}本目で脱落 (継続的中: ${result.consecutiveHits}本)`}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-2">{archer.affiliation}</p>
-                        
-                        <div className="mt-2 flex gap-1 items-center">
-                          <span className="text-xs font-semibold text-gray-500 w-12">記録:</span>
-                          <div className="flex gap-1">
-                            {result.results.map((r, idx) => (
-                              <div key={idx} className="text-center">
-                                <span className="text-xs text-gray-500">{idx + 1}本</span>
-                                <div className={`w-6 h-6 rounded flex items-center justify-center text-sm font-bold ${
-                                  r === 'o' ? 'bg-gray-900 text-white' : 
-                                  r === 'x' ? 'bg-red-200 text-red-700' : 'bg-gray-100 text-gray-400'
-                                }`}>
-                                  {r === 'o' ? '○' : r === 'x' ? '×' : '?'}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
+          {/* 最終順位表のみを表示 */}
+          {renderFinalResults()}
         </div>
       </div>
     );
@@ -719,7 +1163,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                   >
                     <div className="flex justify-between items-center">
                       <div>
-                        <p className="text-xs text-gray-500 font-medium mb-1">射詰競射</p>
+                        <p className="text-xs text-gray-500 font-medium mb-1">競射結果</p>
                         <p className="text-sm font-medium">結果表示</p>
                       </div>
                       <ChevronRight className="w-4 h-4 text-gray-400" />

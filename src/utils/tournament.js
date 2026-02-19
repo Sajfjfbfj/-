@@ -38,17 +38,28 @@ export const normalizeTournamentFormData = (data, defaultDivisions, attachments)
   const d = data || {};
 
   return {
-    id: d.id || getLocalDateKey(),
-    title: d.title || '',
+    name: d.name || '',
+    datetime: d.datetime || '',
     location: d.location || '',
-    date: d.date || getLocalDateKey(),
+    venueAddress: d.venueAddress || '',
+    venueLat: d.venueLat || '',
+    venueLng: d.venueLng || '',
+    organizer: d.organizer || '',
+    coOrganizer: d.coOrganizer || '',
+    administrator: d.administrator || '',
+    purpose: d.purpose || '',
+    event: d.event || '',
+    type: d.type || '',
+    category: d.category || '',
     description: d.description || '',
-    arrowsRound1: parseInt(d.arrowsRound1) || 2,
-    arrowsRound2: parseInt(d.arrowsRound2) || 2,
-    enableNearFar: d.enableNearFar || false,
-    divisions: d.divisions || defaultDivisions,
-    awardRankLimit: parseInt(d.awardRankLimit) || 3,
+    competitionMethod: d.competitionMethod || '',
+    award: d.award || '',
+    qualifications: d.qualifications || '',
+    applicableRules: d.applicableRules || '',
+    applicationMethod: d.applicationMethod || '',
+    remarks: d.remarks || '',
     enableGenderSeparation: d.enableGenderSeparation || false,
+    divisions: d.divisions || defaultDivisions,
     attachments: attachments || []
   };
 };

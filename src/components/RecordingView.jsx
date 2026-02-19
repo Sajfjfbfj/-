@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { API_URL } from '../utils/api';
 
@@ -11,6 +11,10 @@ const RecordingView = ({ state, dispatch, stands }) => {
   const [archers, setArchers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // 保存中のデータを管理するRef。バックグラウンド同期がpending中の変更を上書きしないようにする
+  // キー: "archerId:standKey"  値: [...results]
+  const pendingUpdatesRef = useRef({});
 
   useEffect(() => {
     if (selectedTournamentId) localStorage.setItem('selectedTournamentId', selectedTournamentId);
@@ -58,8 +62,6 @@ const RecordingView = ({ state, dispatch, stands }) => {
   
   const getCurrentStandResults = (archer) => {
     const standKey = `stand${selectedStand}`;
-    const currentArrows = getCurrentArrowsPerStand();
-    
     const arrowsNeeded = selectedRound === 1 ? tournament.arrowsRound1 : tournament.arrowsRound2;
     const existing = (archer.results && archer.results[standKey]) 
       ? [...archer.results[standKey]] 
@@ -124,7 +126,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
       if (result.success) {
         const checkedIn = result.data.filter(a => a.isCheckedIn);
         
-        const normalizeRank = (rank) => {
+        const normalizeRankLocal = (rank) => {
           if (!rank) return '';
           return rank
             .replace('二段', '弐段')
@@ -144,12 +146,11 @@ const RecordingView = ({ state, dispatch, stands }) => {
             }
           }
 
-          const aRank = normalizeRank(a.rank);
-          const bRank = normalizeRank(b.rank);
+          const aRank = normalizeRankLocal(a.rank);
+          const bRank = normalizeRankLocal(b.rank);
           const aIndex = rankOrder.indexOf(aRank);
           const bIndex = rankOrder.indexOf(bRank);
 
-          // 段位の順序：5級（低い）→範士9段（高い）の順に並べる
           if (aIndex !== bIndex) {
             if (aIndex === -1 && bIndex === -1) return 0;
             if (aIndex === -1) return 1;
@@ -157,23 +158,35 @@ const RecordingView = ({ state, dispatch, stands }) => {
             return aIndex - bIndex;
           }
 
-          // 同じ段位内では習得日が若い順（習得日が早い順）
           const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
           const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
           return aDate.getTime() - bDate.getTime();
         });
 
-        // 立ち順番号を付与
         const totalNeeded = tournament.arrowsRound1 + tournament.arrowsRound2;
         const defaultResults = {};
         for (let i = 1; i <= 6; i++) defaultResults[`stand${i}`] = Array(totalNeeded).fill(null);
 
-        const archersWithOrder = sortedArchers.map((archer, index) => ({
-          ...archer,
-          standOrder: index + 1,
-          division: getDivisionIdForArcher(archer, divisions),
-          results: Object.assign({}, defaultResults, archer.results || {})
-        }));
+        const archersWithOrder = sortedArchers.map((archer, index) => {
+          const baseArcher = {
+            ...archer,
+            standOrder: index + 1,
+            division: getDivisionIdForArcher(archer, divisions),
+            results: Object.assign({}, defaultResults, archer.results || {})
+          };
+
+          // pending中の変更がある場合はAPIの古いデータで上書きしない
+          const pending = pendingUpdatesRef.current;
+          const mergedResults = { ...baseArcher.results };
+          for (const key of Object.keys(pending)) {
+            const [pendingArcherId, standKey] = key.split(':');
+            if (pendingArcherId === archer.archerId) {
+              mergedResults[standKey] = pending[key];
+            }
+          }
+
+          return { ...baseArcher, results: mergedResults };
+        });
 
         setArchers(archersWithOrder);
         
@@ -235,41 +248,28 @@ const RecordingView = ({ state, dispatch, stands }) => {
   const standArchers = getArchersForStand(selectedStand);
 
   // API経由で記録を保存
-  const saveResultToApi = async (archerId, standNum, arrowIndex, result) => {
+  const saveResultToApi = async (archerId, standNum, arrowIndex, result, updatedResults) => {
+    const standKey = `stand${standNum}`;
+    const pendingKey = `${archerId}:${standKey}`;
+
     try {
-      // まず現在の選手の全結果を取得
-      const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
-      const data = await response.json();
-      const archer = data.data.find(a => a.archerId === archerId);
-      
-      if (!archer) {
-        console.error('選手が見つかりません:', archerId);
-        return;
-      }
-      
-      // 現在のスタンド結果を取得
-      const currentResults = archer.results || {};
-      const standKey = `stand${standNum}`;
-      const standResults = currentResults[standKey] || Array(10).fill(null);
-      
-      // 指定された矢の結果を更新
-      standResults[arrowIndex] = result;
-      
-      // 新しいAPIエンドポイントで更新
       await fetch(`${API_URL}/archer/${archerId}/score`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tournamentId: selectedTournamentId,
           stand: standNum,
-          results: standResults
+          results: updatedResults
         })
       });
       
-      // 更新後にデータを再取得(同期)
-      fetchAndSortArchers(true);
+      console.log('記録保存成功:', { archerId, stand: standNum, arrowIndex, result });
     } catch (error) {
       console.error('記録保存エラー:', error);
       alert('ネットワークエラーにより保存できませんでした');
+    } finally {
+      // 保存完了(成功・失敗問わず)後にpendingから除去
+      delete pendingUpdatesRef.current[pendingKey];
     }
   };
 
@@ -279,48 +279,31 @@ const RecordingView = ({ state, dispatch, stands }) => {
     if (!archer) return;
 
     const standKey = `stand${standNum}`;
-    const currentArrows = getCurrentArrowsPerStand();
     
-    // 現在のラウンドの結果のみを扱う
-    const existing = (archer.results && archer.results[standKey]) 
+    const existingResults = (archer.results && archer.results[standKey]) 
       ? [...archer.results[standKey]] 
-      : [];
-      
-    // 現在のラウンドの結果を更新
-    const roundResults = [];
-    for (let i = 0; i < currentArrows; i++) {
-      if (i === arrowIndex) {
-        roundResults.push(result);
-      } else if (i < existing.length) {
-        roundResults.push(existing[i]);
-      } else {
-        roundResults.push(null);
-      }
-    }
+      : Array(tournament.arrowsRound1 + tournament.arrowsRound2).fill(null);
+    
+    const adjustedArrowIndex = selectedRound === 2 
+      ? tournament.arrowsRound1 + arrowIndex 
+      : arrowIndex;
+    
+    existingResults[adjustedArrowIndex] = result;
 
-    // ラウンド1と2の結果を結合
-    let finalResults = [];
-    if (selectedRound === 1) {
-      const round2Results = (archer.results?.[standKey]?.slice(tournament.arrowsRound1) || []);
-      finalResults = [...roundResults, ...round2Results];
-    } else {
-      const round1Results = (archer.results?.[standKey]?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null));
-      finalResults = [...round1Results, ...roundResults];
-    }
+    // pendingに登録してバックグラウンド同期が上書きしないようにする
+    const pendingKey = `${archerId}:${standKey}`;
+    pendingUpdatesRef.current[pendingKey] = existingResults;
 
     const updatedArchers = archers.map(a => 
       a.archerId === archerId 
-        ? { ...a, results: { ...a.results, [standKey]: finalResults } } 
+        ? { ...a, results: { ...a.results, [standKey]: existingResults } } 
         : a
     );
     
     setArchers(updatedArchers);
 
-    // APIへ送信
-    const adjustedArrowIndex = selectedRound === 2 
-      ? tournament.arrowsRound1 + arrowIndex 
-      : arrowIndex;
-    saveResultToApi(archerId, standNum, adjustedArrowIndex, result);
+    // APIへ送信。更新後のresultsをそのまま渡す（stale closureを避ける）
+    saveResultToApi(archerId, standNum, adjustedArrowIndex, result, existingResults);
   };
 
   const handleUndo = (archerId, standNum, arrowIndex) => {
@@ -331,46 +314,31 @@ const RecordingView = ({ state, dispatch, stands }) => {
     const standKey = `stand${standNum}`;
     const currentArrows = getCurrentArrowsPerStand();
     
-    // 現在のラウンドの結果を取得
     const existing = (archer.results && archer.results[standKey]) 
       ? [...archer.results[standKey]] 
-      : [];
+      : Array(tournament.arrowsRound1 + tournament.arrowsRound2).fill(null);
     
-    // 現在のラウンドの結果を更新
-    const roundResults = [];
-    for (let i = 0; i < currentArrows; i++) {
-      if (i === arrowIndex) {
-        roundResults.push(null);
-      } else if (i < existing.length) {
-        roundResults.push(existing[i]);
-      } else {
-        roundResults.push(null);
-      }
-    }
+    // adjustedArrowIndex でそのラウンドの正しい位置をnullにする
+    const adjustedArrowIndex = selectedRound === 2
+      ? tournament.arrowsRound1 + arrowIndex
+      : arrowIndex;
 
-    // ラウンド1と2の結果を結合
-    let finalResults = [];
-    if (selectedRound === 1) {
-      const round2Results = (archer.results?.[standKey]?.slice(tournament.arrowsRound1) || []);
-      finalResults = [...roundResults, ...round2Results];
-    } else {
-      const round1Results = (archer.results?.[standKey]?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null));
-      finalResults = [...round1Results, ...roundResults];
-    }
+    existing[adjustedArrowIndex] = null;
+
+    // pendingに登録
+    const pendingKey = `${archerId}:${standKey}`;
+    pendingUpdatesRef.current[pendingKey] = existing;
 
     const updatedArchers = archers.map(a => 
       a.archerId === archerId 
-        ? { ...a, results: { ...a.results, [standKey]: finalResults } } 
+        ? { ...a, results: { ...a.results, [standKey]: existing } } 
         : a
     );
     
     setArchers(updatedArchers);
 
-    // APIへ送信 (nullを送る)
-    const adjustedArrowIndex = selectedRound === 2 
-      ? tournament.arrowsRound1 + arrowIndex 
-      : arrowIndex;
-    saveResultToApi(archerId, standNum, adjustedArrowIndex, null);
+    // APIへ送信
+    saveResultToApi(archerId, standNum, adjustedArrowIndex, null, existing);
   };
 
   const getHitCount = (archer, standNum, roundNum = null) => {
@@ -504,10 +472,13 @@ const RecordingView = ({ state, dispatch, stands }) => {
                               <div className="arrow-buttons">
                                 <button onClick={() => handleRecord(archer.archerId, selectedStand, arrowIdx, 'o')} className="btn-circle btn-hit" disabled={roundComplete}>◯</button>
                                 <button onClick={() => handleRecord(archer.archerId, selectedStand, arrowIdx, 'x')} className="btn-circle btn-miss" disabled={roundComplete}>×</button>
+                                <button onClick={() => handleRecord(archer.archerId, selectedStand, arrowIdx, '?')} className="btn-circle btn-unknown" disabled={roundComplete}>?</button>
                               </div>
                             ) : (
                               <div className="arrow-result">
-                                <button disabled className={`btn-circle ${result === 'o' ? 'btn-hit' : 'btn-miss'}`}>{result === 'o' ? '◯' : '×'}</button>
+                                <button disabled className={`btn-circle ${result === 'o' ? 'btn-hit' : result === 'x' ? 'btn-miss' : 'btn-unknown'}`}>
+                                  {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
+                                </button>
                                 <button onClick={() => handleUndo(archer.archerId, selectedStand, arrowIdx)} className="btn-fix">修正</button>
                               </div>
                             )}

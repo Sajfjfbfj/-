@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Copy } from 'lucide-react';
 import { tournamentsApi, API_URL } from '../utils/api';
 import { 
   normalizeTournamentFormData, 
@@ -37,7 +38,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
 
   const handleInputChange = (field, value) => { setFormData(prev => ({ ...prev, [field]: value })); };
   const defaultDivisions = [
-    { id: 'lower', label: '級位~三段以下の部', minRank: '五級', maxRank: '参段' },
+    { id: 'lower', label: '級位~三段以下の部', minRank: '無指定', maxRank: '参段' },
     { id: 'middle', label: '四・五段の部', minRank: '四段', maxRank: '五段' },
     { id: 'title', label: '称号者の部', minRank: '錬士五段', maxRank: '範士九段' }
   ];
@@ -439,7 +440,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
             <div style={{ marginTop: '0.75rem' }}>
               <p className="label">部門設定</p>
               {formData.divisions && (() => {
-                const rankOptions = ['五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
+                const rankOptions = ['無指定', '五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
                 return (
                   <>
                     {(formData.divisions || []).length === 0 && (

@@ -460,16 +460,24 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       for (let i = start; i < end; i++) {
         const a = archers[i];
         html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td><td>${a.gender === 'female' ? '女' : '男'}</td>`;
-        // 1立ち目 placeholders
+        // 1立ち目 actual results
+        const stand1Results = (a.results?.stand1 || []).slice(0, arrows1);
         html += `<td style="white-space:nowrap">`;
         for (let x = 0; x < arrows1; x++) {
-          html += `<span style="display:inline-block;width:18px;height:14px;margin:0 3px;font-size:12px;line-height:14px">&nbsp;</span>`;
+          const r = stand1Results[x];
+          const label = r === 'o' ? '◯' : r === 'x' ? '×' : r === '?' ? '?' : '　';
+          const color = r === 'o' ? '#111' : r === 'x' ? '#888' : '#bbb';
+          html += `<span style="display:inline-block;width:18px;height:18px;margin:0 2px;font-size:13px;line-height:18px;text-align:center;color:${color}">${label}</span>`;
         }
         html += `</td>`;
-        // 2立ち目 placeholders
+        // 2立ち目 actual results
+        const stand2Results = (a.results?.stand1 || []).slice(arrows1, arrows1 + arrows2);
         html += `<td style="white-space:nowrap">`;
         for (let x = 0; x < arrows2; x++) {
-          html += `<span style="display:inline-block;width:18px;height:14px;margin:0 3px;font-size:12px;line-height:14px">&nbsp;</span>`;
+          const r = stand2Results[x];
+          const label = r === 'o' ? '◯' : r === 'x' ? '×' : r === '?' ? '?' : '　';
+          const color = r === 'o' ? '#111' : r === 'x' ? '#888' : '#bbb';
+          html += `<span style="display:inline-block;width:18px;height:18px;margin:0 2px;font-size:13px;line-height:18px;text-align:center;color:${color}">${label}</span>`;
         }
         html += `</td>`;
         html += `</tr>`;
@@ -584,15 +592,31 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       );
     }
 
-    // 統合結果を作成（サーバーから取得したデータをそのまま使用）
+    // 統合結果を作成（RankingViewのgetMergedFinalResultsと同じ重複排除ロジック）
     const mergedResults = [];
     const awardRankLimit = tournament?.data?.awardRankLimit || 3; // 表彰範囲を取得
-    
-    // 射詰競射結果を追加（サーバーから取得したものをそのまま）
+
+    // 遠近競射の選手IDセットを事前に作成（射詰→遠近の重複排除に使用）
+    const enkinArcherIds = new Set(
+      (finalResults.enkin?.results || []).map(r => r.archerId)
+    );
+    const processedArcherIds = new Set(); // 追加済み選手の管理
+
+    // 射詰競射結果を追加（遠近競射に進んだ選手はスキップ）
     if (finalResults.shichuma && finalResults.shichuma.results) {
-      finalResults.shichuma.results.forEach(result => {
-        const archer = archers.find(a => a.archerId === result.archerId);
-        if (archer) {
+      finalResults.shichuma.results
+        .sort((a, b) => a.rank - b.rank)
+        .forEach(result => {
+          const archer = archers.find(a => a.archerId === result.archerId);
+          if (!archer) return;
+
+          // 遠近競射に進んだ選手はスキップ（遠近の結果を優先）
+          const isFromShichumaToEnkin = result.pendingEnkin || enkinArcherIds.has(result.archerId);
+          if (isFromShichumaToEnkin) return;
+
+          // 重複チェック
+          if (processedArcherIds.has(result.archerId)) return;
+
           mergedResults.push({
             archerId: result.archerId,
             name: archer.name,
@@ -607,28 +631,42 @@ const TournamentView = ({ state, stands, checkInCount }) => {
             pendingEnkin: result.pendingEnkin,
             divisionId: getDivisionIdForArcher(archer, divisions)
           });
-        }
-      });
+          processedArcherIds.add(result.archerId);
+        });
     }
 
-    // 遠近競射結果を追加（サーバーから取得したものをそのまま）
+    // 遠近競射結果を追加（敗退者・すでに追加済みの選手はスキップ）
     if (finalResults.enkin && finalResults.enkin.results) {
-      finalResults.enkin.results.forEach(result => {
-        const archer = archers.find(a => a.archerId === result.archerId);
-        if (archer) {
+      finalResults.enkin.results
+        .sort((a, b) => {
+          const aTarget = a.targetRank != null ? a.targetRank : 9999;
+          const bTarget = b.targetRank != null ? b.targetRank : 9999;
+          if (aTarget !== bTarget) return aTarget - bTarget;
+          return (parseInt(a.rank) || 9999) - (parseInt(b.rank) || 9999);
+        })
+        .forEach(result => {
+          const archer = archers.find(a => a.archerId === result.archerId);
+          if (!archer) return;
+
+          // 敗退者はスキップ
+          if (result.rank === '敗退' || result.isDefeated) return;
+
+          // 重複チェック（射詰で確定済みの選手はスキップ）
+          if (processedArcherIds.has(result.archerId)) return;
+
           mergedResults.push({
             archerId: result.archerId,
             name: archer.name,
             affiliation: archer.affiliation,
-            rank: result.rank,
+            rank: typeof result.rank === 'number' ? result.rank : parseInt(result.rank),
             rank_source: 'enkin',
             shootOffType: 'enkin',
             targetRank: result.targetRank,
             isDefeated: result.isDefeated,
             divisionId: getDivisionIdForArcher(archer, divisions)
           });
-        }
-      });
+          processedArcherIds.add(result.archerId);
+        });
     }
 
     if (mergedResults.length === 0) {
@@ -1017,17 +1055,27 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                             <td className="px-4 py-3 text-center">{a.rank}</td>
                             <td className="px-4 py-3 text-center">{a.gender === 'female' ? '女' : '男'}</td>
                             <td className="px-4 py-3">
-                              <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
-                                {Array.from({ length: (tplData?.arrowsRound1 || 0) }).map((_, idx) => (
-                                  <span key={idx} className="inline-flex items-center justify-center w-6 h-4 text-xs text-gray-600">&nbsp;</span>
-                                ))}
+                              <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
+                                {Array.from({ length: (tplData?.arrowsRound1 || 0) }).map((_, idx) => {
+                                  const r = a.results?.stand1?.[idx] ?? null;
+                                  return (
+                                    <span key={idx} className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${r === 'o' ? 'bg-gray-900 text-white' : r === 'x' ? 'bg-gray-200 text-gray-600' : r === '?' ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-50 text-gray-300'}`}>
+                                      {r === 'o' ? '◯' : r === 'x' ? '×' : r === '?' ? '?' : ''}
+                                    </span>
+                                  );
+                                })}
                               </div>
                             </td>
                             <td className="px-4 py-3">
-                              <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
-                                {Array.from({ length: (tplData?.arrowsRound2 || 0) }).map((_, idx) => (
-                                  <span key={idx} className="inline-flex items-center justify-center w-6 h-4 text-xs text-gray-600">&nbsp;</span>
-                                ))}
+                              <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
+                                {Array.from({ length: (tplData?.arrowsRound2 || 0) }).map((_, idx) => {
+                                  const r = a.results?.stand1?.[(tplData?.arrowsRound1 || 0) + idx] ?? null;
+                                  return (
+                                    <span key={idx} className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${r === 'o' ? 'bg-gray-900 text-white' : r === 'x' ? 'bg-gray-200 text-gray-600' : r === '?' ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-50 text-gray-300'}`}>
+                                      {r === 'o' ? '◯' : r === 'x' ? '×' : r === '?' ? '?' : ''}
+                                    </span>
+                                  );
+                                })}
                               </div>
                             </td>
                           </tr>
