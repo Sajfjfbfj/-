@@ -460,24 +460,88 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       for (let i = start; i < end; i++) {
         const a = archers[i];
         html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td><td>${a.gender === 'female' ? '女' : '男'}</td>`;
+        // 記録データが入っているstandキーを自動検出し、適切な結果を取得
+        const getArcherRoundResultsForPrint = (archer, roundNum) => {
+          const arrowsRound1 = tplData?.arrowsRound1 ?? 4;
+          const arrowsRound2 = tplData?.arrowsRound2 ?? 4;
+          const archersPerStand = tplData?.archersPerStand ?? 6;
+          const enableGenderSeparation = tplData?.enableGenderSeparation ?? false;
+
+          // 立ち番号を計算するロジック（ProgramViewと同じ）
+          const getStandNumForPrint = (archer) => {
+            const normalizeRankLocal = (r) => (r||'').replace('二段','弐段').replace('三段','参段').replace('二級','弐級').replace('一級','壱級');
+            const rankOrderLocal = ['無指定','五級','四級','三級','弐級','壱級','初段','弐段','参段','四段','五段','錬士五段','錬士六段','教士七段','教士八段','範士八段','範士九段'];
+            
+            const getDivLocal = (archer) => {
+              const rIdx = rankOrderLocal.indexOf(normalizeRankLocal(archer?.rank));
+              for (const d of divisions) {
+                const minIdx = d?.minRank ? rankOrderLocal.indexOf(normalizeRankLocal(d.minRank)) : 0;
+                const maxIdx = d?.maxRank ? rankOrderLocal.indexOf(normalizeRankLocal(d.maxRank)) : rankOrderLocal.length - 1;
+                if (rIdx >= minIdx && rIdx <= maxIdx) return d.id;
+              }
+              return 'unassigned';
+            };
+
+            const checkedInForPrint = archers.filter(a => a.isCheckedIn);
+            const sortedCheckedInForPrint = [...checkedInForPrint].sort((a, b) => {
+              if (enableGenderSeparation) {
+                const ag = a.gender || 'male', bg = b.gender || 'male';
+                if (ag !== bg) return ag === 'male' ? -1 : 1;
+              }
+              const ai = rankOrderLocal.indexOf(normalizeRankLocal(a.rank));
+              const bi = rankOrderLocal.indexOf(normalizeRankLocal(b.rank));
+              if (ai !== bi) {
+                if (ai === -1) return 1;
+                if (bi === -1) return -1;
+                return ai - bi;
+              }
+              const ad = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
+              const bd = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
+              return ad.getTime() - bd.getTime();
+            });
+
+            const divId = getDivLocal(archer);
+            const sameDiv = sortedCheckedInForPrint.filter(a => getDivLocal(a) === divId);
+            const idx = sameDiv.findIndex(a => a.archerId === archer.archerId);
+            if (idx === -1) return null;
+            return Math.floor(idx / archersPerStand) + 1;
+          };
+
+          const standNum = getStandNumForPrint(archer);
+          if (standNum === null) return [];
+
+          const standKey = `stand${standNum}`;
+          const standResults = archer.results?.[standKey] || [];
+          
+          if (standResults.length === 0) return [];
+          if (roundNum === 1) return standResults.slice(0, arrowsRound1);
+          return standResults.slice(arrowsRound1, arrowsRound1 + arrowsRound2);
+        };
+
+        const sym = (r) => r === 'o' ? '◯' : r === 'x' ? '×' : r === '?' ? '?' : '　';
+
         // 1立ち目 actual results
-        const stand1Results = (a.results?.stand1 || []).slice(0, arrows1);
-        html += `<td style="white-space:nowrap">`;
-        for (let x = 0; x < arrows1; x++) {
-          const r = stand1Results[x];
-          const label = r === 'o' ? '◯' : r === 'x' ? '×' : r === '?' ? '?' : '　';
-          const color = r === 'o' ? '#111' : r === 'x' ? '#888' : '#bbb';
-          html += `<span style="display:inline-block;width:18px;height:18px;margin:0 2px;font-size:13px;line-height:18px;text-align:center;color:${color}">${label}</span>`;
+        const stand1Results = getArcherRoundResultsForPrint(a, 1);
+        html += `<td style="white-space:nowrap;text-align:center">`;
+        if (stand1Results.length > 0) {
+          stand1Results.forEach(r => {
+            const color = r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#9ca3af';
+            html += `<span style="display:inline-block;width:20px;text-align:center;font-size:13px;color:${color};font-weight:${r === 'o' ? 700 : 400}">${sym(r)}</span>`;
+          });
+        } else {
+          for (let x = 0; x < arrows1; x++) html += `<span style="display:inline-block;width:20px;text-align:center">&nbsp;</span>`;
         }
         html += `</td>`;
         // 2立ち目 actual results
-        const stand2Results = (a.results?.stand1 || []).slice(arrows1, arrows1 + arrows2);
-        html += `<td style="white-space:nowrap">`;
-        for (let x = 0; x < arrows2; x++) {
-          const r = stand2Results[x];
-          const label = r === 'o' ? '◯' : r === 'x' ? '×' : r === '?' ? '?' : '　';
-          const color = r === 'o' ? '#111' : r === 'x' ? '#888' : '#bbb';
-          html += `<span style="display:inline-block;width:18px;height:18px;margin:0 2px;font-size:13px;line-height:18px;text-align:center;color:${color}">${label}</span>`;
+        const stand2Results = getArcherRoundResultsForPrint(a, 2);
+        html += `<td style="white-space:nowrap;text-align:center">`;
+        if (stand2Results.length > 0) {
+          stand2Results.forEach(r => {
+            const color = r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#9ca3af';
+            html += `<span style="display:inline-block;width:20px;text-align:center;font-size:13px;color:${color};font-weight:${r === 'o' ? 700 : 400}">${sym(r)}</span>`;
+          });
+        } else {
+          for (let x = 0; x < arrows2; x++) html += `<span style="display:inline-block;width:20px;text-align:center">&nbsp;</span>`;
         }
         html += `</td>`;
         html += `</tr>`;
@@ -498,6 +562,88 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   };
 
   // パフォーマンス向上のため、メモ化された関数を使用
+
+  /**
+   * ★ 修正ポイント ★
+   * RecordingView と同じロジックで「チェックイン済み選手のみ」を
+   * 「enableGenderSeparation を考慮した順」でソートし、
+   * その中での部門内インデックスから立ち番号を計算する。
+   * これにより RecordingView で入力した stand{N} のキーと一致する。
+   */
+  const getStandNumForArcher = (archer, localArchers, localDivisions) => {
+    const archersPerStand = tournament?.archersPerStand ?? 6;
+    const enableGenderSeparation = tournament?.enableGenderSeparation ?? false;
+
+    const getDivId = (a) => {
+      const rIdx = rankOrder.indexOf(normalizeRank(a?.rank));
+      for (const d of (localDivisions || divisions)) {
+        const minIdx = d?.minRank ? rankOrder.indexOf(normalizeRank(d.minRank)) : 0;
+        const maxIdx = d?.maxRank ? rankOrder.indexOf(normalizeRank(d.maxRank)) : rankOrder.length - 1;
+        if (rIdx >= minIdx && rIdx <= maxIdx) return d.id;
+      }
+      return 'unassigned';
+    };
+
+    // チェックイン済みのみ抽出 → RecordingView と同じソート
+    const checkedIn = (localArchers || archers).filter(a => a.isCheckedIn);
+    const sortedCheckedIn = [...checkedIn].sort((a, b) => {
+      if (enableGenderSeparation) {
+        const ag = a.gender || 'male', bg = b.gender || 'male';
+        if (ag !== bg) return ag === 'male' ? -1 : 1;
+      }
+      const ai = rankOrder.indexOf(normalizeRank(a.rank));
+      const bi = rankOrder.indexOf(normalizeRank(b.rank));
+      if (ai !== bi) {
+        if (ai === -1) return 1;
+        if (bi === -1) return -1;
+        return ai - bi;
+      }
+      const ad = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
+      const bd = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
+      return ad.getTime() - bd.getTime();
+    });
+
+    const divisionId = getDivId(archer);
+    const sameDiv = sortedCheckedIn.filter(a => getDivId(a) === divisionId);
+    const idxInDiv = sameDiv.findIndex(a => a.archerId === archer.archerId);
+    if (idxInDiv === -1) return null;
+    return Math.floor(idxInDiv / archersPerStand) + 1;
+  };
+
+  // 選手のresultsから実際にデータが入っていいるstandキーを探して返す
+  const findActiveStandResults = (archer) => {
+    if (!archer.results) return [];
+    const standKeys = Object.keys(archer.results)
+      .filter(k => /^stand\d+$/.test(k))
+      .sort((a, b) => parseInt(a.replace('stand', '')) - parseInt(b.replace('stand', '')));
+    for (const key of standKeys) {
+      const data = archer.results[key];
+      if (Array.isArray(data) && data.some(v => v !== null)) {
+        return data;
+      }
+    }
+    return [];
+  };
+
+  const getArcherRoundResults = (archer, roundNum) => {
+    // state.tournament を第一優先にする（最も信頼できるソース）
+    const arrowsRound1 = tournament?.arrowsRound1 ?? 4; // デフォルト値
+    const arrowsRound2 = tournament?.arrowsRound2 ?? 4;
+
+    // 選手の立ち番号を取得
+    const standNum = getStandNumForArcher(archer);
+    if (standNum === null) return [];
+
+    // 立ち番号に対応する結果を取得
+    const standKey = `stand${standNum}`;
+    const standResults = archer.results?.[standKey] || [];
+    
+    if (standResults.length === 0) return [];
+    if (roundNum === 1) return standResults.slice(0, arrowsRound1);
+    return standResults.slice(arrowsRound1, arrowsRound1 + arrowsRound2);
+  };
+
+  const resultSymbol = (r) => r === 'o' ? '◯' : r === 'x' ? '×' : r === '?' ? '?' : '';
 
   // パフォーマンス向上のため、メモ化された関数を使用
   const isPassed = useCallback((archer) => {
@@ -1056,26 +1202,30 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                             <td className="px-4 py-3 text-center">{a.gender === 'female' ? '女' : '男'}</td>
                             <td className="px-4 py-3">
                               <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
-                                {Array.from({ length: (tplData?.arrowsRound1 || 0) }).map((_, idx) => {
-                                  const r = a.results?.stand1?.[idx] ?? null;
-                                  return (
-                                    <span key={idx} className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${r === 'o' ? 'bg-gray-900 text-white' : r === 'x' ? 'bg-gray-200 text-gray-600' : r === '?' ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-50 text-gray-300'}`}>
-                                      {r === 'o' ? '◯' : r === 'x' ? '×' : r === '?' ? '?' : ''}
-                                    </span>
-                                  );
-                                })}
+                                {getArcherRoundResults(a, 1).map((r, idx) => (
+                                  <span key={idx} style={{
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    width: '20px', height: '20px', fontSize: '13px',
+                                    color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
+                                    fontWeight: r === 'o' ? 700 : 400
+                                  }}>
+                                    {resultSymbol(r) || '　'}
+                                  </span>
+                                ))}
                               </div>
                             </td>
                             <td className="px-4 py-3">
                               <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
-                                {Array.from({ length: (tplData?.arrowsRound2 || 0) }).map((_, idx) => {
-                                  const r = a.results?.stand1?.[(tplData?.arrowsRound1 || 0) + idx] ?? null;
-                                  return (
-                                    <span key={idx} className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${r === 'o' ? 'bg-gray-900 text-white' : r === 'x' ? 'bg-gray-200 text-gray-600' : r === '?' ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-50 text-gray-300'}`}>
-                                      {r === 'o' ? '◯' : r === 'x' ? '×' : r === '?' ? '?' : ''}
-                                    </span>
-                                  );
-                                })}
+                                {getArcherRoundResults(a, 2).map((r, idx) => (
+                                  <span key={idx} style={{
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    width: '20px', height: '20px', fontSize: '13px',
+                                    color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
+                                    fontWeight: r === 'o' ? 700 : 400
+                                  }}>
+                                    {resultSymbol(r) || '　'}
+                                  </span>
+                                ))}
                               </div>
                             </td>
                           </tr>

@@ -60,7 +60,9 @@ export const normalizeTournamentFormData = (data, defaultDivisions, attachments)
     remarks: d.remarks || '',
     enableGenderSeparation: d.enableGenderSeparation || false,
     divisions: d.divisions || defaultDivisions,
-    attachments: attachments || []
+    attachments: attachments || [],
+    arrowsRound1: d.arrowsRound1 ?? 4,
+    arrowsRound2: d.arrowsRound2 ?? 4
   };
 };
 
