@@ -4,9 +4,9 @@ import { applicantsApi } from '../utils/api';
 import { API_URL } from '../utils/api';
 import {
   calculateRanksWithTies,
-  getDivisionIdForArcher,
   getRankOrder
 } from '../utils/competition';
+import { getDivisionForArcher } from '../utils/tournament';
 
 const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   const [archers, setArchers] = useState([]);
@@ -869,7 +869,13 @@ const getAllTiedGroups = useCallback(() => {
   const awardRankLimit = tournament?.data?.awardRankLimit || 3; // サーバーから取得
   
   archers.forEach(archer => {
-    if (enableGenderSeparation && selectedGender !== 'all') {
+    // 選択中の部門の男女分け設定を確認
+    const division = getDivisionForArcher(archer, divisions);
+    const baseDivisionId = division.replace(/_male$|_female$/, '');
+    const archerDivision = divisions.find(d => d.id === baseDivisionId);
+    const divGenderSeparation = archerDivision?.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation || false;
+    
+    if (divGenderSeparation && selectedGender !== 'all') {
       const g = (archer.gender || 'male');
       if (selectedGender === 'male' && g !== 'male') return;
       if (selectedGender === 'female' && g !== 'female') return;
@@ -946,8 +952,15 @@ const categorizedGroups = useMemo(() => {
   divisions.forEach(div => {
     // この部門の選手のみを抽出
     const divisionArchers = archers.filter(archer => {
-      if (getDivisionIdForArcher(archer, divisions) !== div.id) return false;
-      if (!enableGenderSeparation) return true;
+      const archerDivision = getDivisionForArcher(archer, divisions);
+      const baseDivisionId = archerDivision.replace(/_male$|_female$/, '');
+      if (baseDivisionId !== div.id) return false;
+      
+      // 部門ごとの男女分け設定を確認
+      const divisionConfig = divisions.find(d => d.id === div.id);
+      const divGenderSeparation = divisionConfig?.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation || false;
+      
+      if (!divGenderSeparation) return true;
       if (selectedGender === 'all') return true;
       const g = (archer.gender || 'male');
       if (selectedGender === 'male') return g === 'male';
@@ -2061,7 +2074,11 @@ const categorizedGroups = useMemo(() => {
     let displayResults;
     if (selectedDivision === '') {
       // 全部門表示：性別フィルタが有効なら該当性別のみ表示
-      if (enableGenderSeparation && selectedGender !== 'all') {
+      const hasGenderSeparatedDivision = divisions.some(div => 
+        div.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation
+      );
+      
+      if (hasGenderSeparatedDivision && selectedGender !== 'all') {
         displayResults = divisionResults.filter(d => d.division.id.endsWith(`_${selectedGender}`));
       } else {
         displayResults = divisionResults;
@@ -2299,18 +2316,43 @@ const categorizedGroups = useMemo(() => {
                   </button>
                 ))}
               </div>
-              {enableGenderSeparation && (
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                  <button onClick={() => setSelectedGender('all')} className={`btn ${selectedGender === 'all' ? 'btn-active' : ''}`} style={{ flex: 1 }}>全員</button>
-                  <button onClick={() => setSelectedGender('male')} className={`btn ${selectedGender === 'male' ? 'btn-active' : ''}`} style={{ flex: 1 }}>男子</button>
-                  <button onClick={() => setSelectedGender('female')} className={`btn ${selectedGender === 'female' ? 'btn-active' : ''}`} style={{ flex: 1 }}>女子</button>
-                </div>
-              )}
+              {(() => {
+                // 選択された部門の男女分け設定を確認
+                const selectedDivisionData = divisions.find(d => d.id === selectedDivision);
+                const divGenderSeparation = selectedDivisionData?.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation || false;
+                
+                return divGenderSeparation && (
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <button onClick={() => setSelectedGender('all')} className={`btn ${selectedGender === 'all' ? 'btn-active' : ''}`} style={{ flex: 1 }}>全員</button>
+                    <button onClick={() => setSelectedGender('male')} className={`btn ${selectedGender === 'male' ? 'btn-active' : ''}`} style={{ flex: 1 }}>男子</button>
+                    <button onClick={() => setSelectedGender('female')} className={`btn ${selectedGender === 'female' ? 'btn-active' : ''}`} style={{ flex: 1 }}>女子</button>
+                  </div>
+                )
+              })()}
 
               <p className="hint" style={{ marginTop: '0.5rem' }}>
                 {selectedDivision === '' 
-                  ? `全部門の選手: ${enableGenderSeparation && selectedGender !== 'all' ? archers.filter(a => (a.gender || 'male') === selectedGender).length : archers.length}人`
-                  : `${divisions.find(d => d.id === selectedDivision)?.label || selectedDivision}: ${archers.filter(a => getDivisionIdForArcher(a, divisions) === selectedDivision && ( !enableGenderSeparation || selectedGender === 'all' || (a.gender || 'male') === selectedGender )).length}人`
+                  ? (() => {
+                      const hasGenderSeparatedDivision = divisions.some(div => 
+                        div.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation
+                      );
+                      if (hasGenderSeparatedDivision && selectedGender !== 'all') {
+                        return `全部門の選手: ${archers.filter(a => (a.gender || 'male') === selectedGender).length}人`;
+                      } else {
+                        return `全部門の選手: ${archers.length}人`;
+                      }
+                    })()
+                  : (() => {
+                      const division = divisions.find(d => d.id === selectedDivision);
+                      const divGenderSeparation = division?.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation || false;
+                      const divisionArchers = archers.filter(a => getDivisionIdForArcher(a, divisions) === selectedDivision);
+                      
+                      if (divGenderSeparation && selectedGender !== 'all') {
+                        return `${division?.label || selectedDivision}: ${divisionArchers.filter(a => (a.gender || 'male') === selectedGender).length}人`;
+                      } else {
+                        return `${division?.label || selectedDivision}: ${divisionArchers.length}人`;
+                      }
+                    })()
                 }
               </p>
             </div>

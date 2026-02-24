@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { LogOut, RotateCcw, Copy, Check, Filter, X, Maximize2, ChevronLeft, ChevronRight, Users, User, RefreshCw } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { applicantsApi, rankingApi, API_URL } from '../utils/api';
 import { judgeNearFarCompetition, calculateRanksWithTies } from '../utils/competition';
 import { getLocalDateKey } from '../utils/tournament';
 import { getStoredAttachments } from '../utils/tournament';
+import { ensureJapaneseFont } from '../utils/jspdfJapaneseFont';
 import QualifiersView from '../QualifiersView';
 
 const TournamentView = ({ state, stands, checkInCount }) => {
@@ -15,6 +19,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   const [archerIdInputModal, setArcherIdInputModal] = useState('');
   const [archerIdError, setArcherIdError] = useState('');
   const [archers, setArchers] = useState([]);
+  const [allApplicants, setAllApplicants] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -33,6 +38,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   const [showUpdateNotification, setShowUpdateNotification] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
   const [fetchError, setFetchError] = useState(null);
+  const [programTableMode, setProgramTableMode] = useState('checked_in');
   
   // ページネーションの状態を更新するエフェクト
   useEffect(() => {
@@ -86,15 +92,25 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   ];
   const divisions = (selectedTournament && selectedTournament.data && selectedTournament.data.divisions) ? selectedTournament.data.divisions : localDefaultDivisions;
   const enableGenderSeparation = selectedTournament?.data?.enableGenderSeparation || false;
+  const femaleFirst = enableGenderSeparation && (selectedTournament?.data?.femaleFirst ?? false);
 
   // 順位の正規化
   const normalizeRank = (rank) => {
     if (!rank) return '';
-    return rank
+    return String(rank).trim().replace(/[\s　]+/g, '')
+      .replace(/[１２]/g, (m) => (m === '１' ? '1' : '2'))
+      .replace(/[３４５]/g, (m) => (m === '３' ? '3' : m === '４' ? '4' : '5'))
       .replace('二段', '弐段')
       .replace('三段', '参段')
       .replace('二級', '弐級')
-      .replace('一級', '壱級');
+      .replace('一級', '壱級')
+      .replace(/5級/g, '五級')
+      .replace(/4級/g, '四級')
+      .replace(/3級/g, '三級')
+      .replace(/2級/g, '弐級')
+      .replace(/1級/g, '壱級')
+      .replace(/2段/g, '弐段')
+      .replace(/3段/g, '参段');
   };
 
   // 部門判定ロジック
@@ -117,34 +133,83 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       const result = await applicantsApi.getByTournament(selectedTournamentId);
 
       if (result.success) {
-        const checkedIn = result.data.filter(a => a.isCheckedIn);
+        const applicants = result.data || [];
+        const checkedIn = applicants.filter(a => a.isCheckedIn);
         
         const normalizeRank = (rank) => {
           if (!rank) return '';
-          return rank
+          return String(rank).trim().replace(/[\s　]+/g, '')
+            .replace(/[１２]/g, (m) => (m === '１' ? '1' : '2'))
+            .replace(/[３４５]/g, (m) => (m === '３' ? '3' : m === '４' ? '4' : '5'))
             .replace('二段', '弐段')
             .replace('三段', '参段')
             .replace('二級', '弐級')
-            .replace('一級', '壱級');
+            .replace('一級', '壱級')
+            .replace(/5級/g, '五級')
+            .replace(/4級/g, '四級')
+            .replace(/3級/g, '三級')
+            .replace(/2級/g, '弐級')
+            .replace(/1級/g, '壱級')
+            .replace(/2段/g, '弐段')
+            .replace(/3段/g, '参段');
         };
 
-        const sortedArchers = [...checkedIn].sort((a, b) => {
-          // 男女分けが有効な場合、男を先に配置
-          const enableGenderSeparation = tournament?.data?.enableGenderSeparation || false;
+        // 部門の表示順（minRankのインデックスで昇順）
+        const currentDivisions = selectedTournament?.data?.divisions || [
+          { id: 'lower', minRank: '無指定' },
+          { id: 'middle', minRank: '四段' },
+          { id: 'title', minRank: '錬士五段' }
+        ];
+        const divisionOrder = [...currentDivisions]
+          .sort((x, y) => {
+            const xi = x?.minRank ? rankOrder.indexOf(normalizeRank(x.minRank)) : 0;
+            const yi = y?.minRank ? rankOrder.indexOf(normalizeRank(y.minRank)) : 0;
+            return (xi === -1 ? Infinity : xi) - (yi === -1 ? Infinity : yi);
+          })
+          .map(d => d.id)
+          .filter(Boolean);
+
+        const getDivIdLocal = (archer) => {
+          const rIdx = rankOrder.indexOf(normalizeRank(archer?.rank));
+          for (const d of currentDivisions) {
+            const minIdx = d?.minRank ? rankOrder.indexOf(normalizeRank(d.minRank)) : 0;
+            const maxIdx = d?.maxRank ? rankOrder.indexOf(normalizeRank(d.maxRank)) : rankOrder.length - 1;
+            if (rIdx >= minIdx && rIdx <= maxIdx) return d.id;
+          }
+          return 'unassigned';
+        };
+
+        const compareArcher = (a, b) => {
+          // ① 部門順（低段位の部 → 高段位の部）
+          const aDivId = getDivIdLocal(a);
+          const bDivId = getDivIdLocal(b);
+          const aDivIdx = divisionOrder.indexOf(aDivId);
+          const bDivIdx = divisionOrder.indexOf(bDivId);
+          if (aDivIdx !== bDivIdx) {
+            if (aDivIdx === -1) return 1;
+            if (bDivIdx === -1) return -1;
+            return aDivIdx - bDivIdx;
+          }
+
+          // ② 同一部門内：性別（femaleFirst 設定に従う）
+          // ※ tournament は state.tournament（設定値のみ）で .data を持たないため selectedTournament?.data を参照する
+          const enableGenderSeparation = selectedTournament?.data?.enableGenderSeparation || false;
+          const femaleFirstLocal = enableGenderSeparation && (selectedTournament?.data?.femaleFirst ?? false);
           if (enableGenderSeparation) {
             const aGender = a.gender || "male";
             const bGender = b.gender || "male";
             if (aGender !== bGender) {
-              return aGender === "male" ? -1 : 1;
+              return femaleFirstLocal
+                ? (aGender === "female" ? -1 : 1)
+                : (aGender === "male" ? -1 : 1);
             }
           }
 
+          // ③ 同一部門・同一性別内：段位昇順（無指定→五級→…→範士九段）
           const aRank = normalizeRank(a.rank);
           const bRank = normalizeRank(b.rank);
           const aIndex = rankOrder.indexOf(aRank);
           const bIndex = rankOrder.indexOf(bRank);
-
-          // 段位の順序：5級（低い）→範士9段（高い）の順に並べる
           if (aIndex !== bIndex) {
             if (aIndex === -1 && bIndex === -1) return 0;
             if (aIndex === -1) return 1;
@@ -152,17 +217,28 @@ const TournamentView = ({ state, stands, checkInCount }) => {
             return aIndex - bIndex;
           }
 
-          // 同じ段位内では習得日が若い順（習得日が早い順）
-          const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
-          const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
-          return aDate.getTime() - bDate.getTime();
-        });
+          // ④ 同じ段位内：習得日が新しい順
+          const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate).getTime() : Number.NEGATIVE_INFINITY;
+          const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate).getTime() : Number.NEGATIVE_INFINITY;
+          return bDate - aDate;
+        };
+
+        const sortedAllApplicants = [...applicants]
+          .sort(compareArcher)
+          .map((archer, index) => ({
+            ...archer,
+            standOrder: index + 1
+          }));
+
+        const sortedArchers = [...checkedIn]
+          .sort(compareArcher);
 
         const archersWithOrder = sortedArchers.map((archer, index) => ({
           ...archer,
           standOrder: index + 1
         }));
 
+        setAllApplicants(sortedAllApplicants);
         setArchers(archersWithOrder);
       }
     } catch (error) {
@@ -387,8 +463,9 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     // get selected tournament data
     const tpl = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     const tplData = tpl?.data || {};
+    const printSource = programTableMode === 'all_applicants' ? allApplicants : archers;
     const perPage = programArchersPerPage;
-    const pages = Math.max(1, Math.ceil(archers.length / perPage));
+    const pages = Math.max(1, Math.ceil(printSource.length / perPage));
     const title = tplData?.name || selectedTournamentId;
     const attachments = getStoredAttachments(selectedTournamentId);
 
@@ -446,26 +523,42 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     }
     html += `</div></div>`;
 
-    // Page 2..: standings table only
+    // Page 2..: standings table
     for (let p = 0; p < pages; p++) {
       html += `<div class="page">`;
       html += `<h2 style="margin:0 0 8px">立ち順表</h2>`;
 
       const arrows1 = tplData?.arrowsRound1 || 0;
       const arrows2 = tplData?.arrowsRound2 || 0;
+
+      if (programTableMode === 'all_applicants') {
+        html += `<table><thead><tr><th>#</th><th>氏名</th><th>所属</th><th>段位</th><th>性別</th></tr></thead><tbody>`;
+
+        const start = p * perPage;
+        const end = Math.min(start + perPage, printSource.length);
+        for (let i = start; i < end; i++) {
+          const a = printSource[i];
+          html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td><td>${a.gender === 'female' ? '女' : '男'}</td></tr>`;
+        }
+
+        html += `</tbody></table></div>`;
+        continue;
+      }
+
       html += `<table><thead><tr><th>#</th><th>氏名</th><th>所属</th><th>段位</th><th>性別</th><th>1立ち目</th><th>2立ち目</th></tr></thead><tbody>`;
 
       const start = p * perPage;
-      const end = Math.min(start + perPage, archers.length);
+      const end = Math.min(start + perPage, printSource.length);
       for (let i = start; i < end; i++) {
-        const a = archers[i];
+        const a = printSource[i];
         html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td><td>${a.gender === 'female' ? '女' : '男'}</td>`;
-        // 記録データが入っているstandキーを自動検出し、適切な結果を取得
+        // 記録データが入っていいるstandキーを自動検出し、適切な結果を取得
         const getArcherRoundResultsForPrint = (archer, roundNum) => {
           const arrowsRound1 = tplData?.arrowsRound1 ?? 4;
           const arrowsRound2 = tplData?.arrowsRound2 ?? 4;
           const archersPerStand = tplData?.archersPerStand ?? 6;
           const enableGenderSeparation = tplData?.enableGenderSeparation ?? false;
+          const femaleFirstPrint = enableGenderSeparation && (tplData?.femaleFirst ?? false);
 
           // 立ち番号を計算するロジック（ProgramViewと同じ）
           const getStandNumForPrint = (archer) => {
@@ -482,12 +575,33 @@ const TournamentView = ({ state, stands, checkInCount }) => {
               return 'unassigned';
             };
 
-            const checkedInForPrint = archers.filter(a => a.isCheckedIn);
+            const divOrderForPrint2 = [...divisions]
+              .sort((x, y) => {
+                const xi = x?.minRank ? rankOrderLocal.indexOf(normalizeRankLocal(x.minRank)) : 0;
+                const yi = y?.minRank ? rankOrderLocal.indexOf(normalizeRankLocal(y.minRank)) : 0;
+                return (xi === -1 ? Infinity : xi) - (yi === -1 ? Infinity : yi);
+              })
+              .map(d => d.id)
+              .filter(Boolean);
+
+            const checkedInForPrint = printSource.filter(a => a.isCheckedIn);
             const sortedCheckedInForPrint = [...checkedInForPrint].sort((a, b) => {
+              // ① 部門順
+              const aDivIdx = divOrderForPrint2.indexOf(getDivLocal(a));
+              const bDivIdx = divOrderForPrint2.indexOf(getDivLocal(b));
+              if (aDivIdx !== bDivIdx) {
+                if (aDivIdx === -1) return 1;
+                if (bDivIdx === -1) return -1;
+                return aDivIdx - bDivIdx;
+              }
+              // ② 性別
               if (enableGenderSeparation) {
                 const ag = a.gender || 'male', bg = b.gender || 'male';
-                if (ag !== bg) return ag === 'male' ? -1 : 1;
+                if (ag !== bg) return femaleFirstPrint
+                  ? (ag === 'female' ? -1 : 1)
+                  : (ag === 'male' ? -1 : 1);
               }
+              // ③ 段位昇順
               const ai = rankOrderLocal.indexOf(normalizeRankLocal(a.rank));
               const bi = rankOrderLocal.indexOf(normalizeRankLocal(b.rank));
               if (ai !== bi) {
@@ -495,9 +609,10 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                 if (bi === -1) return -1;
                 return ai - bi;
               }
-              const ad = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
-              const bd = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
-              return ad.getTime() - bd.getTime();
+              // ④ 習得日降順
+              const ad = a.rankAcquiredDate ? new Date(a.rankAcquiredDate).getTime() : Number.NEGATIVE_INFINITY;
+              const bd = b.rankAcquiredDate ? new Date(b.rankAcquiredDate).getTime() : Number.NEGATIVE_INFINITY;
+              return bd - ad;
             });
 
             const divId = getDivLocal(archer);
@@ -550,6 +665,188 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       html += `</tbody></table></div>`;
     }
 
+    const escapeHtml = (s) => String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+    const awardRankLimit = tplData?.awardRankLimit || 3;
+    const enableGenderSeparationFinal = tplData?.enableGenderSeparation ?? false;
+    const femaleFirstFinal = enableGenderSeparationFinal && (tplData?.femaleFirst ?? false);
+
+    const buildFinalResultsRows = (results, getArcherById) => {
+      return results
+        .filter(r => typeof r.rank === 'number' && r.rank <= awardRankLimit && r.rank > 0 && r.rank !== '敗退' && !r.isDefeated)
+        .sort((a, b) => a.rank - b.rank)
+        .map(r => {
+          const a = getArcherById(r.archerId);
+          const method = r.shootOffType === 'shichuma' ? '射詰'
+                      : r.shootOffType === 'enkin' ? '遠近'
+                      : r.rank_source === 'confirmed' ? '的中数' : '-';
+          const detail = r.shootOffType === 'shichuma'
+            ? (r.isWinner ? '優勝' : (r.pendingEnkin ? '遠近待ち' : (r.eliminatedAt ? `${r.eliminatedAt}本目脱落` : `射詰${r.rank}位`)))
+            : r.shootOffType === 'enkin'
+              ? `遠近競射${r.rank}位${r.targetRank ? ` (対象順位: ${r.targetRank}位)` : ''}`
+              : r.shootOffType === 'confirmed'
+                ? `${r.hitCount}本的中`
+                : '-';
+
+          return `<tr>`
+            + `<td style="font-weight:700">${escapeHtml(r.rank)}位</td>`
+            + `<td>${escapeHtml(r.name)}</td>`
+            + `<td>${escapeHtml(r.affiliation)}</td>`
+            + `<td>${escapeHtml(a?.rank || '-')}</td>`
+            + `<td style="text-align:center">${escapeHtml(method)}</td>`
+            + `<td style="text-align:center">${escapeHtml(detail)}</td>`
+            + `</tr>`;
+        })
+        .join('');
+    };
+
+    const buildFinalResultsHtml = () => {
+      if (!finalResults || (!finalResults.shichuma && !finalResults.enkin)) {
+        return `<div class="page"><h2 style="margin:0 0 8px">🏆 最終順位表</h2><p style="margin:8px 0;color:#666">最終順位表の記録がありません</p></div>`;
+      }
+
+      const mergedResults = [];
+      const enkinArcherIds = new Set((finalResults.enkin?.results || []).map(r => r.archerId));
+      const processedArcherIds = new Set();
+      const getArcherById = (id) => archers.find(a => a.archerId === id);
+
+      if (finalResults.shichuma && finalResults.shichuma.results) {
+        [...finalResults.shichuma.results]
+          .sort((a, b) => a.rank - b.rank)
+          .forEach(result => {
+            const a = getArcherById(result.archerId);
+            if (!a) return;
+            const isFromShichumaToEnkin = result.pendingEnkin || enkinArcherIds.has(result.archerId);
+            if (isFromShichumaToEnkin) return;
+            if (processedArcherIds.has(result.archerId)) return;
+            mergedResults.push({
+              archerId: result.archerId,
+              name: a.name,
+              affiliation: a.affiliation,
+              rank: result.rank,
+              rank_source: 'shichuma',
+              shootOffType: 'shichuma',
+              isWinner: result.isWinner,
+              eliminatedAt: result.eliminatedAt,
+              consecutiveHits: result.consecutiveHits,
+              isDefeated: result.isDefeated,
+              pendingEnkin: result.pendingEnkin,
+              divisionId: getDivisionIdForArcher(a, divisions)
+            });
+            processedArcherIds.add(result.archerId);
+          });
+      }
+
+      if (finalResults.enkin && finalResults.enkin.results) {
+        [...finalResults.enkin.results]
+          .sort((a, b) => {
+            const aTarget = a.targetRank != null ? a.targetRank : 9999;
+            const bTarget = b.targetRank != null ? b.targetRank : 9999;
+            if (aTarget !== bTarget) return aTarget - bTarget;
+            return (parseInt(a.rank) || 9999) - (parseInt(b.rank) || 9999);
+          })
+          .forEach(result => {
+            const a = getArcherById(result.archerId);
+            if (!a) return;
+            if (result.rank === '敗退' || result.isDefeated) return;
+            if (processedArcherIds.has(result.archerId)) return;
+            mergedResults.push({
+              archerId: result.archerId,
+              name: a.name,
+              affiliation: a.affiliation,
+              rank: typeof result.rank === 'number' ? result.rank : parseInt(result.rank),
+              rank_source: 'enkin',
+              shootOffType: 'enkin',
+              targetRank: result.targetRank,
+              isDefeated: result.isDefeated,
+              divisionId: getDivisionIdForArcher(a, divisions)
+            });
+            processedArcherIds.add(result.archerId);
+          });
+      }
+
+      const resultsByDivision = {};
+      const baseDivisions = (tplData?.divisions) || divisions;
+      baseDivisions.forEach(div => {
+        if (enableGenderSeparationFinal) {
+          resultsByDivision[`${div.id}_male`] = { division: { ...div, id: `${div.id}_male`, label: `${div.label}（男）` }, results: [] };
+          resultsByDivision[`${div.id}_female`] = { division: { ...div, id: `${div.id}_female`, label: `${div.label}（女）` }, results: [] };
+        } else {
+          resultsByDivision[div.id] = { division: div, results: [] };
+        }
+      });
+      if (!resultsByDivision.unassigned) {
+        if (enableGenderSeparationFinal) {
+          resultsByDivision['unassigned_male'] = { division: { id: 'unassigned_male', label: '未分類（男）' }, results: [] };
+          resultsByDivision['unassigned_female'] = { division: { id: 'unassigned_female', label: '未分類（女）' }, results: [] };
+        } else {
+          resultsByDivision.unassigned = { division: { id: 'unassigned', label: '未分類' }, results: [] };
+        }
+      }
+
+      mergedResults.forEach(r => {
+        const a = getArcherById(r.archerId);
+        if (!a) return;
+        const divId = getDivisionIdForArcher(a, divisions);
+        const gender = a.gender || 'male';
+        const key = enableGenderSeparationFinal ? `${divId}_${gender}` : divId;
+        if (!resultsByDivision[key]) {
+          resultsByDivision[key] = {
+            division: { id: key, label: key },
+            results: []
+          };
+        }
+        resultsByDivision[key].results.push(r);
+      });
+
+      Object.keys(resultsByDivision).forEach(k => {
+        resultsByDivision[k].results = resultsByDivision[k].results
+          .filter(r => typeof r.rank === 'number' && r.rank <= awardRankLimit && r.rank > 0 && r.rank !== '敗退' && !r.isDefeated)
+          .sort((a, b) => a.rank - b.rank);
+      });
+
+      const orderedDivisions = [];
+      baseDivisions.forEach(div => {
+        if (enableGenderSeparationFinal) {
+          const firstG = femaleFirstFinal ? 'female' : 'male';
+          const secondG = femaleFirstFinal ? 'male' : 'female';
+          const firstL = femaleFirstFinal ? '女' : '男';
+          const secondL = femaleFirstFinal ? '男' : '女';
+          orderedDivisions.push(resultsByDivision[`${div.id}_${firstG}`] || { division: { ...div, id: `${div.id}_${firstG}`, label: `${div.label}（${firstL}）` }, results: [] });
+          orderedDivisions.push(resultsByDivision[`${div.id}_${secondG}`] || { division: { ...div, id: `${div.id}_${secondG}`, label: `${div.label}（${secondL}）` }, results: [] });
+        } else {
+          orderedDivisions.push(resultsByDivision[div.id] || { division: div, results: [] });
+        }
+      });
+
+      let block = `<div class="page"><h2 style="margin:0 0 8px">🏆 最終順位表</h2>`
+        + `<p style="margin:0 0 8px;color:#555">表彰範囲：${escapeHtml(awardRankLimit)}位まで</p>`;
+
+      orderedDivisions.forEach(divData => {
+        block += `<h3 style="margin:14px 0 6px">${escapeHtml(divData.division.label || divData.division.id)}</h3>`;
+        block += `<table><thead><tr>`
+          + `<th>順位</th><th>氏名</th><th>所属</th><th>段位</th><th>決定方法</th><th>詳細</th>`
+          + `</tr></thead><tbody>`;
+        if (!divData.results || divData.results.length === 0) {
+          block += `<tr><td colspan="6" style="text-align:center;color:#666;padding:16px">この部門の最終順位表の記録がありません</td></tr>`;
+        } else {
+          block += buildFinalResultsRows(divData.results, getArcherById);
+        }
+        block += `</tbody></table>`;
+      });
+      block += `</div>`;
+      return block;
+    };
+
+    if (programTableMode !== 'all_applicants') {
+      html += buildFinalResultsHtml();
+    }
+
     html += `</body></html>`;
 
     const win = window.open('', '_blank');
@@ -559,6 +856,88 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     win.focus();
     // Give browser a moment to render
     setTimeout(() => { win.print(); }, 300);
+  };
+
+  const downloadProgramPdf = async () => {
+    if (!selectedTournamentId) { alert('大会を選択してください'); return; }
+    const tpl = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+    const tplData = tpl?.data || {};
+    const title = tplData?.name || selectedTournamentId;
+    const exportSource = programTableMode === 'all_applicants' ? allApplicants : archers;
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const fontInfo = await ensureJapaneseFont(doc);
+    doc.setFontSize(14);
+    doc.text(`${title} プログラム表`, 14, 16);
+    doc.setFontSize(10);
+    const datetime = tplData?.datetime || '';
+    const location = tplData?.location || '';
+    if (datetime) doc.text(datetime, 14, 22);
+    if (location) doc.text(location, 14, 27);
+
+    const head = programTableMode === 'all_applicants'
+      ? [['#', '氏名', '所属', '段位', '性別']]
+      : [['#', '氏名', '所属', '段位', '性別', '1立ち目', '2立ち目']];
+
+    const body = exportSource.map((a, idx) => {
+      const base = [
+        String(a.standOrder || idx + 1),
+        String(a.name || ''),
+        String(a.affiliation || ''),
+        String(a.rank || ''),
+        a.gender === 'female' ? '女' : '男'
+      ];
+      if (programTableMode === 'all_applicants') return base;
+
+      const r1 = getArcherRoundResults(a, 1).map(resultSymbol).join('');
+      const r2 = getArcherRoundResults(a, 2).map(resultSymbol).join('');
+      return [...base, r1, r2];
+    });
+
+    autoTable(doc, {
+      head,
+      body,
+      startY: 32,
+      styles: { fontSize: 9, cellPadding: 1.5, ...(fontInfo?.loaded ? { font: fontInfo.fontName } : {}) },
+      headStyles: { fillColor: [245, 245, 245], textColor: 20 },
+      margin: { left: 10, right: 10 }
+    });
+
+    const safeTitle = String(title).replace(/[\\/:*?"<>|]/g, '_');
+    doc.save(`${safeTitle}_program.pdf`);
+  };
+
+  const downloadProgramExcel = () => {
+    if (!selectedTournamentId) { alert('大会を選択してください'); return; }
+    const tpl = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+    const tplData = tpl?.data || {};
+    const title = tplData?.name || selectedTournamentId;
+    const exportSource = programTableMode === 'all_applicants' ? allApplicants : archers;
+
+    const header = programTableMode === 'all_applicants'
+      ? ['#', '氏名', '所属', '段位', '性別']
+      : ['#', '氏名', '所属', '段位', '性別', '1立ち目', '2立ち目'];
+
+    const rows = exportSource.map((a, idx) => {
+      const base = [
+        a.standOrder || idx + 1,
+        a.name || '',
+        a.affiliation || '',
+        a.rank || '',
+        a.gender === 'female' ? '女' : '男'
+      ];
+      if (programTableMode === 'all_applicants') return base;
+
+      const r1 = getArcherRoundResults(a, 1).map(resultSymbol).join('');
+      const r2 = getArcherRoundResults(a, 2).map(resultSymbol).join('');
+      return [...base, r1, r2];
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'program');
+    const safeTitle = String(title).replace(/[\\/:*?"<>|]/g, '_');
+    XLSX.writeFile(wb, `${safeTitle}_program.xlsx`);
   };
 
   // パフォーマンス向上のため、メモ化された関数を使用
@@ -572,11 +951,25 @@ const TournamentView = ({ state, stands, checkInCount }) => {
    */
   const getStandNumForArcher = (archer, localArchers, localDivisions) => {
     const archersPerStand = tournament?.archersPerStand ?? 6;
-    const enableGenderSeparation = tournament?.enableGenderSeparation ?? false;
+    // ※ tournament は state.tournament（設定値のみ）で enableGenderSeparation を持たない場合があるため
+    //    selectedTournament?.data を優先参照する
+    const enableGenderSeparation = selectedTournament?.data?.enableGenderSeparation ?? tournament?.enableGenderSeparation ?? false;
+    const femaleFirstStand = enableGenderSeparation && (selectedTournament?.data?.femaleFirst ?? false);
+
+    const useDivisions = localDivisions || divisions;
+
+    const divisionOrderStand = [...useDivisions]
+      .sort((x, y) => {
+        const xi = x?.minRank ? rankOrder.indexOf(normalizeRank(x.minRank)) : 0;
+        const yi = y?.minRank ? rankOrder.indexOf(normalizeRank(y.minRank)) : 0;
+        return (xi === -1 ? Infinity : xi) - (yi === -1 ? Infinity : yi);
+      })
+      .map(d => d.id)
+      .filter(Boolean);
 
     const getDivId = (a) => {
       const rIdx = rankOrder.indexOf(normalizeRank(a?.rank));
-      for (const d of (localDivisions || divisions)) {
+      for (const d of useDivisions) {
         const minIdx = d?.minRank ? rankOrder.indexOf(normalizeRank(d.minRank)) : 0;
         const maxIdx = d?.maxRank ? rankOrder.indexOf(normalizeRank(d.maxRank)) : rankOrder.length - 1;
         if (rIdx >= minIdx && rIdx <= maxIdx) return d.id;
@@ -584,13 +977,25 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       return 'unassigned';
     };
 
-    // チェックイン済みのみ抽出 → RecordingView と同じソート
+    // チェックイン済みのみ抽出 → 部門→性別→段位 の順でソート（RecordingView と同じ）
     const checkedIn = (localArchers || archers).filter(a => a.isCheckedIn);
     const sortedCheckedIn = [...checkedIn].sort((a, b) => {
+      // ① 部門順
+      const aDivIdx = divisionOrderStand.indexOf(getDivId(a));
+      const bDivIdx = divisionOrderStand.indexOf(getDivId(b));
+      if (aDivIdx !== bDivIdx) {
+        if (aDivIdx === -1) return 1;
+        if (bDivIdx === -1) return -1;
+        return aDivIdx - bDivIdx;
+      }
+      // ② 性別
       if (enableGenderSeparation) {
         const ag = a.gender || 'male', bg = b.gender || 'male';
-        if (ag !== bg) return ag === 'male' ? -1 : 1;
+        if (ag !== bg) return femaleFirstStand
+          ? (ag === 'female' ? -1 : 1)
+          : (ag === 'male' ? -1 : 1);
       }
+      // ③ 段位昇順
       const ai = rankOrder.indexOf(normalizeRank(a.rank));
       const bi = rankOrder.indexOf(normalizeRank(b.rank));
       if (ai !== bi) {
@@ -598,9 +1003,10 @@ const TournamentView = ({ state, stands, checkInCount }) => {
         if (bi === -1) return -1;
         return ai - bi;
       }
-      const ad = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
-      const bd = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
-      return ad.getTime() - bd.getTime();
+      // ④ 習得日降順
+      const ad = a.rankAcquiredDate ? new Date(a.rankAcquiredDate).getTime() : Number.NEGATIVE_INFINITY;
+      const bd = b.rankAcquiredDate ? new Date(b.rankAcquiredDate).getTime() : Number.NEGATIVE_INFINITY;
+      return bd - ad;
     });
 
     const divisionId = getDivId(archer);
@@ -877,25 +1283,26 @@ const TournamentView = ({ state, stands, checkInCount }) => {
         });
     });
 
-    // 部門順を維持して配列に変換（すべての部門を表示）
+    // 部門順を維持して配列に変換（femaleFirst に従って男女の順序を決定）
     const divisionResults = [];
     divisions.forEach(div => {
       if (enableGenderSeparation) {
-        // 男性部門を常に追加
-        divisionResults.push(resultsByDivision[`${div.id}_male`] || { 
-          division: { ...div, id: `${div.id}_male`, label: `${div.label}（男）` }, 
-          results: [] 
+        const firstG = femaleFirst ? 'female' : 'male';
+        const secondG = femaleFirst ? 'male' : 'female';
+        const firstL = femaleFirst ? '女' : '男';
+        const secondL = femaleFirst ? '男' : '女';
+        divisionResults.push(resultsByDivision[`${div.id}_${firstG}`] || {
+          division: { ...div, id: `${div.id}_${firstG}`, label: `${div.label}（${firstL}）` },
+          results: []
         });
-        // 女性部門を常に追加
-        divisionResults.push(resultsByDivision[`${div.id}_female`] || { 
-          division: { ...div, id: `${div.id}_female`, label: `${div.label}（女）` }, 
-          results: [] 
+        divisionResults.push(resultsByDivision[`${div.id}_${secondG}`] || {
+          division: { ...div, id: `${div.id}_${secondG}`, label: `${div.label}（${secondL}）` },
+          results: []
         });
       } else {
-        // 部門を常に追加
-        divisionResults.push(resultsByDivision[div.id] || { 
-          division: div, 
-          results: [] 
+        divisionResults.push(resultsByDivision[div.id] || {
+          division: div,
+          results: []
         });
       }
     });
@@ -1109,10 +1516,11 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     const tpl = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     const tplData = tpl?.data || {};
     const attachments = getStoredAttachments(selectedTournamentId);
-    const totalPagesProgram = Math.max(1, Math.ceil(archers.length / programArchersPerPage));
+    const programSource = programTableMode === 'all_applicants' ? allApplicants : archers;
+    const totalPagesProgram = Math.max(1, Math.ceil(programSource.length / programArchersPerPage));
     const indexOfFirstProgram = (currentPageProgram - 1) * programArchersPerPage;
     const indexOfLastProgram = indexOfFirstProgram + programArchersPerPage;
-    const currentArchersProgram = archers.slice(indexOfFirstProgram, indexOfLastProgram);
+    const currentArchersProgram = programSource.slice(indexOfFirstProgram, indexOfLastProgram);
 
     return (
       <div className="view-container">
@@ -1125,7 +1533,11 @@ const TournamentView = ({ state, stands, checkInCount }) => {
           </button>
           <div className="flex justify-between items-center">
             <h1>プログラム表</h1>
-            <button onClick={printProgram} className="btn-primary">印刷</button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button onClick={printProgram} className="btn-primary">印刷</button>
+              <button onClick={downloadProgramPdf} className="btn-secondary">PDF</button>
+              <button onClick={downloadProgramExcel} className="btn-secondary">Excel</button>
+            </div>
           </div>
         </div>
 
@@ -1173,7 +1585,23 @@ const TournamentView = ({ state, stands, checkInCount }) => {
               </div>
 
               <div className="card">
-                <h2 className="card-title">立ち順表</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="card-title">立ち順表</h2>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className={`btn ${programTableMode === 'checked_in' ? 'btn-active' : ''}`}
+                      onClick={() => { setProgramTableMode('checked_in'); setCurrentPageProgram(1); }}
+                    >
+                      チェックイン済み
+                    </button>
+                    <button
+                      className={`btn ${programTableMode === 'all_applicants' ? 'btn-active' : ''}`}
+                      onClick={() => { setProgramTableMode('all_applicants'); setCurrentPageProgram(1); }}
+                    >
+                      申込者全員
+                    </button>
+                  </div>
+                </div>
                 <div className="table-responsive">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
@@ -1183,15 +1611,19 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">所属</th>
                         <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
                         <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">性別</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
+                        {programTableMode === 'checked_in' && (
+                          <>
+                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
+                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {isLoading && archers.length === 0 ? (
-                        <tr><td colSpan="7" className="px-4 py-4 text-center">読み込み中...</td></tr>
-                      ) : archers.length === 0 ? (
-                        <tr><td colSpan="7" className="px-4 py-4 text-center">選手が登録されていません</td></tr>
+                      {isLoading && programSource.length === 0 ? (
+                        <tr><td colSpan={programTableMode === 'checked_in' ? 7 : 5} className="px-4 py-4 text-center">読み込み中...</td></tr>
+                      ) : programSource.length === 0 ? (
+                        <tr><td colSpan={programTableMode === 'checked_in' ? 7 : 5} className="px-4 py-4 text-center">選手が登録されていません</td></tr>
                       ) : (
                         currentArchersProgram.map(a => (
                           <tr key={a.archerId}>
@@ -1200,34 +1632,39 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                             <td className="px-4 py-3">{a.affiliation}</td>
                             <td className="px-4 py-3 text-center">{a.rank}</td>
                             <td className="px-4 py-3 text-center">{a.gender === 'female' ? '女' : '男'}</td>
-                            <td className="px-4 py-3">
-                              <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
-                                {getArcherRoundResults(a, 1).map((r, idx) => (
-                                  <span key={idx} style={{
-                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                    width: '20px', height: '20px', fontSize: '13px',
-                                    color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
-                                    fontWeight: r === 'o' ? 700 : 400
-                                  }}>
-                                    {resultSymbol(r) || '　'}
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
-                                {getArcherRoundResults(a, 2).map((r, idx) => (
-                                  <span key={idx} style={{
-                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                    width: '20px', height: '20px', fontSize: '13px',
-                                    color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
-                                    fontWeight: r === 'o' ? 700 : 400
-                                  }}>
-                                    {resultSymbol(r) || '　'}
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
+
+                            {programTableMode === 'checked_in' && (
+                              <>
+                                <td className="px-4 py-3">
+                                  <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
+                                    {getArcherRoundResults(a, 1).map((r, idx) => (
+                                      <span key={idx} style={{
+                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                        width: '20px', height: '20px', fontSize: '13px',
+                                        color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
+                                        fontWeight: r === 'o' ? 700 : 400
+                                      }}>
+                                        {resultSymbol(r) || '　'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
+                                    {getArcherRoundResults(a, 2).map((r, idx) => (
+                                      <span key={idx} style={{
+                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                        width: '20px', height: '20px', fontSize: '13px',
+                                        color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
+                                        fontWeight: r === 'o' ? 700 : 400
+                                      }}>
+                                        {resultSymbol(r) || '　'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                              </>
+                            )}
                           </tr>
                         ))
                       )}
@@ -1235,10 +1672,10 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                   </table>
                 </div>
 
-                {archers.length > programArchersPerPage && (
+                {programSource.length > programArchersPerPage && (
                   <div className="flex items-center justify-between mt-4">
                     <div>
-                      <p className="text-sm">{indexOfFirstProgram + 1} ? {Math.min(indexOfLastProgram, archers.length)} / {archers.length} 名</p>
+                      <p className="text-sm">{indexOfFirstProgram + 1} ? {Math.min(indexOfLastProgram, programSource.length)} / {programSource.length} 名</p>
                     </div>
                     <div className="flex space-x-1">
                       <button onClick={() => paginateProgram(Math.max(1, currentPageProgram-1))} disabled={currentPageProgram === 1} className="btn">前へ</button>

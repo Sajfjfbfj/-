@@ -36,7 +36,28 @@ const TournamentSetupView = ({ state, dispatch }) => {
     return `KYUDO_${dateStr}_${random}`;
   };
 
-  const handleInputChange = (field, value) => { setFormData(prev => ({ ...prev, [field]: value })); };
+  const handleInputChange = (field, value) => { 
+    setFormData(prev => ({ 
+      ...prev, 
+      [field]: value 
+    }));
+    
+    // 全部門男女を分けるがチェックされた場合、全ての部門の男女分けを同期
+    if (field === 'enableGenderSeparation') {
+      setFormData(prev => {
+        const updatedDivisions = (prev.divisions || []).map(division => ({
+          ...division,
+          enableGenderSeparation: value
+        }));
+        // 男女分けをオフにしたら femaleFirst もリセット
+        return {
+          ...prev,
+          divisions: updatedDivisions,
+          femaleFirst: value ? prev.femaleFirst : false
+        };
+      });
+    }
+  };
   const defaultDivisions = [
     { id: 'lower', label: '級位~三段以下の部', minRank: '無指定', maxRank: '参段' },
     { id: 'middle', label: '四・五段の部', minRank: '四段', maxRank: '五段' },
@@ -428,12 +449,28 @@ const TournamentSetupView = ({ state, dispatch }) => {
                   onChange={(e) => handleInputChange('enableGenderSeparation', e.target.checked)}
                   style={{ width: '1rem', height: '1rem' }}
                 />
-                <span className="label">各部門で男女を分ける</span>
+                <span className="label">全部門男女を分ける</span>
               </label>
               {formData.enableGenderSeparation && (
-                <p className="text-sm text-gray-600" style={{ marginTop: '0.25rem' }}>
-                  有効にすると、各部門で男と女の順位を別々に表示します
-                </p>
+                <>
+                  <p className="text-sm text-gray-600" style={{ marginTop: '0.25rem', marginBottom: '0.5rem' }}>
+                    有効にすると、すべての部門で男女の順位を別々に表示します
+                  </p>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '1.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={formData.femaleFirst || false}
+                      onChange={(e) => handleInputChange('femaleFirst', e.target.checked)}
+                      style={{ width: '1rem', height: '1rem' }}
+                    />
+                    <span className="label">女子を先にプログラム表・立ち順に載せる</span>
+                  </label>
+                  {formData.femaleFirst && (
+                    <p className="text-sm text-gray-500" style={{ marginTop: '0.25rem', marginLeft: '1.5rem' }}>
+                      有効にすると、各部門内で女子が男子より先に並びます
+                    </p>
+                  )}
+                </>
               )}
             </div>
             
@@ -474,6 +511,15 @@ const TournamentSetupView = ({ state, dispatch }) => {
                           {rankOptions.map(r => (<option key={r} value={r}>{r}</option>))}
                         </select>
                         <div className="division-actions" style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.5rem' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <input
+                              type="checkbox"
+                              checked={d.enableGenderSeparation || false}
+                              onChange={(e) => handleDivisionChange(idx, 'enableGenderSeparation', e.target.checked)}
+                              style={{ width: '1rem', height: '1rem' }}
+                            />
+                            <span className="text-sm">男女分ける</span>
+                          </label>
                           <button type="button" className="btn-fix" onClick={() => handleRemoveDivision(idx)}>削除</button>
                         </div>
                       </div>

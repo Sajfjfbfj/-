@@ -37,6 +37,13 @@ export const distanceKm = (lat1, lng1, lat2, lng2) => {
 export const normalizeTournamentFormData = (data, defaultDivisions, attachments) => {
   const d = data || {};
 
+  // Process divisions with gender separation settings
+  const processedDivisions = (d.divisions || defaultDivisions || []).map(division => ({
+    ...division,
+    enableGenderSeparation: division.enableGenderSeparation || false,
+    id: division.id || `division_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`
+  }));
+
   return {
     name: d.name || '',
     datetime: d.datetime || '',
@@ -59,7 +66,7 @@ export const normalizeTournamentFormData = (data, defaultDivisions, attachments)
     applicationMethod: d.applicationMethod || '',
     remarks: d.remarks || '',
     enableGenderSeparation: d.enableGenderSeparation || false,
-    divisions: d.divisions || defaultDivisions,
+    divisions: processedDivisions,
     attachments: attachments || [],
     arrowsRound1: d.arrowsRound1 ?? 4,
     arrowsRound2: d.arrowsRound2 ?? 4
@@ -84,5 +91,61 @@ export const setStoredAttachments = (tournamentId, attachments) => {
     localStorage.setItem(`tournamentAttachments:${tournamentId}`, JSON.stringify(Array.isArray(attachments) ? attachments : []));
   } catch (error) {
     console.error('Failed to store attachments:', error);
+  }
+};
+
+export const getDivisionForArcher = (archer, tournamentDivisions) => {
+  const { ceremony } = (() => {
+    const ceremonyRanks = ['錬士', '教士', '範士'];
+    let ceremony = '';
+    let r = archer.rank || '';
+    for (const c of ceremonyRanks) {
+      if (r.includes(c)) {
+        ceremony = c;
+        r = r.replace(c, '');
+        break;
+      }
+    }
+    return { ceremony, rank: r };
+  })();
+
+  if (ceremony) return 'title';
+
+  const rankOrder = [
+    '無指定',
+    '五級', '四級', '三級', '弐級', '壱級',
+    '初段', '弐段', '参段', '四段', '五段',
+    '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'
+  ];
+
+  const normalizeRank = (rank) => {
+    if (!rank) return '';
+    return rank
+      .replace('二段', '弐段')
+      .replace('三段', '参段')
+      .replace('二級', '弐級')
+      .replace('一級', '壱級');
+  };
+
+  const normalized = normalizeRank(archer.rank);
+  const idx = rankOrder.indexOf(normalized);
+
+  if (Array.isArray(tournamentDivisions) && tournamentDivisions.length > 0) {
+    for (const d of tournamentDivisions) {
+      if (!d) continue;
+      const minR = d.minRank || '';
+      const maxR = d.maxRank || '';
+      const minIdx = rankOrder.indexOf(normalizeRank(minR));
+      const maxIdx = rankOrder.indexOf(normalizeRank(maxR));
+      const effectiveMin = minIdx === -1 ? 0 : Math.min(minIdx, rankOrder.length - 1);
+      const effectiveMax = maxIdx === -1 ? rankOrder.length - 1 : Math.max(maxIdx, 0);
+      if (idx !== -1 && idx >= effectiveMin && idx <= effectiveMax) {
+        // If division has gender separation enabled, append gender to division ID
+        if (d.enableGenderSeparation && archer.gender) {
+          return `${d.id}_${archer.gender}`;
+        }
+        return d.id;
+      }
+    }
   }
 };

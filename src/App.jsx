@@ -15,6 +15,7 @@ import RecordingView from './components/RecordingView';
 import SettingsView from './components/SettingsView';
 import TournamentSetupView from './components/TournamentSetupView';
 import TournamentView from './components/TournamentView';
+import ApplicantTournamentDetailView from './components/ApplicantTournamentDetailView';
 
 // Other Imports
 import { tournamentsApi } from './utils/api';
@@ -126,6 +127,7 @@ const KyudoTournamentSystem = () => {
             <button onClick={() => setMainView('admin')} className={`nav-tab ${mainView === 'admin' ? 'nav-tab-active' : ''}`}><Lock size={14} />運営</button>
             <button onClick={() => setMainView('tournament-setup')} className={`nav-tab ${mainView === 'tournament-setup' ? 'nav-tab-active' : ''}`}>大会登録</button>
             <button onClick={() => setMainView('archer-signup')} className={`nav-tab ${mainView === 'archer-signup' ? 'nav-tab-active' : ''}`}>選手申し込み</button>
+            <button onClick={() => setMainView('applicant-tournament-detail')} className={`nav-tab ${mainView === 'applicant-tournament-detail' ? 'nav-tab-active' : ''}`}>出場大会詳細</button>
           </div>
 
           {mainView === 'tournament' && <TournamentView state={tournamentState} stands={dynamicStands} checkInCount={checkInCount} />}
@@ -133,18 +135,17 @@ const KyudoTournamentSystem = () => {
           {mainView === 'admin' && !isAdminLoggedIn && <AdminLoginView adminPassword={adminPassword} setAdminPassword={setAdminPassword} adminLoginStep={adminLoginStep} setAdminLoginStep={setAdminLoginStep} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} state={tournamentState} onLogin={() => setIsAdminLoggedIn(true)} />}
           {mainView === 'admin' && isAdminLoggedIn && <AdminView state={tournamentState} dispatch={dispatch} adminView={adminView} setAdminView={setAdminView} stands={dynamicStands} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} onLogout={() => { 
             setIsAdminLoggedIn(false); 
-            setAdminPassword(null); 
             setAdminLoginStep('password_login'); 
             setSelectedTournamentId(null); 
             try {
               localStorage.removeItem('adminSelectedTournamentDate');
               localStorage.removeItem('adminSelectedTournamentId');
               localStorage.removeItem('selectedTournamentId');
-              localStorage.removeItem('adminPassword'); 
             } catch {}
           }} />}
           {mainView === 'tournament-setup' && <TournamentSetupView state={tournamentState} dispatch={dispatch} />}
           {mainView === 'archer-signup' && <ArcherSignupView state={tournamentState} dispatch={dispatch} />}
+          {mainView === 'applicant-tournament-detail' && <ApplicantTournamentDetailView state={tournamentState} />}
         </>
       )}
     </div>

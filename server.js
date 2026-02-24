@@ -195,13 +195,24 @@ app.delete('/api/tournaments/:id', async (req, res) => {
 // 4. 申込者一覧取得
 app.get('/api/applicants/:tournamentId', async (req, res) => {
   try {
+    console.log('🔍 API Request: GET /api/applicants/:tournamentId');
+    console.log('📋 Tournament ID:', req.params.tournamentId);
+    
+    if (!req.params.tournamentId) {
+      console.log('❌ Missing tournament ID');
+      return res.status(400).json({ success: false, message: 'Tournament ID is required' });
+    }
+    
     const db = await connectToDatabase();
     const applicants = await db.collection('applicants')
       .find({ tournamentId: req.params.tournamentId })
       .toArray();
+    
+    console.log('📊 Found applicants:', applicants.length);
     res.status(200).json({ success: true, data: applicants });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('❌ Database error in GET /api/applicants/:tournamentId:', error);
+    res.status(500).json({ success: false, message: 'Database error', error: error.message });
   }
 });
 

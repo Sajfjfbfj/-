@@ -136,9 +136,16 @@ const RecordingView = ({ state, dispatch, stands }) => {
         };
 
         const sortedArchers = [...checkedIn].sort((a, b) => {
+          // 部門ごとの男女分け設定を確認
+          const aDivId = getDivisionIdForArcher(a, divisions);
+          const bDivId = getDivisionIdForArcher(b, divisions);
+          const aDivision = divisions.find(d => d.id === aDivId);
+          const bDivision = divisions.find(d => d.id === bDivId);
+          const aGenderSeparation = aDivision?.enableGenderSeparation || tournament?.data?.enableGenderSeparation || false;
+          const bGenderSeparation = bDivision?.enableGenderSeparation || tournament?.data?.enableGenderSeparation || false;
+          
           // 男女分けが有効な場合、男を先に配置
-          const enableGenderSeparation = tournament?.data?.enableGenderSeparation || false;
-          if (enableGenderSeparation) {
+          if (aGenderSeparation || bGenderSeparation) {
             const aGender = a.gender || "male";
             const bGender = b.gender || "male";
             if (aGender !== bGender) {
@@ -158,9 +165,9 @@ const RecordingView = ({ state, dispatch, stands }) => {
             return aIndex - bIndex;
           }
 
-          const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
-          const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
-          return aDate.getTime() - bDate.getTime();
+          const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate).getTime() : Number.NEGATIVE_INFINITY;
+          const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate).getTime() : Number.NEGATIVE_INFINITY;
+          return bDate - aDate;
         });
 
         const totalNeeded = tournament.arrowsRound1 + tournament.arrowsRound2;
@@ -231,7 +238,12 @@ const RecordingView = ({ state, dispatch, stands }) => {
   const divisionArchers = archers.filter(a => {
     const archerDivisions = getDivisionIdsForArcher(a, divisions);
     if (!archerDivisions.includes(selectedDivision)) return false;
-    if (!enableGenderSeparation) return true;
+    
+    // 選択された部門の男女分け設定を確認
+    const division = divisions.find(d => d.id === selectedDivision);
+    const divGenderSeparation = division?.enableGenderSeparation || tournament?.data?.enableGenderSeparation || false;
+    
+    if (!divGenderSeparation) return true;
     if (selectedGender === 'all') return true;
     const g = (a.gender || 'male');
     if (selectedGender === 'male') return g === 'male';
@@ -407,13 +419,19 @@ const RecordingView = ({ state, dispatch, stands }) => {
                   </button>
                 ))}
               </div>
-              {enableGenderSeparation && (
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                  <button onClick={() => setSelectedGender('all')} className={`btn ${selectedGender === 'all' ? 'btn-active' : ''}`} style={{ flex: 1 }}>全員</button>
-                  <button onClick={() => setSelectedGender('male')} className={`btn ${selectedGender === 'male' ? 'btn-active' : ''}`} style={{ flex: 1 }}>男子</button>
-                  <button onClick={() => setSelectedGender('female')} className={`btn ${selectedGender === 'female' ? 'btn-active' : ''}`} style={{ flex: 1 }}>女子</button>
-                </div>
-              )}
+              {(() => {
+                // 選択された部門の男女分け設定を確認
+                const division = divisions.find(d => d.id === selectedDivision);
+                const divGenderSeparation = division?.enableGenderSeparation || tournament?.data?.enableGenderSeparation || false;
+                
+                return divGenderSeparation && (
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <button onClick={() => setSelectedGender('all')} className={`btn ${selectedGender === 'all' ? 'btn-active' : ''}`} style={{ flex: 1 }}>全員</button>
+                    <button onClick={() => setSelectedGender('male')} className={`btn ${selectedGender === 'male' ? 'btn-active' : ''}`} style={{ flex: 1 }}>男子</button>
+                    <button onClick={() => setSelectedGender('female')} className={`btn ${selectedGender === 'female' ? 'btn-active' : ''}`} style={{ flex: 1 }}>女子</button>
+                  </div>
+                );
+              })()}
               <p className="hint" style={{ marginTop: '0.5rem' }}>この部門の選手数: {divisionArchers.length}人</p>
             </div>
 

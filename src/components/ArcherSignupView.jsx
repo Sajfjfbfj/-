@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { API_URL } from '../utils/api';
+import { getDivisionForArcher } from '../utils/tournament';
 
 const ArcherSignupView = ({ state, dispatch }) => {
   const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
@@ -136,7 +137,10 @@ const ArcherSignupView = ({ state, dispatch }) => {
       const archerId = `${selectedTournamentId}_${Date.now().toString(36).toUpperCase()}`;
       const deviceId = localStorage.getItem('kyudo_tournament_device_id') || `device_${Math.random().toString(36).substr(2, 9)}`;
       
-      const divisionForApplicant = getDivisionFromRank(formData.rank, tournament?.data?.divisions);
+      const divisionForApplicant = getDivisionForArcher({
+        rank: formData.rank,
+        gender: formData.gender
+      }, tournament?.data?.divisions);
 
       const applicantData = {
         name: formData.name,
@@ -179,6 +183,15 @@ const ArcherSignupView = ({ state, dispatch }) => {
 
         localStorage.setItem('kyudo_tournament_device_id', deviceId);
         localStorage.setItem('kyudo_tournament_user', JSON.stringify(applicantData));
+        try {
+          const stored = localStorage.getItem('kyudo_tournament_users');
+          const list = stored ? JSON.parse(stored) : [];
+          const safeList = Array.isArray(list) ? list : [];
+          safeList.push(applicantData);
+          localStorage.setItem('kyudo_tournament_users', JSON.stringify(safeList));
+        } catch {
+          // ignore
+        }
         
         setFormData({
           name: '',
