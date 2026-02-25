@@ -432,6 +432,40 @@ app.delete('/api/ranking/shichuma/:tournamentId', async (req, res) => {
   }
 });
 
+// 12-0. 遠近競射の個別結果保存（選手1人ずつの距離・矢種を保存）
+app.post('/api/ranking/enkin', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, archerId, distance, arrowType = 'normal' } = req.body;
+
+    if (!tournamentId || !archerId || distance === undefined) {
+      return res.status(400).json({ success: false, message: 'Missing required parameters' });
+    }
+
+    const updateData = {
+      enkinResult: { distance, arrowType, updatedAt: new Date() },
+      updatedAt: new Date()
+    };
+
+    const applicant = await db.collection('applicants').findOne({ tournamentId, archerId });
+    if (!applicant) {
+      return res.status(404).json({ success: false, message: '選手が見つかりません' });
+    }
+
+    await db.collection('applicants').updateOne(
+      { tournamentId, archerId },
+      { $set: updateData }
+    );
+
+    console.log(`🎯 Enkin result saved: tournamentId=${tournamentId}, archerId=${archerId}, distance=${distance}, arrowType=${arrowType}`);
+    res.status(200).json({ success: true, message: '遠近競射結果を保存しました' });
+
+  } catch (error) {
+    console.error('❌ POST /api/ranking/enkin error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 12. 遠近競射の最終結果保存
 app.post('/api/ranking/enkin/final', async (req, res) => {
   try {
@@ -447,16 +481,8 @@ app.post('/api/ranking/enkin/final', async (req, res) => {
     
     let mergedResults = [];
     if (existingData && existingData.results) {
-      // 今回保存する部門IDを取得
-      const newDivisionIds = new Set(results.map(r => r.divisionId).filter(Boolean));
-
-      // 同じtargetRank かつ 同じdivisionId の既存データのみ除外（上書き対象）
-      // → 異なる部門が同じtargetRankで保存していても消さない
-      mergedResults = existingData.results.filter(r => {
-        if (r.targetRank !== targetRank) return true; // targetRankが違う → 保持
-        if (newDivisionIds.size > 0 && r.divisionId && !newDivisionIds.has(r.divisionId)) return true; // 別部門 → 保持
-        return false; // 同じtargetRank + 同じ部門 → 上書きのため除外
-      });
+      // 既存の結果から同じtargetRankのものを除外
+      mergedResults = existingData.results.filter(r => r.targetRank !== targetRank);
     }
     
     // 新しい結果を追加
