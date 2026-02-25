@@ -436,9 +436,10 @@ app.delete('/api/ranking/shichuma/:tournamentId', async (req, res) => {
 app.post('/api/ranking/enkin', async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { tournamentId, archerId, distance, arrowType = 'normal' } = req.body;
+    const { tournamentId, archerId, arrowType = 'normal' } = req.body;
+    const distance = req.body.distance !== undefined ? req.body.distance : req.body.rank;
 
-    if (!tournamentId || !archerId || distance === undefined) {
+    if (!tournamentId || !archerId || (distance === undefined || distance === null)) {
       return res.status(400).json({ success: false, message: 'Missing required parameters' });
     }
 
