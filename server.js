@@ -487,9 +487,16 @@ app.post('/api/ranking/enkin/final', async (req, res) => {
       
       // 既存の結果から「同じtargetRank かつ 同じdivisionId」のものだけを除外（他部門の同targetRankは保持）
       mergedResults = existingData.results.filter(r => {
-        if (r.targetRank !== targetRank) return true; // targetRankが違えば保持
-        if (!r.divisionId || newDivisionIds.size === 0) return r.targetRank !== targetRank; // divisionIdがない場合は従来通り
-        return !newDivisionIds.has(r.divisionId); // 同じ部門のみ上書き対象
+        // 1. そもそも部門が違えば絶対に保持
+        if (r.divisionId && !newDivisionIds.has(r.divisionId)) return true;
+        
+        // 2. 同じ部門の場合、今回更新する順位（targetRank）以外のデータは保持
+        if (r.divisionId && newDivisionIds.has(r.divisionId)) {
+          return r.targetRank !== targetRank; 
+        }
+        
+        // 3. 部門IDがない古いデータなどは安全のため削除（上書き）
+        return false;
       });
     }
     

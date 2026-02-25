@@ -1560,15 +1560,15 @@ const categorizedGroups = useMemo(() => {
 
             const finalRank = result.rank;
             
-            // 射詰→遠近の選手かチェック
-            // pendingEnkin フラグ（遠近待ち）または遠近結果が存在する場合、
-            // または現在遠近競射に進行中の選手はスキップ
+            // 射詰→遠近の選手かチェック（緩和：遠近結果が存在する場合のみスキップ）
             const isCurrentlyInEnkin = shootOffType === 'enkin' && currentShootOffArchers.some(a => a.archerId === result.archerId);
-            const isFromShichumaToEnkin = result.pendingEnkin || isCurrentlyInEnkin || divisionEnkinResults.some(e => e.archerId === result.archerId);
-            console.log(`    ?? 射詰→遠近チェック: ${archer.name} -> ${isFromShichumaToEnkin ? '遠近あり/待ち' : '遠近なし'}${result.pendingEnkin ? ' (pendingEnkin)' : ''}${isCurrentlyInEnkin ? ' (currentlyInEnkin)' : ''}`);
+            const hasEnkinResult = divisionEnkinResults.some(e => e.archerId === result.archerId);
+            const isFromShichumaToEnkin = result.pendingEnkin || isCurrentlyInEnkin;
             
-            // 射詰→遠近の選手はスキップ（遠近の結果を優先）
-            if (isFromShichumaToEnkin) {
+            console.log(`    ?? 射詰→遠近チェック: ${archer.name} -> ${isFromShichumaToEnkin ? '遠近あり/待ち' : '遠近なし'}${result.pendingEnkin ? ' (pendingEnkin)' : ''}${isCurrentlyInEnkin ? ' (currentlyInEnkin)' : ''}${hasEnkinResult ? ' (hasEnkinResult)' : ''}`);
+            
+            // 射詰→遠近の選手は、実際に遠近結果が存在する場合のみスキップ
+            if (isFromShichumaToEnkin && hasEnkinResult) {
               console.log(`    スキップ: ${archer.name} (射詰→遠近で遠近の結果を優先)`);
               return;
             }
