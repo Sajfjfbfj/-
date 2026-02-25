@@ -332,10 +332,43 @@ app.post('/api/ranking/shichuma/final', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing parameters' });
     }
 
+    // 既存のデータを取得
+    const existingData = await db.collection('shichuma_results').findOne({ tournamentId });
+    
+    let mergedResults = [];
+    if (existingData && existingData.results) {
+      // 今回保存する部門IDのセットを作成
+      const newDivisionIds = new Set(results.map(r => r.divisionId).filter(Boolean));
+      
+      // 既存の結果をフィルタリング - 部門ごとに完全に独立して処理
+      mergedResults = existingData.results.filter(r => {
+        // 1. 部門IDが存在しない古いデータは削除（互換性のため）
+        if (!r.divisionId) return false;
+        
+        // 2. 異なる部門の結果は絶対に保持
+        if (r.divisionId && !newDivisionIds.has(r.divisionId)) return true;
+        
+        // 3. 同じ部門の場合は上書き（射詰は一度に全結果を保存するため）
+        if (r.divisionId && newDivisionIds.has(r.divisionId)) {
+          return false; // 同じ部門は完全に上書き
+        }
+        
+        return false;
+      });
+    }
+    
+    // 新しい結果を追加
+    mergedResults = [...mergedResults, ...results];
+    
+    console.log(`🔄 Shichuma Results Merge: tournamentId=${tournamentId}`);
+    console.log(`  既存データ: ${existingData?.results?.length || 0}件`);
+    console.log(`  新規データ: ${results.length}件`);
+    console.log(`  マージ後: ${mergedResults.length}件`);
+
     const finalData = {
       tournamentId,
       shootOffType,
-      results,
+      results: mergedResults,
       completedAt: new Date()
     };
 
@@ -485,17 +518,19 @@ app.post('/api/ranking/enkin/final', async (req, res) => {
       // 今回保存する部門IDのセットを作成
       const newDivisionIds = new Set(results.map(r => r.divisionId).filter(Boolean));
       
-      // 既存の結果から「同じtargetRank かつ 同じdivisionId」のものだけを除外（他部門の同targetRankは保持）
+      // 既存の結果をフィルタリング - 部門ごとに完全に独立して処理
       mergedResults = existingData.results.filter(r => {
-        // 1. そもそも部門が違えば絶対に保持
+        // 1. 部門IDが存在しない古いデータは削除（互換性のため）
+        if (!r.divisionId) return false;
+        
+        // 2. 異なる部門の結果は絶対に保持
         if (r.divisionId && !newDivisionIds.has(r.divisionId)) return true;
         
-        // 2. 同じ部門の場合、今回更新する順位（targetRank）以外のデータは保持
+        // 3. 同じ部門の場合、同じtargetRankのみ上書き（他のtargetRankは保持）
         if (r.divisionId && newDivisionIds.has(r.divisionId)) {
-          return r.targetRank !== targetRank; 
+          return r.targetRank !== targetRank;
         }
         
-        // 3. 部門IDがない古いデータなどは安全のため削除（上書き）
         return false;
       });
     }
