@@ -733,7 +733,45 @@ app.post('/api/ranking/clear/:tournamentId', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3001;
+// 17. 特定選手の射詰結果を削除
+app.delete('/api/ranking/shichuma/:tournamentId/:archerId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, archerId } = req.params;
+
+    const result = await db.collection('shichuma_results').updateOne(
+      { tournamentId },
+      { $pull: { results: { archerId: archerId } } }
+    );
+
+    console.log(`🗑️ Shichuma Result Deleted: tournamentId=${tournamentId}, archerId=${archerId}`);
+    res.status(200).json({ success: true, message: 'Shichuma result deleted for archer' });
+
+  } catch (error) {
+    console.error('❌ DELETE /api/ranking/shichuma/:tournamentId/:archerId error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 18. 特定選手の遠近結果を削除
+app.delete('/api/ranking/enkin/:tournamentId/:archerId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, archerId } = req.params;
+
+    const result = await db.collection('enkin_results').updateOne(
+      { tournamentId },
+      { $pull: { results: { archerId: archerId } } }
+    );
+
+    console.log(`🗑️ Enkin Result Deleted: tournamentId=${tournamentId}, archerId=${archerId}`);
+    res.status(200).json({ success: true, message: 'Enkin result deleted for archer' });
+
+  } catch (error) {
+    console.error('❌ DELETE /api/ranking/enkin/:tournamentId/:archerId error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // 本番環境用に静的ファイルを提供
 if (process.env.NODE_ENV === 'production') {

@@ -1,0 +1,10 @@
+修正内容:
+
+1. 遠近競射の表示部分（2700行目付近）で、保存済みの枠を非表示にする
+   - savedEnkinRanksByDivision を使って、保存済みの枠をチェック
+   - 保存済みの場合は return null で非表示
+
+2. renderMergedResults関数を renderMergedResultsWithCorrection に変更
+   - 敗退者も含めて全選手を表示
+   - 各選手に訂正ボタンを追加
+   - 訂正モーダルで順位を変更可能にする
