@@ -44,6 +44,7 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   const [correctionMode, setCorrectionMode] = useState(null);
   const [correctionResults, setCorrectionResults] = useState({});
   const [correctionMethods, setCorrectionMethods] = useState({}); // 決定方法の訂正用
+  const [correctionTargetRanks, setCorrectionTargetRanks] = useState({}); // targetRankの保持用
 
   const tournaments = state.registeredTournaments || [];
   const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
@@ -1767,7 +1768,8 @@ const categorizedGroups = useMemo(() => {
     setCorrectionMode({ targetRank, divisionId });
     const existingResults = {};
     const existingMethods = {};
-    // 部門内の全選手の現在の順位と決定方法を取得
+    const existingTargetRanks = {};
+    // 部門内の全選手の現在の順位、決定方法、targetRankを取得
     const divisionResults = getMergedFinalResults().filter(r => {
       const archer = archers.find(a => a.archerId === r.archerId);
       if (!archer) return false;
@@ -1777,9 +1779,11 @@ const categorizedGroups = useMemo(() => {
     divisionResults.forEach(r => {
       existingResults[r.archerId] = r.rank;
       existingMethods[r.archerId] = r.shootOffType || 'confirmed';
+      existingTargetRanks[r.archerId] = r.targetRank || r.rank; // targetRankを保持
     });
     setCorrectionResults(existingResults);
     setCorrectionMethods(existingMethods);
+    setCorrectionTargetRanks(existingTargetRanks);
   };
 
   const saveCorrectionResults = async () => {
@@ -1803,9 +1807,11 @@ const categorizedGroups = useMemo(() => {
           isWinner: rank === 1
         };
       } else if (newShootOffType === 'enkin') {
+        // targetRankを保持（保存済みの値 > 現在の順位）
+        const savedTargetRank = correctionTargetRanks[archerId] || originalResult?.targetRank || rank;
         detailInfo = {
           arrowType: 'normal',
-          targetRank: rank
+          targetRank: savedTargetRank
         };
       } else if (newShootOffType === 'confirmed') {
         detailInfo = {
@@ -1864,6 +1870,8 @@ const categorizedGroups = useMemo(() => {
       const enkinData = correctionData.filter(d => d.shootOffType === 'enkin');
       const confirmedData = correctionData.filter(d => d.shootOffType === 'confirmed');
       
+      console.log('💾 保存データ:', { shichumaData, enkinData, confirmedData });
+      
       // 射詰の結果を保存
       if (shichumaData.length > 0) {
         const response = await fetch(`${API_URL}/ranking/shichuma/final`, {
@@ -1903,6 +1911,8 @@ const categorizedGroups = useMemo(() => {
           })
         });
         if (!response.ok) throw new Error('遠近結果の保存に失敗しました');
+        
+        console.log('✅ 遠近結果保存成功:', enkinData);
         
         // ローカル状態を即座に更新
         setEnkinFinalResults(prev => {
@@ -1951,11 +1961,12 @@ const categorizedGroups = useMemo(() => {
       setCorrectionMode(null);
       setCorrectionResults({});
       setCorrectionMethods({});
+      setCorrectionTargetRanks({});
       
-      // 少し待ってから再読み込み（サーバーと同期）
+      // サーバーとの同期（少し待ってから）
       setTimeout(() => {
         fetchShootOffResults();
-      }, 500);
+      }, 1000); // 1秒待機してサーバーの保存が完了するのを待つ
     } catch (error) {
       console.error('訂正保存エラー:', error);
       alert('訂正の保存に失敗しました: ' + error.message);

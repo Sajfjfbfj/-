@@ -515,23 +515,13 @@ app.post('/api/ranking/enkin/final', async (req, res) => {
     
     let mergedResults = [];
     if (existingData && existingData.results) {
-      // 今回保存する部門IDのセットを作成
-      const newDivisionIds = new Set(results.map(r => r.divisionId).filter(Boolean));
+      // 今回保存する選手IDのセットを作成
+      const newArcherIds = new Set(results.map(r => r.archerId).filter(Boolean));
       
-      // 既存の結果をフィルタリング - 部門ごとに完全に独立して処理
+      // 既存の結果をフィルタリング - 同じ選手IDは上書き
       mergedResults = existingData.results.filter(r => {
-        // 1. 部門IDが存在しない古いデータは削除（互換性のため）
-        if (!r.divisionId) return false;
-        
-        // 2. 異なる部門の結果は絶対に保持
-        if (r.divisionId && !newDivisionIds.has(r.divisionId)) return true;
-        
-        // 3. 同じ部門の場合、同じtargetRankのみ上書き（他のtargetRankは保持）
-        if (r.divisionId && newDivisionIds.has(r.divisionId)) {
-          return r.targetRank !== targetRank;
-        }
-        
-        return false;
+        // 今回保存する選手は除外（上書きするため）
+        return !newArcherIds.has(r.archerId);
       });
     }
     
