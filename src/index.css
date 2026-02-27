@@ -1,1391 +1,240 @@
-/* Performance Optimizations */
+@import "tailwindcss";
+
+/* Mobile-First Responsive Design */
 :root {
-  --primary-color: #1a56db;
-  --secondary-color: #6b7280;
-  --border-color: #e5e7eb;
-  --hover-bg: #f9fafb;
-  --row-hover: #f3f4f6;
-  --text-primary: #111827;
-  --text-secondary: #4b5563;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-}
-
-/* Base table styles with performance optimizations */
-.table-responsive {
-  display: block;
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  will-change: transform; /* Optimize for hardware acceleration */
-  contain: content; /* Improve performance by containing the layout */
-}
-
-/* Virtualized list container */
-.virtualized-list {
-  position: relative;
-  width: 100%;
-  overflow-y: auto;
-  will-change: transform;
-  -webkit-overflow-scrolling: touch;
-  contain: strict;
-  overscroll-behavior: contain;
-}
-
-/* Optimize table rendering */
-.archer-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 0.875rem;
-  line-height: 1.25;
-  table-layout: fixed;
-}
-
-/* Optimize table header */
-.archer-table thead {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background-color: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-/* Optimize table cells */
-.archer-table th,
-.archer-table td {
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-  vertical-align: middle;
-  border-bottom: 1px solid var(--border-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  background-color: #fff;
-}
-
-/* Optimize table rows */
-.archer-table tbody tr {
-  transition: background-color 0.1s ease;
-  will-change: transform, background-color;
-}
-
-.archer-table tbody tr:hover {
-  background-color: var(--row-hover);
-}
-
-/* Virtualized row */
-.virtualized-row {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 48px; /* Match your row height */
-  will-change: transform;
-  contain: strict;
-}
-
-/* Responsive adjustments */
-/* Responsive Breakpoints */
-@media (max-width: 1920px) {
-  .archer-table { font-size: 0.8125rem; }
-  .archer-table th,
-  .archer-table td { padding: 0.5rem 0.6rem; }
-}
-
-/* Large Desktop */
-@media (max-width: 1536px) {
-  .view-content { padding: 1rem; }
-  .card { padding: 1.25rem; }
-}
-
-/* Laptop */
-@media (max-width: 1280px) {
-  .archer-table { font-size: 0.8rem; }
-  .archer-table th,
-  .archer-table td { padding: 0.5rem 0.5rem; }
-}
-
-/* Small Laptop */
-@media (max-width: 1024px) {
-  .view-content { padding: 0.75rem; }
-  .card { padding: 1rem; }
-  .login-box { max-width: 360px; padding: 1.5rem; }
-  .archer-list,
-  .tournament-list,
-  .applicant-list { max-height: 28vh; }
-  .archer-table { font-size: 0.75rem; }
-  .archer-table th,
-  .archer-table td { padding: 0.5rem; }
-  .button-group { flex-wrap: wrap; gap: 0.25rem; }
-  .btn { padding: 0.5rem; font-size: 0.75rem; }
-}
-
-/* Tablet */
-@media (max-width: 768px) {
-  .view-content { padding: 0.5rem; }
-  .card { padding: 0.875rem; }
-  .archer-table { font-size: 0.75rem; }
-  .archer-table th,
-  .archer-table td { padding: 0.4rem 0.5rem; }
-  
-  /* Stacked layout for forms */
-  .form-row {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  
-  .form-row > * {
-    width: 100% !important;
-  }
-}
-
-/* Mobile */
-@media (max-width: 640px) {
-  .nav-tabs {
-    padding: 0.5rem;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  
-  .nav-tab {
-    padding: 0.5rem;
-    font-size: 0.75rem;
-    white-space: nowrap;
-  }
-  
-  .view-header h1 { font-size: 1.1rem; }
-  .card { padding: 0.75rem; }
-  .input { padding: 0.5rem; font-size: 0.875rem; }
-  .card-title { font-size: 0.875rem; }
-  .archer-records { gap: 0.5rem; }
-  .qr-modal-container { max-width: 95%; padding: 1rem; }
-
-  /* Card-based table for small screens */
-  .archer-table thead { display: none; }
-  .archer-table,
-  .archer-table tbody,
-  .archer-table tr,
-  .archer-table td {
-    display: block;
-    width: 100%;
-  }
-  
-  .archer-table tr {
-    margin-bottom: 0.75rem;
-    border: 1px solid var(--border-color);
-    border-radius: 0.5rem;
-    padding: 0.5rem;
-    background: #fff;
-  }
-  
-  .archer-table td {
-    text-align: left;
-    padding: 0.5rem;
-    position: relative;
-    display: flex;
-    justify-content: space-between;
-    border-bottom: 1px solid #f0f0f0;
-  }
-  
-  .archer-table td:last-child {
-    border-bottom: none;
-  }
-  
-  .archer-table td:before {
-    content: attr(data-label);
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-right: 1rem;
-    flex: 0 0 40%;
-    font-size: 0.75rem;
-  }
-
-  .button-group {
-    gap: 0.25rem;
-    flex-wrap: wrap;
-  }
-  
-  .button-group .btn {
-    flex: 1 1 auto;
-    min-width: 48%;
-    text-align: center;
-  }
-
-  /* Stack tournament items vertically */
-  .tournament-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-  
-  /* Optimize form elements */
-  .form-control {
-    margin-bottom: 0.5rem;
-  }
-  
-  /* Adjust modal sizing */
-  .modal-content {
-    width: 95%;
-    margin: 1rem auto;
-  }
-}
-
-/* Small Mobile */
-@media (max-width: 400px) {
-  .view-content { padding: 0.25rem; }
-  .card { padding: 0.5rem; }
-  
-  .archer-table td:before {
-    flex: 0 0 45%;
-  }
-  
-  .button-group .btn {
-    min-width: 100%;
-    margin-bottom: 0.25rem;
-  }
-  
-  .btn {
-    padding: 0.4rem 0.5rem;
-    font-size: 0.7rem;
-  }
-}
-
-/* Division row layout */
-.division-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
+  --sport-primary: #2563eb;
+  --sport-secondary: #4f46e5;
+  --sport-accent: #7c3aed;
+  font-size: 16px;
 }
 
 @media (max-width: 640px) {
-  .division-row { flex-direction: column; align-items: stretch; }
-  .division-row .input { width: 100% !important; }
-  .division-actions { display: flex; justify-content: flex-end; }
+  :root { font-size: 14px; }
 }
-
-@media (min-width: 1025px) {
-  /* Desktop tweaks */
-  .tournament-list { max-height: 36rem; }
-}
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html, body, #root {
   height: 100%;
   width: 100%;
+  overflow-x: hidden;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans JP', sans-serif;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e3f2fd 50%, #e8eaf6 100%);
   color: #1f2937;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  touch-action: manipulation;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .app-container {
   min-height: 100vh;
-  background-color: #ffffff;
+  width: 100%;
 }
 
-/* ナビゲーション */
+/* Navigation */
 .nav-tabs {
+  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 50%, #7c3aed 100%);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   position: sticky;
   top: 0;
-  background-color: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
+  z-index: 50;
+  padding: 0.75rem;
   display: flex;
+  gap: 0.5rem;
   overflow-x: auto;
-  z-index: 10;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
 
+.nav-tabs::-webkit-scrollbar { display: none; }
+
 .nav-tab {
-  padding: 1rem;
-  font-size: 0.875rem;
-  font-weight: 300;
-  border: none;
-  background: none;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  color: #6b7280;
-  white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  transition: color 0.2s;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  cursor: pointer;
+  min-height: 44px;
+  touch-action: manipulation;
 }
 
-.nav-tab:hover {
-  color: #4b5563;
+.nav-tab:hover, .nav-tab:active {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .nav-tab-active {
-  border-bottom-color: #111827;
-  color: #111827;
+  background: white;
+  color: #2563eb;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
-/* ログイン */
+/* Cards */
+.sport-card, .card {
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border: 1px solid #f3f4f6;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* Buttons - 44px minimum touch target */
+.btn, .btn-primary, .btn-secondary, .btn-danger {
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 1rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 44px;
+  min-width: 44px;
+  touch-action: manipulation;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+  color: white;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:active { transform: scale(0.98); }
+
+.btn-secondary {
+  background: white;
+  color: #374151;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border: 2px solid #e5e7eb;
+}
+
+.btn-danger {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+/* Input Fields */
+.input, input, select, textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #d1d5db;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  min-height: 44px;
+  transition: border-color 0.2s;
+}
+
+.input:focus, input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* Rank Badges */
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  font-size: 1.25rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.rank-1 { background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%); color: white; }
+.rank-2 { background: linear-gradient(135deg, #d1d5db 0%, #9ca3af 100%); color: white; }
+.rank-3 { background: linear-gradient(135deg, #fb923c 0%, #f97316 100%); color: white; }
+.rank-other { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); color: #1e40af; }
+
+/* Login */
 .login-container {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f9fafb;
   padding: 1rem;
 }
 
 .login-box {
   width: 100%;
-  max-width: 384px;
+  max-width: 400px;
   background-color: #ffffff;
   border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.login-header {
-  text-align: center;
-}
-
-.login-header svg {
-  margin: 0 auto 0.75rem;
-  color: #111827;
-}
-
-.login-header h1 {
-  font-size: 1.25rem;
-  font-weight: 300;
-  color: #111827;
-}
-
-.login-hint {
-  font-size: 0.75rem;
-  color: #9ca3af;
-  text-align: center;
-}
-
-/* フォーム */
-.input {
-  width: 100%;
-  padding: 0.5rem 1rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 300;
-  transition: border-color 0.2s;
-}
-
-.input:focus {
-  outline: none;
-  border-color: #111827;
-}
-
-.input.textarea {
-  font-family: inherit;
-  resize: vertical;
-}
-
-/* ボタン */
-.btn {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 300;
-  cursor: pointer;
-  transition: all 0.2s;
-  background-color: #e5e7eb;
-  color: #374151;
-}
-
-.btn:hover {
-  background-color: #d1d5db;
-}
-
-.btn-active {
-  background-color: #111827;
-  color: #ffffff;
-}
-
-.btn-primary {
-  width: 100%;
-  padding: 1rem;
-  background-color: #111827;
-  color: #ffffff;
-  border: none;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 300;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  margin-top: 1.5rem;
-}
-
-.btn-primary:hover {
-  background-color: #1f2937;
-}
-
-.btn-secondary {
-  width: 100%;
-  padding: 0.5rem 1rem;
-  margin-top: 0.75rem;
-  background-color: #f3f4f6;
-  color: #374151;
-  border: none;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 300;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.btn-secondary:hover {
-  background-color: #e5e7eb;
-}
-
-.btn-danger {
-  width: 100%;
-  padding: 0.75rem;
-  margin-top: 1rem;
-  background-color: #fee2e2;
-  color: #b91c1c;
-  border: none;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 300;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  transition: background-color 0.2s;
-}
-
-.btn-danger:hover {
-  background-color: #fecaca;
-}
-
-.btn-circle {
-  padding: 0.75rem;
-  border: none;
-  border-radius: 50%;
-  font-weight: 300;
-  font-size: 1.125rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-hit {
-  background-color: #111827;
-  color: #ffffff;
-}
-
-.btn-hit:hover {
-  background-color: #374151;
-}
-
-.btn-miss {
-  background-color: #9ca3af;
-  color: #ffffff;
-}
-
-.btn-miss:hover {
-  background-color: #6b7280;
-}
-
-.btn-fix {
-  width: 100%;
-  padding: 0.25rem;
-  font-size: 0.75rem;
-  background-color: #f3f4f6;
-  color: #4b5563;
-  border: none;
-  border-radius: 0.25rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.btn-fix:hover {
-  background-color: #e5e7eb;
-}
-
-.btn-logout {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 300;
-  background: none;
-  border: none;
-  color: #4b5563;
-  cursor: pointer;
-  border-radius: 0.25rem;
-  transition: background-color 0.2s;
-}
-
-.btn-logout:hover {
-  background-color: #e5e7eb;
-}
-
-.btn-copy {
-  padding: 0.5rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  border-radius: 0.25rem;
-  transition: background-color 0.2s;
-}
-
-.btn-copy:hover {
-  background-color: #374151;
-}
-
-.btn-delete {
-  padding: 0.25rem 0.75rem;
-  font-size: 0.75rem;
-  background: none;
-  border: none;
-  color: #dc2626;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  border-radius: 0.25rem;
-}
-
-.btn-delete:hover {
-  background-color: #fef2f2;
-}
-
-.btn-delete-small {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  background: none;
-  border: none;
-  color: #dc2626;
-  cursor: pointer;
-}
-
-.button-group {
-  display: flex;
-  gap: 0.5rem;
-}
-
-/* ビューコンテナ */
-.view-container {
-  padding-bottom: 1.5rem;
-}
-
-.view-header {
-  border-bottom: 1px solid #e5e7eb;
-  padding: 1rem;
-  background-color: #f9fafb;
-}
-
-.view-header h1 {
-  font-size: 1.25rem;
-  font-weight: 300;
-  color: #111827;
-}
-
-.view-header p {
-  font-size: 0.875rem;
-  color: #6b7280;
-  margin-top: 0.25rem;
-}
-
-.tournament-info {
-  margin-top: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.875rem;
-  font-weight: 300;
-  color: #4b5563;
-}
-
-.view-content {
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-/* カード */
-.card {
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.card-title {
-  font-size: 0.875rem;
-  color: #4b5563;
-  font-weight: 300;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.card-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-/* グリッド */
-.settings-grid {
-  background-color: #f9fafb;
-  border-radius: 0.5rem;
-  padding: 1rem;
-  border: 1px solid #e5e7eb;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 1rem;
-}
-
-.settings-grid > div {
-  background-color: #ffffff;
-  padding: 0.75rem;
-  border-radius: 0.25rem;
-  text-align: center;
-}
-
-.label {
-  font-size: 0.75rem;
-  color: #6b7280;
-  margin-bottom: 0.5rem;
-}
-
-.value {
-  font-size: 1.25rem;
-  font-weight: 300;
-  color: #111827;
-}
-
-/* 進行状況 */
-.progress-section {
-  background-color: #f9fafb;
-  border-radius: 0.5rem;
-  padding: 1rem;
-}
-
-.progress-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.progress-header span {
-  font-size: 0.875rem;
-  color: #4b5563;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 0.5rem;
-  background-color: #d1d5db;
-  border-radius: 9999px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background-color: #111827;
-  transition: width 0.5s ease;
-}
-
-/* 選手一覧 */
-.archer-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem;
-  border-left: 4px solid #111827;
-  background-color: #f9fafb;
-  border-radius: 0.25rem;
-}
-
-.archer-item p {
-  font-size: 0.875rem;
-  font-weight: 300;
-  color: #111827;
-}
-
-.archer-item span {
-  font-size: 0.75rem;
-  color: #4b5563;
-}
-
-.archer-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  max-height: 16rem;
-  overflow-y: auto;
-}
-
-.archer-list-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem;
-  background-color: #f9fafb;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-}
-
-/* 受付 */
-.checkin-counter {
-  background-color: #111827;
-  color: #ffffff;
-  border-radius: 0.5rem;
-  padding: 2rem;
-  text-align: center;
-}
-
-.counter-value {
-  font-size: 2.25rem;
-  font-weight: 300;
-  margin-bottom: 0.5rem;
-}
-
-.counter-label {
-  font-size: 0.875rem;
-  color: #d1d5db;
-}
-
-/* 記録入力 */
-.round-selector {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.round-selector p {
-  font-size: 0.875rem;
-  color: #4b5563;
-}
-
-.stand-tabs {
-  display: flex;
-  gap: 0.5rem;
-  overflow-x: auto;
-}
-
-.stand-tab {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-  font-weight: 300;
-  background-color: #e5e7eb;
-  color: #374151;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s;
-}
-
-.stand-tab:hover {
-  background-color: #d1d5db;
-}
-
-.stand-tab-active {
-  background-color: #111827;
-  color: #ffffff;
-}
-
-.archer-records {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.archer-record {
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  padding: 1rem;
-}
-
-.archer-info {
-  margin-bottom: 1rem;
-}
-
-.archer-info p {
-  font-size: 0.875rem;
-  font-weight: 300;
-  color: #111827;
-}
-
-.status {
-  display: inline-block;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-}
-
-.status-input {
-  background-color: #fef3c7;
-  color: #92400e;
-}
-
-.status-complete {
-  background-color: #dcfce7;
-  color: #15803d;
-}
-
-.arrows-grid {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.arrow-input {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.arrow-input p {
-  font-size: 0.75rem;
-  text-align: center;
-  color: #4b5563;
-}
-
-.arrow-buttons {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.arrow-buttons .btn-circle {
-  flex: 1;
-}
-
-.arrow-result {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.arrow-result .btn-circle {
-  padding: 1rem;
-}
-
-/* 大会登録 */
-.admin-header {
-  border-bottom: 1px solid #e5e7eb;
-  padding: 1rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background-color: #f9fafb;
-}
-
-.admin-header h1 {
-  font-size: 1.25rem;
-  font-weight: 300;
-  color: #111827;
-}
-
-.tournament-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  max-height: 16rem;
-  overflow-y: auto;
-  margin-bottom: 0.75rem;
-}
-
-.tournament-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem;
-  background-color: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.25rem;
-  transition: background-color 0.2s;
-}
-
-.tournament-item:hover {
-  background-color: #f3f4f6;
-}
-
-.tournament-button {
-  flex: 1;
-  text-align: left;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
-
-.tournament-button p {
-  font-size: 0.875rem;
-  font-weight: 300;
-  color: #111827;
-}
-
-.tournament-button p:first-child {
-  margin-bottom: 0.25rem;
-}
-
-.tournament-id-box {
-  background-color: #111827;
-  color: #ffffff;
-  border-radius: 0.5rem;
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.id-label {
-  font-size: 0.75rem;
-  color: #d1d5db;
-  margin-bottom: 0.25rem;
-}
-
-.id-display {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.id-display p {
-  font-size: 1.125rem;
-  font-weight: 300;
-}
-
-.divider {
-  border-top: 1px solid #374151;
-}
-
-.id-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 300;
-}
-
-.id-sublabel {
-  color: #9ca3af;
-  margin-bottom: 0.25rem;
-}
-
-.id-info p {
-  color: #ffffff;
-}
-
-/* ラジオボタン */
-.radio-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.radio-label {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem;
-  border-radius: 0.25rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.radio-label:hover {
-  background-color: #f9fafb;
-}
-
-.radio-label input[type="radio"] {
-  width: 1rem;
-  height: 1rem;
-  cursor: pointer;
-}
-
-.radio-label span {
-  font-size: 0.875rem;
-  font-weight: 300;
-  color: #111827;
-}
-
-/* テキスト */
-.text-sm {
-  font-size: 0.875rem;
-  color: #6b7280;
-  margin-top: 0.25rem;
-}
-
-.error-text {
-  font-size: 0.75rem;
-  color: #dc2626;
-  margin-top: 0.5rem;
-}
-
-.empty-text {
-  font-size: 0.75rem;
-  color: #9ca3af;
-  padding: 0.5rem;
-}
-
-.hint {
-  font-size: 0.75rem;
-  color: #9ca3af;
-  margin-top: 0.5rem;
-}
-
-/* メッセージ */
-.message {
-  padding: 0.75rem;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-  text-align: center;
-  font-weight: 300;
-}
-
-.message-success {
-  background-color: #dcfce7;
-  color: #166534;
-}
-
-.message-error {
-  background-color: #fee2e2;
-  color: #991b1b;
-}
-
-.message-warning {
-  background-color: #fef3c7;
-  color: #92400e;
-}
-
-/* 選手申し込み */
-.applicant-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  max-height: 24rem;
-  overflow-y: auto;
-}
-
-.applicant-item {
-  padding: 1rem;
-  background-color: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.25rem;
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-}
-
-.applicant-item p {
-  font-size: 0.875rem;
-  font-weight: 300;
-  color: #111827;
-}
-
-.applicant-item p:last-child {
-  font-size: 0.75rem;
-  color: #6b7280;
-  margin-top: 0.25rem;
-}
-
-.applicant-number {
-  color: #6b7280;
-}
-
-.pb-6 {
-  padding-bottom: 1.5rem;
-}
-
-/* QRコードモーダル */
-.qr-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background-color: rgba(0, 0, 0, 0.75);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 50;
-  padding: 1rem;
-  animation: fadeIn 0.2s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.qr-modal-container {
-  background-color: #ffffff;
   border-radius: 1rem;
-  max-width: 28rem;
-  width: 100%;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  animation: slideUp 0.3s ease-out;
-}
-
-@keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.qr-modal-header {
-  background: linear-gradient(135deg, #111827 0%, #374151 100%);
-  color: #ffffff;
   padding: 2rem;
-  border-radius: 1rem 1rem 0 0;
-  text-align: center;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
 
-.qr-modal-header h2 {
-  font-size: 1.5rem;
-  font-weight: 300;
-  margin-bottom: 0.5rem;
+/* View Layout */
+.view-container { padding-bottom: 1.5rem; width: 100%; }
+.view-header { border-bottom: 1px solid #e5e7eb; padding: 1rem; background-color: #f9fafb; }
+.view-content { padding: 1rem; display: flex; flex-direction: column; gap: 1rem; }
+
+/* Responsive Typography */
+h1 { font-size: clamp(1.5rem, 5vw, 2rem); }
+h2 { font-size: clamp(1.25rem, 4vw, 1.75rem); }
+h3 { font-size: clamp(1.125rem, 3vw, 1.5rem); }
+h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
+
+/* Mobile Optimizations */
+@media (max-width: 640px) {
+  .nav-tabs { padding: 0.5rem; gap: 0.375rem; }
+  .nav-tab { padding: 0.625rem 0.875rem; font-size: 0.8125rem; }
+  .sport-card, .card { padding: 0.875rem; border-radius: 0.75rem; }
+  .view-content { padding: 0.75rem; gap: 0.875rem; }
+  .btn, .btn-primary, .btn-secondary, .btn-danger { padding: 0.625rem 1.25rem; font-size: 0.9375rem; }
+  .rank-badge { width: 2.5rem; height: 2.5rem; font-size: 1.125rem; }
 }
 
-.qr-tournament-name {
-  font-size: 0.875rem;
-  color: #d1d5db;
-  font-weight: 300;
+/* Small Mobile */
+@media (max-width: 375px) {
+  .nav-tab { padding: 0.5rem 0.75rem; font-size: 0.75rem; gap: 0.375rem; }
+  .nav-tab svg { width: 16px; height: 16px; }
+  .btn, .btn-primary, .btn-secondary, .btn-danger { padding: 0.5rem 1rem; font-size: 0.875rem; }
 }
 
-.qr-modal-body {
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.5rem;
+/* Landscape Mobile */
+@media (max-height: 500px) and (orientation: landscape) {
+  .nav-tabs { padding: 0.375rem; }
+  .nav-tab { padding: 0.5rem 0.75rem; font-size: 0.75rem; }
 }
 
-.qr-code-wrapper {
-  background-color: #ffffff;
-  padding: 1.5rem;
-  border-radius: 0.75rem;
-  border: 2px solid #e5e7eb;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.qr-info-box {
-  width: 100%;
-  background-color: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  padding: 1.5rem;
-  text-align: center;
-}
-
-.qr-name {
-  font-size: 1.25rem;
-  font-weight: 400;
-  color: #111827;
-  margin-bottom: 0.75rem;
-}
-
-.qr-details {
-  font-size: 0.875rem;
-  color: #4b5563;
-  margin-bottom: 0.25rem;
-}
-
-.qr-id-section {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
-}
-
-.qr-id-label {
-  font-size: 0.75rem;
-  color: #6b7280;
-  margin-bottom: 0.25rem;
-}
-
-.qr-id-value {
-  font-family: 'Courier New', monospace;
-  font-size: 0.875rem;
-  color: #111827;
-  font-weight: 500;
-  background-color: #ffffff;
-  padding: 0.5rem;
-  border-radius: 0.25rem;
-  display: inline-block;
-}
-
-.qr-timestamp {
-  font-size: 0.75rem;
-  color: #9ca3af;
-  margin-top: 0.75rem;
-}
-
-.qr-instruction {
-  text-align: center;
-  background-color: #eff6ff;
-  border: 1px solid #dbeafe;
-  border-radius: 0.5rem;
-  padding: 1rem;
-  width: 100%;
-}
-
-.qr-instruction p {
-  font-size: 0.875rem;
-  color: #1e40af;
-  font-weight: 400;
-}
-
-.qr-instruction-sub {
-  font-size: 0.75rem;
-  color: #3b82f6;
-  margin-top: 0.25rem;
-}
-
-.qr-modal-footer {
-  padding: 1.5rem 2rem;
-  border-top: 1px solid #e5e7eb;
-  display: flex;
-  gap: 0.75rem;
-  border-radius: 0 0 1rem 1rem;
-}
-
-.qr-modal-footer .btn-primary,
-.qr-modal-footer .btn-secondary {
-  flex: 1;
-  margin-top: 0;
-}
-
-@media print {
-  body * {
-    visibility: hidden;
+/* Safe area for notched devices */
+@supports (padding: max(0px)) {
+  .nav-tabs {
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
   }
-  
-  .qr-modal-overlay,
-  .qr-modal-overlay * {
-    visibility: visible;
+  .view-content {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
-  
-  .qr-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    background-color: white;
-  }
-  
-  .qr-modal-container {
-    box-shadow: none;
-  }
-  
-  .qr-modal-footer {
-    display: none;
-  }
-}
-/* QR Scanner Modal Styles */
-.qr-scanner-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.7);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-  padding: 1rem;
-}
-
-.qr-scanner-modal {
-  background-color: white;
-  border-radius: 12px;
-  width: 100%;
-  max-width: 500px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.qr-scanner-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem 1rem;
-  background-color: #f8f9fa;
-  border-bottom: 1px solid #dee2e6;
-}
-
-.qr-scanner-header h3 {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-
-.qr-scanner-close-button {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #6c757d;
-  padding: 0.25rem;
-}
-.qr-scanner-close-button:hover {
-  color: #212529;
-}
-
-.camera-selector {
-  padding: 0.75rem 1rem;
-  background-color: #f8f9fa;
-}
-
-.camera-selector select {
-  width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #ced4da;
-  border-radius: 6px;
-}
-
-.qr-reader-view {
-  width: 100%;
-  /* アスペクト比を保つためのpadding-topハックは不要な場合が多い */
-  min-height: 300px; 
-  background-color: #000;
-}
-
-/* html5-qrcodeが生成するUIのスタイル調整 */
-.qr-reader-view video {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover;
-}
-
-.scanner-instructions {
-  text-align: center;
-  padding: 1rem;
-  color: #495057;
-  background-color: #f8f9fa;
-  border-top: 1px solid #dee2e6;
 }

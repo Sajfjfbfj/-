@@ -1,5 +1,5 @@
 ﻿import React, { useState, useReducer, useEffect } from 'react';
-import { Lock } from 'lucide-react';
+import { Lock, Trophy, Users, Settings, Award, FileText, ClipboardList, QrCode, LogOut, Menu, X } from 'lucide-react';
 
 // Component Imports
 import AdminLoginView from './components/AdminLoginView';
