@@ -395,74 +395,84 @@ const RecordingView = ({ state, dispatch, stands }) => {
   return (
     <div className="view-container">
       <div className="view-header">
-        <div style={{display:'flex', alignItems:'center', gap:'0.5rem'}}>
-          <h1>記録入力</h1>
-          {isSyncing && <RefreshCw size={16} className="animate-spin text-blue-500" />}
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%'}}>
+          <div>
+            <h1>📝 記録入力</h1>
+            <p style={{margin:'0.5rem 0 0 0', fontSize:'0.875rem', color:'#6b7280'}}>部門ごとに立ち順を管理 (自動保存)</p>
+          </div>
+          {isSyncing && (
+            <div style={{display:'flex', alignItems:'center', gap:'0.5rem', color:'#10b981', fontSize:'0.875rem', fontWeight:500}}>
+              <RefreshCw size={16} className="animate-spin" />
+              <span>同期中</span>
+            </div>
+          )}
         </div>
-        <p>部門ごとに立ち順を管理 (自動保存)</p>
       </div>
       <div className="view-content">
         
         {selectedTournamentId && (
           <>
             <div className="card">
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>部門を選択</label>
+              <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.9375rem', fontWeight: 600, color:'#1f2937' }}>🎯 部門を選択</label>
               <div className="button-group">
                 {divisions.map(div => (
                   <button 
                     key={div.id}
                     onClick={() => setSelectedDivision(div.id)}
                     className={`btn ${selectedDivision === div.id ? 'btn-active' : ''}`}
-                    style={{ flex: 1 }}
                   >
                     {div.label}
                   </button>
                 ))}
               </div>
               {(() => {
-                // 選択された部門の男女分け設定を確認
                 const division = divisions.find(d => d.id === selectedDivision);
                 const divGenderSeparation = division?.enableGenderSeparation || tournament?.data?.enableGenderSeparation || false;
                 
                 return divGenderSeparation && (
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                    <button onClick={() => setSelectedGender('all')} className={`btn ${selectedGender === 'all' ? 'btn-active' : ''}`} style={{ flex: 1 }}>全員</button>
-                    <button onClick={() => setSelectedGender('male')} className={`btn ${selectedGender === 'male' ? 'btn-active' : ''}`} style={{ flex: 1 }}>男子</button>
-                    <button onClick={() => setSelectedGender('female')} className={`btn ${selectedGender === 'female' ? 'btn-active' : ''}`} style={{ flex: 1 }}>女子</button>
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color:'#6b7280' }}>性別フィルター</label>
+                    <div className="button-group">
+                      <button onClick={() => setSelectedGender('all')} className={`btn ${selectedGender === 'all' ? 'btn-active' : ''}`}>全員</button>
+                      <button onClick={() => setSelectedGender('male')} className={`btn ${selectedGender === 'male' ? 'btn-active' : ''}`}>👨 男子</button>
+                      <button onClick={() => setSelectedGender('female')} className={`btn ${selectedGender === 'female' ? 'btn-active' : ''}`}>👩 女子</button>
+                    </div>
                   </div>
                 );
               })()}
-              <p className="hint" style={{ marginTop: '0.5rem' }}>この部門の選手数: {divisionArchers.length}人</p>
+              <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '0.5rem', border: '1px solid #bfdbfe' }}>
+                <p style={{ margin: 0, fontSize: '0.875rem', color: '#1e40af', fontWeight: 500 }}>👥 この部門の選手数: {divisionArchers.length}人</p>
+              </div>
             </div>
 
             <div className="card">
               <div className="round-selector">
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>ラウンド選択</label>
-                <div className="button-group" style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.9375rem', fontWeight: 600, color:'#1f2937' }}>🏹 ラウンド選択</label>
+                <div className="button-group">
                   <button 
                     onClick={() => setSelectedRound(1)}
                     className={`btn ${selectedRound === 1 ? 'btn-active' : ''}`}
-                    style={{ flex: 1 }}
                   >
                     1立ち目 ({tournament.arrowsRound1}本)
                   </button>
                   <button 
                     onClick={() => setSelectedRound(2)}
                     className={`btn ${selectedRound === 2 ? 'btn-active' : ''}`}
-                    style={{ flex: 1 }}
                   >
                     2立ち目 ({tournament.arrowsRound2}本)
                   </button>
                 </div>
-                <div style={{ fontSize: '0.875rem', color: '#4b5563', textAlign: 'center' }}>
-                  <p>現在のラウンド: {selectedRound}立ち目 ({getCurrentArrowsPerStand()}本)</p>
+                <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: '#4b5563', textAlign: 'center', fontWeight: 500 }}>
+                  <p style={{margin:0}}>📍 現在: {selectedRound}立ち目 ({getCurrentArrowsPerStand()}本)</p>
                 </div>
               </div>
             </div>
 
             <div className="archer-records">
               {standArchers.length === 0 ? (
-                <p className="empty-text">この立に割り当てられた選手がいません</p>
+                <div className="card">
+                  <p className="empty-text">🔍 この立に割り当てられた選手がいません</p>
+                </div>
               ) : (
                 standArchers.map(archer => {
                   const currentArrows = getCurrentArrowsPerStand();
@@ -473,19 +483,24 @@ const RecordingView = ({ state, dispatch, stands }) => {
                   return (
                     <div key={archer.archerId} className="archer-record">
                       <div className="archer-info">
-                        <p><strong>{archer.standOrder}. {archer.name}</strong></p>
-                        <p className="text-sm">{archer.affiliation} | {ceremony}{rank}</p>
-                        <p className="text-sm" style={{ color: '#2563eb', fontWeight: 500, marginTop: '0.25rem' }}>
-                          的中: {getTotalHitCount(archer)}本 / 順位: {archerRank}位
-                        </p>
+                        <p><strong>🎯 {archer.standOrder}. {archer.name}</strong></p>
+                        <p className="text-sm" style={{color:'#6b7280'}}>🏛️ {archer.affiliation} | 🎖️ {ceremony}{rank}</p>
+                        <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                          <p className="text-sm" style={{ color: '#10b981', fontWeight: 600, margin: 0 }}>
+                            ✅ 的中: {getTotalHitCount(archer)}本
+                          </p>
+                          <p className="text-sm" style={{ color: '#2563eb', fontWeight: 600, margin: 0 }}>
+                            🏆 順位: {archerRank}位
+                          </p>
+                        </div>
                       </div>
                       <span className={`status ${roundComplete ? 'status-complete' : 'status-input'}`}>
-                        {roundComplete ? '完了' : '入力中'}
+                        {roundComplete ? '✓ 完了' : '⏳ 入力中'}
                       </span>
-                      <div className="arrows-grid" style={{ gridTemplateColumns: `repeat(${currentArrows}, 1fr)` }}>
+                      <div className="arrows-grid" style={{ gridTemplateColumns: `repeat(${Math.min(currentArrows, 4)}, 1fr)` }}>
                         {getCurrentStandResults(archer).map((result, arrowIdx) => (
                           <div key={arrowIdx} className="arrow-input">
-                            <p>{arrowIdx + 1}</p>
+                            <p>{arrowIdx + 1}本目</p>
                             {result === null ? (
                               <div className="arrow-buttons">
                                 <button onClick={() => handleRecord(archer.archerId, selectedStand, arrowIdx, 'o')} className="btn-circle btn-hit" disabled={roundComplete}>◯</button>
@@ -497,7 +512,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
                                 <button disabled className={`btn-circle ${result === 'o' ? 'btn-hit' : result === 'x' ? 'btn-miss' : 'btn-unknown'}`}>
                                   {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
                                 </button>
-                                <button onClick={() => handleUndo(archer.archerId, selectedStand, arrowIdx)} className="btn-fix">修正</button>
+                                <button onClick={() => handleUndo(archer.archerId, selectedStand, arrowIdx)} className="btn-fix">🔄 修正</button>
                               </div>
                             )}
                           </div>

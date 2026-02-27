@@ -583,15 +583,20 @@ const CheckInView = ({ state, dispatch }) => {
               </div>
               
               {showQRModal && currentQRCodeData && (
-                <div className="qr-modal-overlay">
+                <div className="qr-modal-overlay" onClick={(e) => {
+                  if (e.target.className === 'qr-modal-overlay') {
+                    setShowQRModal(false);
+                    setAutoRefresh(false);
+                  }
+                }}>
                   <div className="qr-modal-container">
                     <div className="qr-modal-header">
-                      <h2>{currentQRCodeData.type}登録完了</h2>
-                      <p className="qr-tournament-name">{currentQRCodeData.tournamentName}</p>
+                      <h2>✅ {currentQRCodeData.type}登録完了</h2>
+                      <p className="qr-tournament-name">🏹 {currentQRCodeData.tournamentName}</p>
                     </div>
                     
                     <div className="qr-modal-body">
-                      <div className="qr-code-wrapper" style={{ textAlign: 'center' }}>
+                      <div className="qr-code-wrapper">
                         <QRCodeSVG 
                           value={JSON.stringify({
                             id: currentQRCodeData.id,
@@ -606,20 +611,19 @@ const CheckInView = ({ state, dispatch }) => {
                           level="H"
                           includeMargin={true}
                         />
-                        <div style={{ marginTop: '1rem', fontWeight: 'bold', wordBreak: 'break-all' }}>
-                          ID: {currentQRCodeData.id}
+                        <div style={{ marginTop: '1rem', fontSize: '0.875rem', fontWeight: 600, color: '#6b7280', wordBreak: 'break-all' }}>
+                          🆔 {currentQRCodeData.id}
                         </div>
                       </div>
                       
                       <div className="qr-info-box">
-                        <p className="qr-name">{currentQRCodeData.name} 様</p>
-                        <p className="qr-details">{currentQRCodeData.affiliation}</p>
-                        <p className="qr-details">{currentQRCodeData.rank}</p>
+                        <p className="qr-name">👤 {currentQRCodeData.name} 様</p>
+                        <p className="qr-details">🏛️ {currentQRCodeData.affiliation}</p>
+                        <p className="qr-details">🎯 {currentQRCodeData.rank}</p>
                         
-                        {/* 性別選択・更新機能 */}
-                        <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f8f9fa', borderRadius: '0.5rem' }}>
-                          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
-                            性別情報の設定・更新
+                        <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f0f9ff', border: '2px solid #bfdbfe', borderRadius: '0.75rem' }}>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#1e40af' }}>
+                            ⚧ 性別情報の設定・更新
                           </label>
                           <select 
                             value={currentQRCodeData.gender || 'male'} 
@@ -634,23 +638,24 @@ const CheckInView = ({ state, dispatch }) => {
                                 
                                 if (response.ok) {
                                   setCurrentQRCodeData(prev => ({ ...prev, gender: newGender }));
-                                  alert('性別情報を更新しました');
+                                  setMessage('✅ 性別情報を更新しました');
+                                  setTimeout(() => setMessage(''), 3000);
                                 } else {
-                                  alert('更新に失敗しました');
+                                  setMessage('❌ 更新に失敗しました');
                                 }
                               } catch (error) {
                                 console.error('性別情報更新エラー:', error);
-                                alert('更新中にエラーが発生しました');
+                                setMessage('❌ 更新中にエラーが発生しました');
                               }
                             }}
                             className="input"
-                            style={{ width: '100%', marginBottom: '0.5rem' }}
+                            style={{ width: '100%', marginBottom: '0.5rem', backgroundColor: 'white' }}
                           >
-                            <option value="male">男</option>
-                            <option value="female">女</option>
+                            <option value="male">👨 男</option>
+                            <option value="female">👩 女</option>
                           </select>
-                          <p className="text-sm text-gray-600">
-                            現在の設定: {currentQRCodeData.gender === 'female' ? '女' : '男'}
+                          <p style={{ fontSize: '0.8125rem', color: '#6b7280', margin: 0 }}>
+                            現在の設定: {currentQRCodeData.gender === 'female' ? '👩 女' : '👨 男'}
                           </p>
                         </div>
                       </div>

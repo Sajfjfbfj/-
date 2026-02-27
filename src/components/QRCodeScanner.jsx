@@ -85,23 +85,24 @@ export const QRCodeScanner = ({ onScanSuccess, onError, onClose }) => {
   };
 
   return (
-    // モーダルのオーバーレイ
     <div className="qr-scanner-overlay">
-      {/* モーダルの本体 */}
       <div className="qr-scanner-modal">
         <div className="qr-scanner-header">
-          <h3>QRコード受付</h3>
-          <button onClick={onClose} className="qr-scanner-close-button">
+          <h3>📷 QRコード受付</h3>
+          <button onClick={onClose} className="qr-scanner-close-button" aria-label="閉じる">
             <X size={24} />
           </button>
         </div>
 
-        {/* カメラ選択UI */}
         {availableCameras.length > 1 && (
           <div className="camera-selector">
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+              📹 カメラを選択
+            </label>
             <select
               value={cameraId || ''}
               onChange={handleCameraChange}
+              aria-label="カメラ選択"
             >
               {availableCameras.map(camera => (
                 <option key={camera.id} value={camera.id}>
@@ -112,11 +113,11 @@ export const QRCodeScanner = ({ onScanSuccess, onError, onClose }) => {
           </div>
         )}
 
-        {/* スキャナーの描画領域 */}
         <div id="qr-reader-container" className="qr-reader-view"></div>
 
         <div className="scanner-instructions">
-          <p>選手のQRコードを枠内に収めてください</p>
+          <p>📱 選手のQRコードを枠内に収めてください</p>
+          <p style={{ fontSize: '0.8125rem', color: '#9ca3af', marginTop: '0.5rem' }}>自動的にスキャンされます</p>
         </div>
       </div>
     </div>
