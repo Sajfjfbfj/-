@@ -333,22 +333,39 @@ const CheckInView = ({ state, dispatch }) => {
   
   return (
     <div className="view-container">
-      <div className="view-header">
-        <h1>受付</h1>
+      <div className="sport-header">
+        <div style={{ padding: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+            <div style={{ background: 'rgba(255, 255, 255, 0.2)', borderRadius: '0.75rem', padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '1.75rem' }}>📋</span>
+            </div>
+            <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700 }}>受付</h1>
+          </div>
         {selectedTournament ? (
-          <div className="tournament-info">
-            <p>? {selectedTournament.data?.name || '大会名不明'}</p>
-            <p>? {formatTournamentDate(selectedTournament)}</p>
+          <div style={{ background: 'rgba(255, 255, 255, 0.15)', borderRadius: '0.75rem', padding: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '1.25rem' }}>🏹</span>
+              <p style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>{selectedTournament.data?.name || '大会名不明'}</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+              <span style={{ fontSize: '1rem' }}>📅</span>
+              <p style={{ margin: 0, fontSize: '0.875rem', opacity: 0.95 }}>{formatTournamentDate(selectedTournament)}</p>
+            </div>
             {myApplicantData && (
-              <p>? {Array.isArray(myApplicantData) ? '複数登録あり' : 
-                `${myApplicantData.isStaff ? '役員' : '選手'}ID: ${myApplicantData.archerId}`}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '1rem' }}>👤</span>
+                <p style={{ margin: 0, fontSize: '0.875rem', opacity: 0.95 }}>{Array.isArray(myApplicantData) ? '複数登録あり' : 
+                  `${myApplicantData.isStaff ? '役員' : '選手'}ID: ${myApplicantData.archerId}`}</p>
+              </div>
             )}
           </div>
         ) : (
-          <div className="tournament-info">
-            <p>? 大会を選択してください</p>
+          <div style={{ background: 'rgba(251, 191, 36, 0.2)', borderRadius: '0.75rem', padding: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '1.25rem' }}>⚠️</span>
+            <p style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 600 }}>大会を選択してください</p>
           </div>
         )}
+        </div>
       </div>
       <div className="view-content">
         <div className="card">
@@ -388,9 +405,9 @@ const CheckInView = ({ state, dispatch }) => {
 
         {selectedTournamentId && (
           <>
-            <div className="checkin-counter">
-              <p className="counter-value">{checkIns.length}</p>
-              <p className="counter-label">受付済み</p>
+            <div style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', borderRadius: '1rem', padding: '2rem', textAlign: 'center', boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.3)' }}>
+              <p style={{ fontSize: '3rem', fontWeight: 700, margin: 0 }}>{checkIns.length}</p>
+              <p style={{ fontSize: '1rem', marginTop: '0.5rem', opacity: 0.95 }}>受付済み</p>
             </div>
 
             <div className="card">
@@ -518,9 +535,12 @@ const CheckInView = ({ state, dispatch }) => {
               )}
             </div>
 
-            <div className="card" ref={checkinListRef}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <p className="card-title">受付済み一覧</p>
+            <div className="sport-card" ref={checkinListRef}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '2px solid #e5e7eb' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>📋</span>
+                  <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#1f2937' }}>受付済み一覧</h3>
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   {autoRefresh && (
                     <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -537,44 +557,59 @@ const CheckInView = ({ state, dispatch }) => {
                   </button>
                 </div>
               </div>
-              <div className="table-responsive">
-                <table className="archer-table">
-                  <thead>
+              <div className="table-responsive" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+                  <thead style={{ background: 'linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%)', borderBottom: '2px solid #e5e7eb' }}>
                     <tr>
-                      <th>ID</th>
-                      <th>氏名</th>
-                      <th>所属</th>
-                      <th>段位</th>
-                      <th>操作</th>
+                      <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>ID</th>
+                      <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>氏名</th>
+                      <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>所属</th>
+                      <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>段位</th>
+                      <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>操作</th>
                     </tr>
                   </thead>
                   <tbody>
                     {checkIns.length > 0 ? (
                       checkIns.map(archer => (
-                        <tr key={archer.archerId} className={archer.isCheckedIn ? 'checked-in' : ''}>
-                          <td>
-                            {archer.archerId}
-                            {archer.isCheckedIn && (
-                              <span className="check-in-badge">受付済</span>
-                            )}
-                          </td>
-                          <td>{archer.name}</td>
-                          <td>{archer.affiliation}</td>
-                          <td>{archer.rank}</td>
-                          <td className="action-buttons">
+                        <tr key={archer.archerId} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                          <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#6b7280', whiteSpace: 'nowrap' }}>{archer.archerId}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', fontWeight: 600, color: '#1f2937', whiteSpace: 'nowrap' }}>{archer.name}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#6b7280' }}>{archer.affiliation}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#6b7280', whiteSpace: 'nowrap' }}>{archer.rank}</td>
+                          <td style={{ padding: '0.75rem 0.5rem' }}>
                             <button 
                               onClick={() => showListQRCode(archer)}
-                              className="btn-secondary"
+                              style={{ 
+                                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '0.5rem',
+                                padding: '0.5rem 0.75rem',
+                                fontSize: '0.8125rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)',
+                                transition: 'all 0.2s',
+                                whiteSpace: 'nowrap'
+                              }}
+                              onMouseEnter={(e) => e.target.style.transform = 'translateY(-1px)'}
+                              onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
                             >
-                              <QrCode size={16} /> QR
+                              <QrCode size={14} /> QR
                             </button>
                           </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="5" className="text-center py-4">
-                          <p className="text-gray-500">受付データがありません</p>
+                        <td colSpan="5" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '2rem', opacity: 0.3 }}>📋</span>
+                            <p style={{ margin: 0, color: '#9ca3af', fontSize: '0.9375rem' }}>受付データがありません</p>
+                          </div>
                         </td>
                       </tr>
                     )}

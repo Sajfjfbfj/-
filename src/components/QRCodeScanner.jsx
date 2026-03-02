@@ -18,9 +18,18 @@ export const QRCodeScanner = ({ onScanSuccess, onError, onClose }) => {
         const devices = await Html5Qrcode.getCameras();
         if (devices && devices.length) {
           setAvailableCameras(devices);
-          // 背面カメラがあれば優先的に選択
-          const rearCamera = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('背面'));
-          setCameraId(rearCamera ? rearCamera.id : devices[0].id);
+          // バックカメラのみを選択
+          const rearCamera = devices.find(d => 
+            d.label.toLowerCase().includes('back') || 
+            d.label.toLowerCase().includes('背面') ||
+            d.label.toLowerCase().includes('rear') ||
+            d.label.toLowerCase().includes('environment')
+          );
+          if (rearCamera) {
+            setCameraId(rearCamera.id);
+          } else {
+            onError('バックカメラが見つかりませんでした');
+          }
         } else {
           onError('利用可能なカメラが見つかりませんでした');
         }
@@ -94,22 +103,14 @@ export const QRCodeScanner = ({ onScanSuccess, onError, onClose }) => {
           </button>
         </div>
 
-        {availableCameras.length > 1 && (
+        {availableCameras.length > 1 && cameraId && (
           <div className="camera-selector">
             <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
-              📹 カメラを選択
+              📹 バックカメラ使用中
             </label>
-            <select
-              value={cameraId || ''}
-              onChange={handleCameraChange}
-              aria-label="カメラ選択"
-            >
-              {availableCameras.map(camera => (
-                <option key={camera.id} value={camera.id}>
-                  {camera.label || `カメラ ${camera.id.substring(0, 8)}`}
-                </option>
-              ))}
-            </select>
+            <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+              {availableCameras.find(c => c.id === cameraId)?.label || 'バックカメラ'}
+            </p>
           </div>
         )}
 
