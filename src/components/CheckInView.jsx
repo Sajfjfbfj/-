@@ -101,10 +101,10 @@ const CheckInView = ({ state, dispatch }) => {
     }
   }, []);
 
-  const fetchTournamentData = async () => {
+  const fetchTournamentData = async (silent = false) => {
     if (!selectedTournamentId) return;
     
-    setIsLoading(true);
+    if (!silent) setIsLoading(true);
     try {
       const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
       const result = await response.json();
@@ -137,9 +137,9 @@ const CheckInView = ({ state, dispatch }) => {
       }
     } catch (error) {
       console.error('データの取得に失敗しました:', error);
-      setMessage('? データの取得に失敗しました');
+      if (!silent) setMessage('? データの取得に失敗しました');
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -276,7 +276,6 @@ const CheckInView = ({ state, dispatch }) => {
       return;
     }
 
-    setIsLoading(true);
     setMessage('処理中...');
 
     try {
@@ -309,7 +308,7 @@ const CheckInView = ({ state, dispatch }) => {
         setMessage(successMessage);
         setScannedQR('');
         setAutoRefresh(true);
-        await fetchTournamentData();
+        await fetchTournamentData(true);
         
         setTimeout(() => {
           if (checkinListRef.current) {
@@ -322,7 +321,6 @@ const CheckInView = ({ state, dispatch }) => {
     } catch (error) {
       setMessage(`? エラーが発生しました: ${error.message}`);
     } finally {
-      setIsLoading(false);
       setTimeout(() => setMessage(''), 5000);
     }
   };
