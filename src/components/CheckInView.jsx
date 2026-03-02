@@ -146,7 +146,7 @@ const CheckInView = ({ state, dispatch }) => {
   useEffect(() => {
     if (!autoRefresh || !selectedTournamentId) return;
     const interval = setInterval(() => {
-      fetchTournamentData();
+      fetchTournamentData(true);
     }, 2000); 
     return () => clearInterval(interval);
   }, [autoRefresh, selectedTournamentId]);
