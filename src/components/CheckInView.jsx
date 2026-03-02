@@ -141,12 +141,12 @@ const CheckInView = ({ state, dispatch }) => {
   };
 
   useEffect(() => {
-    if (!autoRefresh || !selectedTournamentId) return;
+    if (!autoRefresh || !selectedTournamentId || showQRScanner) return;
     const interval = setInterval(() => {
       fetchTournamentData(true);
     }, 2000); 
     return () => clearInterval(interval);
-  }, [autoRefresh, selectedTournamentId]);
+  }, [autoRefresh, selectedTournamentId, showQRScanner]);
 
   useEffect(() => {
     if (selectedTournamentId) {
