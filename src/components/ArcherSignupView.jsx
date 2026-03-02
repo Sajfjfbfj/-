@@ -213,24 +213,33 @@ const ArcherSignupView = ({ state, dispatch }) => {
 
   return (
     <div className="view-container">
-      <div className="view-header">
-        <h1>選手申し込み</h1>
+      <div className="sport-header">
+        <div style={{ padding: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ background: 'rgba(255, 255, 255, 0.2)', borderRadius: '0.75rem', padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '1.75rem' }}>🎯</span>
+            </div>
+            <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700 }}>選手申し込み</h1>
+          </div>
+        </div>
       </div>
       <div className="view-content">
-        <div className="card">
-          <label>大会を選択 *</label>
-          <div className="mb-2">
+        <div className="sport-card">
+          <div style={{ marginBottom: '1rem' }}>
+            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.125rem', fontWeight: 700, color: '#1f2937', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>🏹</span>大会選択
+            </h3>
             <input 
               type="text" 
               value={locationFilter} 
               onChange={(e) => setLocationFilter(e.target.value)} 
               placeholder="開催地でフィルター" 
-              className="input w-full mb-2"
+              style={{ width: '100%', padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem', marginBottom: '0.75rem' }}
             />
             <select 
               value={selectedTournamentId} 
               onChange={(e) => setSelectedTournamentId(e.target.value)} 
-              className="input w-full"
+              style={{ width: '100%', padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }}
             >
               <option value="">-- 大会を選択してください --</option>
               {filteredTournaments.length === 0 ? (
@@ -244,36 +253,40 @@ const ArcherSignupView = ({ state, dispatch }) => {
               )}
             </select>
           </div>
-          
         </div>
 
         {selectedTournamentId && (
-          <div className="card">
-            <input type="text" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="氏名 *" className="input" />
-            <input type="text" value={formData.affiliation} onChange={(e) => handleInputChange('affiliation', e.target.value)} placeholder="所属 *" className="input" />
-            <select value={formData.rank} onChange={(e) => handleInputChange('rank', e.target.value)} className="input">
-              {rankOrder.map(rank => (<option key={rank} value={rank}>{rank}</option>))}
-            </select>
-            <div>
-              <label>性別 *</label>
-              <select value={formData.gender} onChange={(e) => handleInputChange('gender', e.target.value)} className="input">
-                <option value="male">男</option>
-                <option value="female">女</option>
+          <div className="sport-card">
+            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: 700, color: '#1f2937', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>📝</span>申し込み情報
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <input type="text" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="氏名 *" style={{ padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }} />
+              <input type="text" value={formData.affiliation} onChange={(e) => handleInputChange('affiliation', e.target.value)} placeholder="所属 *" style={{ padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }} />
+              <select value={formData.rank} onChange={(e) => handleInputChange('rank', e.target.value)} style={{ padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                {rankOrder.map(rank => (<option key={rank} value={rank}>{rank}</option>))}
               </select>
-            </div>
-            {formData.rank !== '無指定' && (
               <div>
-                <label>段位取得日 *</label>
-                <input 
-                  type="date" 
-                  value={formData.rankAcquiredDate} 
-                  onChange={(e) => handleInputChange('rankAcquiredDate', e.target.value)} 
-                  className="input w-full" 
-                  max={new Date().toISOString().split('T')[0]}
-                />
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#6b7280' }}>性別 *</label>
+                <select value={formData.gender} onChange={(e) => handleInputChange('gender', e.target.value)} style={{ width: '100%', padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                  <option value="male">👨 男</option>
+                  <option value="female">👩 女</option>
+                </select>
               </div>
-            )}
-            <button onClick={handleApply} className="btn-primary">申し込む</button>
+              {formData.rank !== '無指定' && (
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#6b7280' }}>段位取得日 *</label>
+                  <input 
+                    type="date" 
+                    value={formData.rankAcquiredDate} 
+                    onChange={(e) => handleInputChange('rankAcquiredDate', e.target.value)} 
+                    style={{ width: '100%', padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }}
+                    max={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+              )}
+              <button onClick={handleApply} className="btn-primary" style={{ marginTop: '0.5rem', width: '100%', padding: '1rem', fontSize: '1.125rem', fontWeight: 700 }}>申し込む</button>
+            </div>
           </div>
         )}
 

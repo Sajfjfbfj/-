@@ -15,7 +15,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
   const [geocodeStatus, setGeocodeStatus] = useState('');
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [formData, setFormData] = useState({
-    name: '', datetime: '', location: '', venueAddress: '', venueLat: '', venueLng: '', organizer: '', coOrganizer: '', administrator: '', purpose: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '',
+    name: '', datetime: '', location: '', venueAddress: '', venueLat: '', venueLng: '', organizer: '', coOrganizer: '', administrator: '', purpose: '', schedule: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '',
     attachments: [],
     divisions: [
       { id: 'lower', label: '級位~三段以下の部' },
@@ -332,35 +332,63 @@ const TournamentSetupView = ({ state, dispatch }) => {
 
   return (
     <div className="view-container">
-      <div className="admin-header">
-        <h1>大会登録</h1>
+      <div className="sport-header">
+        <div style={{ padding: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ background: 'rgba(255, 255, 255, 0.2)', borderRadius: '0.75rem', padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '1.75rem' }}>🏹</span>
+            </div>
+            <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700 }}>大会登録</h1>
+          </div>
+        </div>
       </div>
       <div className="view-content">
         {state.registeredTournaments.length > 0 && (
-          <div className="card">
-            <div className="flex justify-between items-center mb-4">
-              <p className="card-title">登録済み大会</p>
+          <div className="sport-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '2px solid #e5e7eb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '1.25rem' }}>📋</span>
+                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#1f2937' }}>登録済み大会</h3>
+              </div>
               <input 
                 type="text" 
                 value={locationFilter} 
                 onChange={(e) => setLocationFilter(e.target.value)} 
                 placeholder="開催地でフィルター" 
-                className="input input-sm w-48"
+                style={{ padding: '0.5rem 0.75rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '0.875rem', width: '12rem' }}
               />
             </div>
-            <div className="tournament-list">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem', maxHeight: '20rem', overflowY: 'auto' }}>
               {filteredTournaments.length === 0 ? (
                 <p className="text-gray-500 text-center py-4">該当する大会が見つかりません</p>
               ) : (
-                filteredTournaments.map(template => (
-                <div key={template.id} className="tournament-item">
-                  <button onClick={() => handleLoadTemplateSafe(template)} className="tournament-button">
-                    <p>{template.data.name}</p>
-                    <p className="text-sm">{template.data.location || '場所未設定'} | {template.data.datetime || '日時未設定'}</p>
-                  </button>
-                  <button onClick={() => handleDeleteTemplate(template.id)} className="btn-delete">削除</button>
-                </div>
-              )))}
+                filteredTournaments.map(template => {
+                  const handleMouseEnter = (e) => {
+                    e.currentTarget.style.borderColor = '#3b82f6';
+                    e.currentTarget.style.background = '#eff6ff';
+                  };
+                  const handleMouseLeave = (e) => {
+                    e.currentTarget.style.borderColor = '#e5e7eb';
+                    e.currentTarget.style.background = '#f9fafb';
+                  };
+                  const handleDeleteMouseEnter = (e) => {
+                    e.target.style.transform = 'scale(1.05)';
+                  };
+                  const handleDeleteMouseLeave = (e) => {
+                    e.target.style.transform = 'scale(1)';
+                  };
+                  
+                  return (
+                    <div key={template.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', background: '#f9fafb', border: '2px solid #e5e7eb', borderRadius: '0.75rem', transition: 'all 0.2s', cursor: 'pointer' }} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+                      <button onClick={() => handleLoadTemplateSafe(template)} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                        <p style={{ margin: 0, fontWeight: 600, color: '#1f2937', fontSize: '1rem' }}>{template.data.name}</p>
+                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: '#6b7280' }}>{template.data.location || '場所未設定'} | {template.data.datetime || '日時未設定'}</p>
+                      </button>
+                      <button onClick={() => handleDeleteTemplate(template.id)} style={{ padding: '0.5rem 1rem', background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: 'white', border: 'none', borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={handleDeleteMouseEnter} onMouseLeave={handleDeleteMouseLeave}>削除</button>
+                    </div>
+                  );
+                })
+              )}
             </div>
             <button onClick={handleResetForm} className="btn-secondary">新規大会登録</button>
           </div>
@@ -386,10 +414,17 @@ const TournamentSetupView = ({ state, dispatch }) => {
           </div>
         )}
 
-        <div className="card">
-          <input type="text" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="大会名 *" className="input" />
-          <input type="datetime-local" value={formData.datetime} onChange={(e) => handleInputChange('datetime', e.target.value)} className="input" />
-          <input type="text" value={formData.location} onChange={(e) => handleInputChange('location', e.target.value)} placeholder="開催場所 *" className="input" />
+        <div className="sport-card">
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.125rem', fontWeight: 700, color: '#1f2937', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>📝</span>基本情報
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <input type="text" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="大会名 *" className="input" style={{ fontSize: '1rem', padding: '0.875rem 1rem' }} />
+              <input type="datetime-local" value={formData.datetime} onChange={(e) => handleInputChange('datetime', e.target.value)} className="input" style={{ fontSize: '1rem', padding: '0.875rem 1rem' }} />
+              <input type="text" value={formData.location} onChange={(e) => handleInputChange('location', e.target.value)} placeholder="開催場所 *" className="input" style={{ fontSize: '1rem', padding: '0.875rem 1rem' }} />
+            </div>
+          </div>
           <input type="text" value={formData.venueAddress} onChange={(e) => handleInputChange('venueAddress', e.target.value)} placeholder="会場住所（プログラム表には表示されません）" className="input" />
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button type="button" onClick={handleGeocodeAddress} className="btn-secondary" disabled={isGeocoding} style={{ whiteSpace: 'nowrap' }}>
@@ -403,7 +438,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
             <input type="text" value={formData.venueLat} onChange={(e) => handleInputChange('venueLat', e.target.value)} placeholder="緯度（自動受付用）" className="input" />
             <input type="text" value={formData.venueLng} onChange={(e) => handleInputChange('venueLng', e.target.value)} placeholder="経度（自動受付用）" className="input" />
           </div>
-          <input type="text" value={formData.purpose} onChange={(e) => handleInputChange('purpose', e.target.value)} placeholder="目的 *" className="input" />
+          <textarea value={formData.purpose} onChange={(e) => handleInputChange('purpose', e.target.value)} placeholder="目的 *" className="input" style={{ minHeight: '4rem', resize: 'vertical' }} />
           <input type="text" value={formData.organizer} onChange={(e) => handleInputChange('organizer', e.target.value)} placeholder="主催 *" className="input" />
           <input type="text" value={formData.coOrganizer} onChange={(e) => handleInputChange('coOrganizer', e.target.value)} placeholder="後援 *" className="input" />
           <input type="text" value={formData.administrator} onChange={(e) => handleInputChange('administrator', e.target.value)} placeholder="主管 *" className="input" />
@@ -429,17 +464,23 @@ const TournamentSetupView = ({ state, dispatch }) => {
             )}
           </div>
           <div style={{ marginTop: '0.5rem' }}>
-            <p className="label">大会要項</p>
-            <input type="text" value={formData.event} onChange={(e) => handleInputChange('event', e.target.value)} placeholder="種目 *" className="input" />
-            <input type="text" value={formData.type} onChange={(e) => handleInputChange('type', e.target.value)} placeholder="種類 *" className="input" />
-            <input type="text" value={formData.category} onChange={(e) => handleInputChange('category', e.target.value)} placeholder="種別 *" className="input" />
-            <input type="text" value={formData.description} onChange={(e) => handleInputChange('description', e.target.value)} placeholder="内容 *" className="input" />
-            <input type="text" value={formData.competitionMethod} onChange={(e) => handleInputChange('competitionMethod', e.target.value)} placeholder="競技方法 *" className="input" />
-            <input type="text" value={formData.award} onChange={(e) => handleInputChange('award', e.target.value)} placeholder="表彰 *" className="input" />
-            <input type="text" value={formData.qualifications} onChange={(e) => handleInputChange('qualifications', e.target.value)} placeholder="参加資格 *" className="input" />
-            <input type="text" value={formData.applicableRules} onChange={(e) => handleInputChange('applicableRules', e.target.value)} placeholder="適用規則 *" className="input" />
-            <input type="text" value={formData.applicationMethod} onChange={(e) => handleInputChange('applicationMethod', e.target.value)} placeholder="申込方法 *" className="input" />
-            <input type="text" value={formData.remarks} onChange={(e) => handleInputChange('remarks', e.target.value)} placeholder="その他必要事項 *" className="input" />
+            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1.125rem', fontWeight: 700, color: '#1f2937', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>📝</span>大会要項
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <textarea value={formData.schedule} onChange={(e) => handleInputChange('schedule', e.target.value)} placeholder="大会次第（例：受付 9:00～、開会式 9:30～、競技開始 10:00～）" className="input" style={{ minHeight: '10rem', resize: 'vertical', fontSize: '0.95rem' }} />
+              <textarea value={formData.event} onChange={(e) => handleInputChange('event', e.target.value)} placeholder="種目 *" className="input" style={{ minHeight: '4rem', resize: 'vertical' }} />
+              <textarea value={formData.type} onChange={(e) => handleInputChange('type', e.target.value)} placeholder="種類 *" className="input" style={{ minHeight: '4rem', resize: 'vertical' }} />
+              <textarea value={formData.category} onChange={(e) => handleInputChange('category', e.target.value)} placeholder="種別 *" className="input" style={{ minHeight: '4rem', resize: 'vertical' }} />
+              <textarea value={formData.description} onChange={(e) => handleInputChange('description', e.target.value)} placeholder="内容 *" className="input" style={{ minHeight: '6rem', resize: 'vertical' }} />
+              <textarea value={formData.competitionMethod} onChange={(e) => handleInputChange('competitionMethod', e.target.value)} placeholder="競技方法 *" className="input" style={{ minHeight: '6rem', resize: 'vertical' }} />
+              <textarea value={formData.award} onChange={(e) => handleInputChange('award', e.target.value)} placeholder="表彰 *" className="input" style={{ minHeight: '4rem', resize: 'vertical' }} />
+              <textarea value={formData.qualifications} onChange={(e) => handleInputChange('qualifications', e.target.value)} placeholder="参加資格 *" className="input" style={{ minHeight: '6rem', resize: 'vertical' }} />
+              <textarea value={formData.applicableRules} onChange={(e) => handleInputChange('applicableRules', e.target.value)} placeholder="適用規則 *" className="input" style={{ minHeight: '4rem', resize: 'vertical' }} />
+              <textarea value={formData.applicationMethod} onChange={(e) => handleInputChange('applicationMethod', e.target.value)} placeholder="申込方法 *" className="input" style={{ minHeight: '6rem', resize: 'vertical' }} />
+              <textarea value={formData.remarks} onChange={(e) => handleInputChange('remarks', e.target.value)} placeholder="その他必要事項 *" className="input" style={{ minHeight: '6rem', resize: 'vertical' }} />
+            </div>
+          </div>
             
             <div style={{ marginTop: '0.75rem' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -484,19 +525,20 @@ const TournamentSetupView = ({ state, dispatch }) => {
                       <p className="text-sm text-gray-500" style={{ marginBottom: '0.5rem' }}>部門がありません。「部門を追加」から追加してください。</p>
                     )}
                     {formData.divisions.map((d, idx) => (
-                      <div key={d.id} className="division-row" style={{ marginBottom: '0.5rem', alignItems: 'center' }}>
+                      <div key={d.id} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                         <input
                           type="text"
                           value={d.label}
                           onChange={(e) => handleDivisionChange(idx, 'label', e.target.value)}
                           className="input"
-                          style={{ flex: 1 }}
+                          placeholder="部門名"
+                          style={{ flex: '1 1 200px', minWidth: '150px' }}
                         />
                         <select
                           value={d.minRank || ''}
                           onChange={(e) => handleDivisionChange(idx, 'minRank', e.target.value)}
                           className="input"
-                          style={{ width: '10rem' }}
+                          style={{ flex: '0 0 120px' }}
                         >
                           <option value="">from</option>
                           {rankOptions.map(r => (<option key={r} value={r}>{r}</option>))}
@@ -505,23 +547,21 @@ const TournamentSetupView = ({ state, dispatch }) => {
                           value={d.maxRank || ''}
                           onChange={(e) => handleDivisionChange(idx, 'maxRank', e.target.value)}
                           className="input"
-                          style={{ width: '10rem' }}
+                          style={{ flex: '0 0 120px' }}
                         >
                           <option value="">to</option>
                           {rankOptions.map(r => (<option key={r} value={r}>{r}</option>))}
                         </select>
-                        <div className="division-actions" style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.5rem' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <input
-                              type="checkbox"
-                              checked={d.enableGenderSeparation || false}
-                              onChange={(e) => handleDivisionChange(idx, 'enableGenderSeparation', e.target.checked)}
-                              style={{ width: '1rem', height: '1rem' }}
-                            />
-                            <span className="text-sm">男女分ける</span>
-                          </label>
-                          <button type="button" className="btn-fix" onClick={() => handleRemoveDivision(idx)}>削除</button>
-                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap' }}>
+                          <input
+                            type="checkbox"
+                            checked={d.enableGenderSeparation || false}
+                            onChange={(e) => handleDivisionChange(idx, 'enableGenderSeparation', e.target.checked)}
+                            style={{ width: '1rem', height: '1rem' }}
+                          />
+                          <span style={{ fontSize: '0.875rem' }}>男女分ける</span>
+                        </label>
+                        <button type="button" className="btn-fix" onClick={() => handleRemoveDivision(idx)} style={{ flex: '0 0 auto' }}>削除</button>
                       </div>
                     ))}
                     <div style={{ display: 'flex', marginTop: '0.5rem', gap: '0.5rem' }}>
@@ -531,7 +571,6 @@ const TournamentSetupView = ({ state, dispatch }) => {
                 );
               })()}
             </div>
-          </div>
         </div>
 
         <button onClick={handleSaveTournament} className="btn-primary">{isEditing ? '大会情報を更新' : '大会登録を保存'}</button>

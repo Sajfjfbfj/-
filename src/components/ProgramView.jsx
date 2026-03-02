@@ -1063,18 +1063,14 @@ const ProgramView = ({ state }) => {
 
     html += `</body></html>`;
 
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 250);
-    } else {
-      alert('印刷ウィンドウを開けませんでした。ポップアップブロックを確認してください。');
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (!printWindow) {
+      alert('ポップアップがブロックされました。ポップアップを許可してください。');
+      return;
     }
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
   };
 
   const printProgram = () => {
@@ -1101,44 +1097,6 @@ const ProgramView = ({ state }) => {
 
     let html = `<!doctype html><html><head><meta charset="utf-8"><title>${title} プログラム</title><style>${styles}</style></head><body>`;
 
-    // Page 1: tournament info only
-    html += `<div class="page"><div class="tourney"><h1>${title}</h1>`;
-    html += `<p>${tournament?.data?.datetime || ''}</p>`;
-    html += `<p>${tournament?.data?.location || ''}</p>`;
-    html += `<p>目的: ${tournament?.data?.purpose || ''}</p>`;
-    html += `<p>主催: ${tournament?.data?.organizer || ''}</p>`;
-    html += `<p>後援: ${tournament?.data?.coOrganizer || ''}</p>`;
-    html += `<p>主管: ${tournament?.data?.administrator || ''}</p>`;
-    html += `<p>種目: ${tournament?.data?.event || ''}</p>`;
-    html += `<p>種類: ${tournament?.data?.type || ''}</p>`;
-    html += `<p>種別: ${tournament?.data?.category || ''}</p>`;
-    html += `<p>内容: ${tournament?.data?.description || ''}</p>`;
-    html += `<p>競技方法: ${tournament?.data?.competitionMethod || ''}</p>`;
-    html += `<p>表彰: ${tournament?.data?.award || ''}</p>`;
-    html += `<p>参加資格: ${tournament?.data?.qualifications || ''}</p>`;
-    html += `<p>適用規則: ${tournament?.data?.applicableRules || ''}</p>`;
-    html += `<p>申込方法: ${tournament?.data?.applicationMethod || ''}</p>`;
-    html += `<p>その他: ${tournament?.data?.remarks || ''}</p>`;
-    if (attachmentsForPrint.length > 0) {
-      html += `<div class="att"><h2 style="margin:0 0 6px">添付資料</h2><ul style="margin:0;padding-left:18px">`;
-      for (const att of attachmentsForPrint) {
-        const safeName = (att?.name || 'file').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const href = att?.dataUrl || '';
-        html += `<li style="margin:0 0 4px"><a href="${href}" target="_blank" rel="noopener noreferrer">${safeName}</a></li>`;
-      }
-      html += `</ul>`;
-      for (const att of attachmentsForPrint) {
-        const href = att?.dataUrl || '';
-        const type = (att?.type || '').toLowerCase();
-        const isImage = type.startsWith('image/') || href.startsWith('data:image/');
-        if (!isImage || !href) continue;
-        const safeName = (att?.name || 'image').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        html += `<div class="att-item"><div style="font-size:12px;margin:6px 0 4px">${safeName}</div><img class="att-img" src="${href}" alt="${safeName}" /></div>`;
-      }
-      html += `</div>`;
-    }
-    html += `</div></div>`;
-
     for (let p = 0; p < pages; p++) {
       html += `<div class="page">`;
       html += `<h2 style="margin:0 0 8px">立ち順表</h2>`;
@@ -1154,7 +1112,15 @@ const ProgramView = ({ state }) => {
                       ?? tournament?.arrowsRound2
                       ?? state.tournament?.arrowsRound2
                       ?? 4;
-        html += `<table><thead><tr><th>#</th><th>氏名</th><th>所属</th><th>段位</th><th>性別</th><th>1立ち目</th><th>2立ち目</th></tr></thead><tbody>`;
+        html += `<table><thead><tr>`;
+        html += `<th rowspan="2">番号</th><th rowspan="2">選手名</th><th rowspan="2">支部</th><th rowspan="2">性別</th><th rowspan="2">称号段位</th>`;
+        html += `<th colspan="${arrows1}" style="border-left:2px solid #999">1立目</th>`;
+        html += `<th colspan="${arrows2}" style="border-left:2px solid #999">2立目</th>`;
+        html += `<th rowspan="2" style="border-left:2px solid #999">競射</th><th rowspan="2">合計</th>`;
+        html += `</tr><tr>`;
+        for (let i = 1; i <= arrows1; i++) html += `<th style="border-left:1px solid #ddd">${i}</th>`;
+        for (let i = 1; i <= arrows2; i++) html += `<th style="border-left:1px solid #ddd">${i}</th>`;
+        html += `</tr></thead><tbody>`;
 
         const archersPerStand = tournament?.data?.archersPerStand
                               ?? tournament?.archersPerStand
@@ -1283,33 +1249,33 @@ const ProgramView = ({ state }) => {
         const end = Math.min(start + perPage, printSource.length);
         for (let i = start; i < end; i++) {
           const a = printSource[i];
-          html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td><td>${a.gender === 'female' ? '女' : '男'}</td>`;
-
-          // 1立ち目 results
-          html += `<td style="white-space:nowrap;text-align:center">`;
           const r1 = getArcherRoundResultsForPrint(a, 1);
+          const r2 = getArcherRoundResultsForPrint(a, 2);
+          const totalHits = [...r1, ...r2].filter(x => x === 'o').length;
+          html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.gender === 'female' ? '女' : '男'}</td><td>${a.rank || ''}</td>`;
+
+          // 1立目 results
           if (r1.length > 0) {
             r1.forEach(r => {
               const color = r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#9ca3af';
-              html += `<span style="display:inline-block;width:20px;text-align:center;font-size:13px;color:${color};font-weight:${r === 'o' ? 700 : 400}">${sym(r)}</span>`;
+              html += `<td style="border-left:1px solid #ddd;text-align:center;color:${color};font-weight:${r === 'o' ? 700 : 400}">${sym(r)}</td>`;
             });
           } else {
-            for (let x = 0; x < arrows1; x++) html += `<span style="display:inline-block;width:20px;text-align:center">&nbsp;</span>`;
+            for (let x = 0; x < arrows1; x++) html += `<td style="border-left:1px solid #ddd;text-align:center">&nbsp;</td>`;
           }
-          html += `</td>`;
 
-          // 2立ち目 results
-          html += `<td style="white-space:nowrap;text-align:center">`;
-          const r2 = getArcherRoundResultsForPrint(a, 2);
+          // 2立目 results
           if (r2.length > 0) {
             r2.forEach(r => {
               const color = r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#9ca3af';
-              html += `<span style="display:inline-block;width:20px;text-align:center;font-size:13px;color:${color};font-weight:${r === 'o' ? 700 : 400}">${sym(r)}</span>`;
+              html += `<td style="border-left:1px solid #ddd;text-align:center;color:${color};font-weight:${r === 'o' ? 700 : 400}">${sym(r)}</td>`;
             });
           } else {
-            for (let x = 0; x < arrows2; x++) html += `<span style="display:inline-block;width:20px;text-align:center">&nbsp;</span>`;
+            for (let x = 0; x < arrows2; x++) html += `<td style="border-left:1px solid #ddd;text-align:center">&nbsp;</td>`;
           }
-          html += `</td></tr>`;
+
+          html += `<td style="border-left:2px solid #999;text-align:center"></td>`;
+          html += `<td style="text-align:center;font-weight:700">${totalHits}</td></tr>`;
         }
 
         html += `</tbody></table></div>`;
@@ -1533,12 +1499,14 @@ const ProgramView = ({ state }) => {
 
     html += `</body></html>`;
 
-    const win = window.open('', '_blank');
-    if (!win) { alert('ポップアップがブロックされました。ポップアップを許可してください。'); return; }
+    const win = window.open('', '_blank', 'width=800,height=600');
+    if (!win) {
+      alert('ポップアップがブロックされました。ポップアップを許可してください。');
+      return;
+    }
     win.document.write(html);
     win.document.close();
     win.focus();
-    setTimeout(() => { win.print(); }, 300);
   };
 
   const downloadProgramPdf = async () => {
@@ -1556,23 +1524,29 @@ const ProgramView = ({ state }) => {
     if (datetime) doc.text(datetime, 14, 22);
     if (location) doc.text(location, 14, 27);
 
+    const arrows1 = tournament?.data?.arrowsRound1 ?? 2;
+    const arrows2 = tournament?.data?.arrowsRound2 ?? 4;
+
     const head = programTableMode === 'all_applicants'
       ? [['#', '氏名', '所属', '段位', '性別']]
-      : [['#', '氏名', '所属', '段位', '性別', '1立ち目', '2立ち目']];
+      : [
+          ['番号', '選手名', '支部', '性別', '称号段位', ...Array.from({ length: arrows1 }, (_, i) => `1立目-${i+1}`), ...Array.from({ length: arrows2 }, (_, i) => `2立目-${i+1}`), '競射', '合計']
+        ];
 
     const body = exportSource.map((a, idx) => {
       const base = [
         String(a.standOrder || idx + 1),
         String(a.name || ''),
         String(a.affiliation || ''),
-        String(a.rank || ''),
-        a.gender === 'female' ? '女' : '男'
+        a.gender === 'female' ? '女' : '男',
+        String(a.rank || '')
       ];
       if (programTableMode === 'all_applicants') return base;
 
-      const r1 = getArcherRoundResults(a, 1).map(resultSymbol).join('');
-      const r2 = getArcherRoundResults(a, 2).map(resultSymbol).join('');
-      return [...base, r1, r2];
+      const r1 = getArcherRoundResults(a, 1).map(resultSymbol);
+      const r2 = getArcherRoundResults(a, 2).map(resultSymbol);
+      const totalHits = [...getArcherRoundResults(a, 1), ...getArcherRoundResults(a, 2)].filter(r => r === 'o').length;
+      return [...base, ...r1, ...r2, '', totalHits];
     });
 
     autoTable(doc, {
@@ -1593,23 +1567,27 @@ const ProgramView = ({ state }) => {
     const title = tournament?.data?.name || selectedTournamentId;
     const exportSource = programTableMode === 'all_applicants' ? allApplicants : archers;
 
+    const arrows1 = tournament?.data?.arrowsRound1 ?? 2;
+    const arrows2 = tournament?.data?.arrowsRound2 ?? 4;
+
     const header = programTableMode === 'all_applicants'
       ? ['#', '氏名', '所属', '段位', '性別']
-      : ['#', '氏名', '所属', '段位', '性別', '1立ち目', '2立ち目'];
+      : ['番号', '選手名', '支部', '性別', '称号段位', ...Array.from({ length: arrows1 }, (_, i) => `1立目-${i+1}`), ...Array.from({ length: arrows2 }, (_, i) => `2立目-${i+1}`), '競射', '合計'];
 
     const rows = exportSource.map((a, idx) => {
       const base = [
         a.standOrder || idx + 1,
         a.name || '',
         a.affiliation || '',
-        a.rank || '',
-        a.gender === 'female' ? '女' : '男'
+        a.gender === 'female' ? '女' : '男',
+        a.rank || ''
       ];
       if (programTableMode === 'all_applicants') return base;
 
-      const r1 = getArcherRoundResults(a, 1).map(resultSymbol).join('');
-      const r2 = getArcherRoundResults(a, 2).map(resultSymbol).join('');
-      return [...base, r1, r2];
+      const r1 = getArcherRoundResults(a, 1).map(resultSymbol);
+      const r2 = getArcherRoundResults(a, 2).map(resultSymbol);
+      const totalHits = [...getArcherRoundResults(a, 1), ...getArcherRoundResults(a, 2)].filter(r => r === 'o').length;
+      return [...base, ...r1, ...r2, '', totalHits];
     });
 
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
@@ -1650,6 +1628,12 @@ const ProgramView = ({ state }) => {
               <p><strong>日時:</strong> {tournament?.data?.datetime || '未設定'}</p>
               <p><strong>場所:</strong> {tournament?.data?.location || '未設定'}</p>
               <p><strong>目的:</strong> {tournament?.data?.purpose || '-'}</p>
+              {tournament?.data?.schedule && (
+                <>
+                  <p><strong>大会次第:</strong></p>
+                  <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: '0.5rem 0 1rem 0', padding: '0.75rem', background: '#f0f9ff', border: '2px solid #bfdbfe', borderRadius: '0.5rem', fontSize: '0.875rem', lineHeight: '1.6' }}>{tournament.data.schedule}</pre>
+                </>
+              )}
               <p><strong>主催:</strong> {tournament?.data?.organizer || '-'}</p>
               <p><strong>後援:</strong> {tournament?.data?.coOrganizer || '-'}</p>
               <p><strong>主管:</strong> {tournament?.data?.administrator || '-'}</p>
@@ -1704,67 +1688,76 @@ const ProgramView = ({ state }) => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">所属</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">性別</th>
+                      <th rowSpan="2" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider align-middle">番号</th>
+                      <th rowSpan="2" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider align-middle">選手名</th>
+                      <th rowSpan="2" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider align-middle">支部</th>
+                      <th rowSpan="2" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider align-middle">性別</th>
+                      <th rowSpan="2" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider align-middle">称号段位</th>
                       {programTableMode === 'checked_in' && (
                         <>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
+                          <th colSpan={tournament?.data?.arrowsRound1 ?? 2} className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-300">1立目</th>
+                          <th colSpan={tournament?.data?.arrowsRound2 ?? 4} className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-300">2立目</th>
+                          <th rowSpan="2" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider align-middle border-l border-gray-300">競射</th>
+                          <th rowSpan="2" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider align-middle">合計</th>
                         </>
                       )}
                     </tr>
+                    {programTableMode === 'checked_in' && (
+                      <tr>
+                        {Array.from({ length: tournament?.data?.arrowsRound1 ?? 2 }, (_, i) => (
+                          <th key={`r1-${i}`} className="px-2 py-2 text-center text-xs font-medium text-gray-500 border-l border-gray-300">{i + 1}</th>
+                        ))}
+                        {Array.from({ length: tournament?.data?.arrowsRound2 ?? 4 }, (_, i) => (
+                          <th key={`r2-${i}`} className="px-2 py-2 text-center text-xs font-medium text-gray-500 border-l border-gray-300">{i + 1}</th>
+                        ))}
+                      </tr>
+                    )}
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {isLoading && programSource.length === 0 ? (
-                      <tr><td colSpan={programTableMode === 'checked_in' ? 7 : 5} className="px-4 py-4 text-center">読み込み中...</td></tr>
+                      <tr><td colSpan={programTableMode === 'checked_in' ? (5 + (tournament?.data?.arrowsRound1 ?? 2) + (tournament?.data?.arrowsRound2 ?? 4) + 2) : 5} className="px-4 py-4 text-center">読み込み中...</td></tr>
                     ) : programSource.length === 0 ? (
-                      <tr><td colSpan={programTableMode === 'checked_in' ? 7 : 5} className="px-4 py-4 text-center">選手が登録されていません</td></tr>
+                      <tr><td colSpan={programTableMode === 'checked_in' ? (5 + (tournament?.data?.arrowsRound1 ?? 2) + (tournament?.data?.arrowsRound2 ?? 4) + 2) : 5} className="px-4 py-4 text-center">選手が登録されていません</td></tr>
                     ) : (
-                      currentArchers.map(a => (
-                        <tr key={a.archerId}>
-                          <td className="px-4 py-3 text-sm font-medium">{a.standOrder}</td>
-                          <td className="px-4 py-3">{a.name}</td>
-                          <td className="px-4 py-3">{a.affiliation}</td>
-                          <td className="px-4 py-3 text-center">{a.rank}</td>
-                          <td className="px-4 py-3 text-center">{a.gender === 'female' ? '女' : '男'}</td>
+                      currentArchers.map(a => {
+                        const r1Results = getArcherRoundResults(a, 1);
+                        const r2Results = getArcherRoundResults(a, 2);
+                        const totalHits = [...r1Results, ...r2Results].filter(r => r === 'o').length;
+                        return (
+                          <tr key={a.archerId}>
+                            <td className="px-4 py-3 text-sm font-medium">{a.standOrder}</td>
+                            <td className="px-4 py-3">{a.name}</td>
+                            <td className="px-4 py-3">{a.affiliation}</td>
+                            <td className="px-4 py-3 text-center">{a.gender === 'female' ? '女' : '男'}</td>
+                            <td className="px-4 py-3 text-center">{a.rank}</td>
 
-                          {programTableMode === 'checked_in' && (
-                            <>
-                              <td className="px-4 py-3">
-                                <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
-                                  {getArcherRoundResults(a, 1).map((r, idx) => (
-                                    <span key={idx} style={{
-                                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                      width: '20px', height: '20px', fontSize: '13px',
-                                      color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
-                                      fontWeight: r === 'o' ? 700 : 400
-                                    }}>
-                                      {resultSymbol(r) || '　'}
-                                    </span>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
-                                  {getArcherRoundResults(a, 2).map((r, idx) => (
-                                    <span key={idx} style={{
-                                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                      width: '20px', height: '20px', fontSize: '13px',
-                                      color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
-                                      fontWeight: r === 'o' ? 700 : 400
-                                    }}>
-                                      {resultSymbol(r) || '　'}
-                                    </span>
-                                  ))}
-                                </div>
-                              </td>
-                            </>
-                          )}
-                        </tr>
-                      ))
+                            {programTableMode === 'checked_in' && (
+                              <>
+                                {r1Results.map((r, idx) => (
+                                  <td key={`r1-${idx}`} className="px-2 py-3 text-center border-l border-gray-200" style={{
+                                    color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
+                                    fontWeight: r === 'o' ? 700 : 400,
+                                    fontSize: '13px'
+                                  }}>
+                                    {resultSymbol(r) || ''}
+                                  </td>
+                                ))}
+                                {r2Results.map((r, idx) => (
+                                  <td key={`r2-${idx}`} className="px-2 py-3 text-center border-l border-gray-200" style={{
+                                    color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
+                                    fontWeight: r === 'o' ? 700 : 400,
+                                    fontSize: '13px'
+                                  }}>
+                                    {resultSymbol(r) || ''}
+                                  </td>
+                                ))}
+                                <td className="px-2 py-3 text-center border-l border-gray-300"></td>
+                                <td className="px-2 py-3 text-center font-semibold">{totalHits}</td>
+                              </>
+                            )}
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

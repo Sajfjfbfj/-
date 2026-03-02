@@ -481,6 +481,8 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   background: white;
   border-radius: 0.75rem;
   font-weight: 600;
+  font-size: 0.9375rem;
+  color: #374151;
   transition: all 0.2s;
   cursor: pointer;
 }
@@ -491,10 +493,11 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
 }
 
 .button-group .btn-active {
-  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
-  color: white;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1e40af;
   border-color: #2563eb;
   box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
+  font-weight: 700;
 }
 
 .round-selector {
@@ -703,6 +706,45 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   .arrow-buttons,
   .arrow-result {
     gap: 0.25rem;
+  }
+}
+
+/* RankingView Improvements */
+.card-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+  .card-title {
+    font-size: 1.125rem;
+  }
+}
+
+/* Table Responsive */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -1rem;
+  padding: 0 1rem;
+}
+
+@media (max-width: 768px) {
+  .table-responsive {
+    margin: 0 -0.75rem;
+    padding: 0 0.75rem;
+  }
+  
+  .table-responsive table {
+    font-size: 0.875rem;
+  }
+  
+  .table-responsive th,
+  .table-responsive td {
+    padding: 0.5rem !important;
+    white-space: nowrap;
   }
 }
 

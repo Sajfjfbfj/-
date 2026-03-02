@@ -58,77 +58,92 @@ const SettingsView = ({ state, dispatch, selectedTournamentId, setSelectedTourna
     <div className="view-container pb-6">
       <div className="view-content">
         <div className="card">
-          <p className="card-title">通過判定ルール</p>
-          <div className="radio-group">
-            {[
-              { value: 'all_four', label: '全て的中' }, 
-              { value: 'four_or_more', label: '4本以上的中' }, 
-              { value: 'three_or_more', label: '3本以上的中' }, 
-              { value: 'two_or_more', label: '2本以上的中' }
-            ].map(rule => (
-              <label key={rule.value} className="radio-label">
-                <input 
-                  type="radio" 
-                  name="passRule" 
-                  value={rule.value} 
-                  checked={localSettings.passRule === rule.value} 
-                  onChange={(e) => setLocalSettings(prev => ({ ...prev, passRule: e.target.value }))} 
-                />
-                <span>{rule.label}</span>
-              </label>
-            ))}
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1.5rem', color: '#1f2937' }}>⚙️ 大会設定</h2>
+          
+          <div style={{ marginBottom: '2rem' }}>
+            <p style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '1rem', color: '#374151' }}>🎯 通過判定ルール</p>
+            <div className="radio-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {[
+                { value: 'all_four', label: '全て的中' }, 
+                { value: 'four_or_more', label: '4本以上的中' }, 
+                { value: 'three_or_more', label: '3本以上的中' }, 
+                { value: 'two_or_more', label: '2本以上的中' }
+              ].map(rule => (
+                <label key={rule.value} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem', border: '2px solid', borderColor: localSettings.passRule === rule.value ? '#2563eb' : '#e5e7eb', borderRadius: '0.75rem', cursor: 'pointer', background: localSettings.passRule === rule.value ? '#eff6ff' : 'white', transition: 'all 0.2s' }}>
+                  <input 
+                    type="radio" 
+                    name="passRule" 
+                    value={rule.value} 
+                    checked={localSettings.passRule === rule.value} 
+                    onChange={(e) => setLocalSettings(prev => ({ ...prev, passRule: e.target.value }))} 
+                    style={{ width: '1.25rem', height: '1.25rem', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '1rem', fontWeight: '500', color: '#1f2937' }}>{rule.label}</span>
+                </label>
+              ))}
+            </div>
           </div>
-          <div className="divider"></div>
-          <p className="label">予選1回戦の矢数</p>
-          <select 
-            value={localSettings.arrowsRound1} 
-            onChange={(e) => setLocalSettings(prev => ({ ...prev, arrowsRound1: parseInt(e.target.value) }))} 
-            className="input"
-          >
-            <option value={2}>2本</option>
-            <option value={4}>4本</option>
-          </select>
-          <div className="divider"></div>
-          <p className="label">予選2回戦の矢数</p>
-          <select 
-            value={localSettings.arrowsRound2} 
-            onChange={(e) => setLocalSettings(prev => ({ ...prev, arrowsRound2: parseInt(e.target.value) }))} 
-            className="input"
-          >
-            <option value={2}>2本</option>
-            <option value={4}>4本</option>
-          </select>
-          <div className="divider"></div>
-          <p className="label">道場に入る最大の人数</p>
-          <select 
-            value={localSettings.archersPerStand} 
-            onChange={(e) => setLocalSettings(prev => ({ ...prev, archersPerStand: parseInt(e.target.value) }))} 
-            className="input"
-          >
-            {[6, 8, 10, 12].map(n => (
-              <option key={n} value={n}>{n}人</option>
-            ))}
-          </select>
-          <div className="divider"></div>
-          <p className="label">表彰は何位まで</p>
-          <input
-            type="number"
-            min="1"
-            max="999"
-            value={localSettings.awardRankLimit}
-            onChange={(e) => setLocalSettings(prev => ({ 
-              ...prev, 
-              awardRankLimit: Math.max(1, parseInt(e.target.value || '1')) 
-            }))}
-            className="input"
-          />
+
+          <div style={{ marginBottom: '2rem' }}>
+            <p style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.75rem', color: '#374151' }}>🎯 予選1回戦の矢数</p>
+            <select 
+              value={localSettings.arrowsRound1} 
+              onChange={(e) => setLocalSettings(prev => ({ ...prev, arrowsRound1: parseInt(e.target.value) }))} 
+              className="input"
+              style={{ fontSize: '1rem', padding: '0.875rem' }}
+            >
+              <option value={2}>2本</option>
+              <option value={4}>4本</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '2rem' }}>
+            <p style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.75rem', color: '#374151' }}>🎯 予選2回戦の矢数</p>
+            <select 
+              value={localSettings.arrowsRound2} 
+              onChange={(e) => setLocalSettings(prev => ({ ...prev, arrowsRound2: parseInt(e.target.value) }))} 
+              className="input"
+              style={{ fontSize: '1rem', padding: '0.875rem' }}
+            >
+              <option value={2}>2本</option>
+              <option value={4}>4本</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '2rem' }}>
+            <p style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.75rem', color: '#374151' }}>👥 道場に入る最大の人数</p>
+            <select 
+              value={localSettings.archersPerStand} 
+              onChange={(e) => setLocalSettings(prev => ({ ...prev, archersPerStand: parseInt(e.target.value) }))} 
+              className="input"
+              style={{ fontSize: '1rem', padding: '0.875rem' }}
+            >
+              {[6, 8, 10, 12].map(n => (
+                <option key={n} value={n}>{n}人</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '2rem' }}>
+            <p style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.75rem', color: '#374151' }}>🏆 表彰は何位まで</p>
+            <input
+              type="number"
+              min="1"
+              max="999"
+              value={localSettings.awardRankLimit}
+              onChange={(e) => setLocalSettings(prev => ({ 
+                ...prev, 
+                awardRankLimit: Math.max(1, parseInt(e.target.value || '1')) 
+              }))}
+              className="input"
+              style={{ fontSize: '1rem', padding: '0.875rem' }}
+            />
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
-          <button onClick={handleSaveSettings} className="btn-primary">
-            大会に設定を保存
-          </button>
-        </div>
+        <button onClick={handleSaveSettings} className="btn-primary" style={{ width: '100%', fontSize: '1.125rem', padding: '1rem', marginTop: '1rem' }}>
+          💾 大会に設定を保存
+        </button>
       </div>
     </div>
   );

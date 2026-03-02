@@ -22,6 +22,9 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   const [allApplicants, setAllApplicants] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [fontSize, setFontSize] = useState(() => {
+    return localStorage.getItem('tournamentViewFontSize') || 'medium';
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const archersPerPage = 12; // 1ページあたりの選手数
   const programArchersPerPage = 36;
@@ -61,6 +64,12 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       localStorage.removeItem('selectedTournamentId');
     }
   }, [selectedTournamentId]);
+
+  useEffect(() => {
+    if (fontSize) {
+      localStorage.setItem('tournamentViewFontSize', fontSize);
+    }
+  }, [fontSize]);
 
   const filteredTournaments = state.registeredTournaments.filter(tournament => 
     tournament.id
@@ -489,6 +498,9 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     html += `<p>${tplData?.datetime || ''}</p>`;
     html += `<p>${tplData?.location || ''}</p>`;
     html += `<p>目的: ${tplData?.purpose || ''}</p>`;
+    if (tplData?.schedule) {
+      html += `<p>大会次第:</p><pre style="white-space:pre-wrap;font-family:inherit;margin:0 0 8px;padding:4px;background:#f9f9f9;border-radius:4px;font-size:11px">${tplData.schedule}</pre>`;
+    }
     html += `<p>主催: ${tplData?.organizer || ''}</p>`;
     html += `<p>後援: ${tplData?.coOrganizer || ''}</p>`;
     html += `<p>主管: ${tplData?.administrator || ''}</p>`;
@@ -1621,6 +1633,12 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                 <p><strong>日時:</strong> {tplData?.datetime || '未設定'}</p>
                 <p><strong>場所:</strong> {tplData?.location || '未設定'}</p>
                 <p><strong>目的:</strong> {tplData?.purpose || '-'}</p>
+                {tplData?.schedule && (
+                  <>
+                    <p><strong>大会次第:</strong></p>
+                    <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: '0 0 1rem 0', padding: '0.5rem', background: '#f9fafb', borderRadius: '0.25rem', fontSize: '0.875rem' }}>{tplData.schedule}</pre>
+                  </>
+                )}
                 <p><strong>主催:</strong> {tplData?.organizer || '-'}</p>
                 <p><strong>後援:</strong> {tplData?.coOrganizer || '-'}</p>
                 <p><strong>主管:</strong> {tplData?.administrator || '-'}</p>
@@ -1675,67 +1693,76 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">所属</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">性別</th>
+                        <th rowSpan="2" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider align-middle">#</th>
+                        <th rowSpan="2" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider align-middle">氏名</th>
+                        <th rowSpan="2" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider align-middle">所属</th>
+                        <th rowSpan="2" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider align-middle">段位</th>
+                        <th rowSpan="2" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider align-middle">性別</th>
                         {programTableMode === 'checked_in' && (
                           <>
-                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
-                            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
+                            <th colSpan={tplData?.arrowsRound1 ?? 2} className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-300">1立ち目</th>
+                            <th colSpan={tplData?.arrowsRound2 ?? 4} className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-300">2立ち目</th>
+                            <th rowSpan="2" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider align-middle border-l border-gray-300">競射</th>
+                            <th rowSpan="2" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider align-middle">合計</th>
                           </>
                         )}
                       </tr>
+                      {programTableMode === 'checked_in' && (
+                        <tr>
+                          {Array.from({ length: tplData?.arrowsRound1 ?? 2 }, (_, i) => (
+                            <th key={`r1-${i}`} className="px-2 py-2 text-center text-xs font-medium text-gray-500 border-l border-gray-300">{i + 1}</th>
+                          ))}
+                          {Array.from({ length: tplData?.arrowsRound2 ?? 4 }, (_, i) => (
+                            <th key={`r2-${i}`} className="px-2 py-2 text-center text-xs font-medium text-gray-500 border-l border-gray-300">{i + 1}</th>
+                          ))}
+                        </tr>
+                      )}
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {isLoading && programSource.length === 0 ? (
-                        <tr><td colSpan={programTableMode === 'checked_in' ? 7 : 5} className="px-4 py-4 text-center">読み込み中...</td></tr>
+                        <tr><td colSpan={programTableMode === 'checked_in' ? (5 + (tplData?.arrowsRound1 ?? 2) + (tplData?.arrowsRound2 ?? 4) + 2) : 5} className="px-4 py-4 text-center">読み込み中...</td></tr>
                       ) : programSource.length === 0 ? (
-                        <tr><td colSpan={programTableMode === 'checked_in' ? 7 : 5} className="px-4 py-4 text-center">選手が登録されていません</td></tr>
+                        <tr><td colSpan={programTableMode === 'checked_in' ? (5 + (tplData?.arrowsRound1 ?? 2) + (tplData?.arrowsRound2 ?? 4) + 2) : 5} className="px-4 py-4 text-center">選手が登録されていません</td></tr>
                       ) : (
-                        currentArchersProgram.map(a => (
-                          <tr key={a.archerId}>
-                            <td className="px-4 py-3 text-sm font-medium">{a.standOrder}</td>
-                            <td className="px-4 py-3">{a.name}</td>
-                            <td className="px-4 py-3">{a.affiliation}</td>
-                            <td className="px-4 py-3 text-center">{a.rank}</td>
-                            <td className="px-4 py-3 text-center">{a.gender === 'female' ? '女' : '男'}</td>
+                        currentArchersProgram.map(a => {
+                          const r1Results = getArcherRoundResults(a, 1);
+                          const r2Results = getArcherRoundResults(a, 2);
+                          const totalHits = [...r1Results, ...r2Results].filter(r => r === 'o').length;
+                          return (
+                            <tr key={a.archerId}>
+                              <td className="px-4 py-3 text-sm font-medium">{a.standOrder}</td>
+                              <td className="px-4 py-3">{a.name}</td>
+                              <td className="px-4 py-3">{a.affiliation}</td>
+                              <td className="px-4 py-3 text-center">{a.rank}</td>
+                              <td className="px-4 py-3 text-center">{a.gender === 'female' ? '女' : '男'}</td>
 
-                            {programTableMode === 'checked_in' && (
-                              <>
-                                <td className="px-4 py-3">
-                                  <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
-                                    {getArcherRoundResults(a, 1).map((r, idx) => (
-                                      <span key={idx} style={{
-                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                        width: '20px', height: '20px', fontSize: '13px',
-                                        color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
-                                        fontWeight: r === 'o' ? 700 : 400
-                                      }}>
-                                        {resultSymbol(r) || '　'}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3">
-                                  <div style={{ display: 'flex', justifyContent: 'center', gap: '4px' }}>
-                                    {getArcherRoundResults(a, 2).map((r, idx) => (
-                                      <span key={idx} style={{
-                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                        width: '20px', height: '20px', fontSize: '13px',
-                                        color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
-                                        fontWeight: r === 'o' ? 700 : 400
-                                      }}>
-                                        {resultSymbol(r) || '　'}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </td>
-                              </>
-                            )}
-                          </tr>
-                        ))
+                              {programTableMode === 'checked_in' && (
+                                <>
+                                  {r1Results.map((r, idx) => (
+                                    <td key={`r1-${idx}`} className="px-2 py-3 text-center border-l border-gray-200" style={{
+                                      color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
+                                      fontWeight: r === 'o' ? 700 : 400,
+                                      fontSize: '13px'
+                                    }}>
+                                      {resultSymbol(r) || ''}
+                                    </td>
+                                  ))}
+                                  {r2Results.map((r, idx) => (
+                                    <td key={`r2-${idx}`} className="px-2 py-3 text-center border-l border-gray-200" style={{
+                                      color: r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#6b7280',
+                                      fontWeight: r === 'o' ? 700 : 400,
+                                      fontSize: '13px'
+                                    }}>
+                                      {resultSymbol(r) || ''}
+                                    </td>
+                                  ))}
+                                  <td className="px-2 py-3 text-center border-l border-gray-300"></td>
+                                  <td className="px-2 py-3 text-center font-semibold">{totalHits}</td>
+                                </>
+                              )}
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -1796,7 +1823,30 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       ) : (
         <div className="view-container">
           <div className="view-header">
-            <h1>大会進行 (リアルタイム)</h1>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h1>大会進行 (リアルタイム)</h1>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>文字サイズ:</span>
+                <button
+                  onClick={() => setFontSize('small')}
+                  className={`px-3 py-1 rounded ${fontSize === 'small' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                >
+                  小
+                </button>
+                <button
+                  onClick={() => setFontSize('medium')}
+                  className={`px-3 py-1 rounded ${fontSize === 'medium' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                >
+                  中
+                </button>
+                <button
+                  onClick={() => setFontSize('large')}
+                  className={`px-3 py-1 rounded ${fontSize === 'large' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                >
+                  大
+                </button>
+              </div>
+            </div>
             <div style={{ marginTop: '1rem' }}>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <div className="input w-full" style={{ display: 'flex', alignItems: 'center', padding: '0.5rem' }}>
@@ -1816,102 +1866,133 @@ const TournamentView = ({ state, stands, checkInCount }) => {
           <div className="view-content">
             {selectedTournamentId && (
               <>
-                <div className="settings-grid">
-                  <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                    <p className="text-xs text-gray-500 font-medium mb-1">受付済み</p>
-                    <p className="text-lg font-semibold">{archers.length}<span className="text-sm text-gray-500 ml-1">人</span></p>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+                  <div className="bg-white px-8 py-4 rounded-lg shadow-sm border border-gray-200" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <span className={`text-gray-600 font-medium ${
+                      fontSize === 'small' ? 'text-base' : fontSize === 'large' ? 'text-xl' : 'text-lg'
+                    }`}>👥 受付済み:</span>
+                    <span className={`font-bold text-gray-900 ${
+                      fontSize === 'small' ? 'text-2xl' : fontSize === 'large' ? 'text-4xl' : 'text-3xl'
+                    }`}>{archers.length}<span className={`text-gray-500 ml-1 ${
+                      fontSize === 'small' ? 'text-base' : fontSize === 'large' ? 'text-xl' : 'text-lg'
+                    }`}>人</span></span>
                   </div>
+                  
                   <div 
-                    className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                    className="bg-white px-8 py-4 rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
                     onClick={() => setView('qualifiers')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}
                   >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-xs text-gray-500 font-medium mb-1">通過者</p>
-                        <p className="text-lg font-semibold">
-                          {passedArchers.length}<span className="text-sm text-gray-500 ml-1">人</span>
-                        </p>
-                      </div>
-                      <Users className="w-4 h-4 text-gray-400" />
-                    </div>
+                    <span className={`text-gray-600 font-medium ${
+                      fontSize === 'small' ? 'text-base' : fontSize === 'large' ? 'text-xl' : 'text-lg'
+                    }`}>✅ 通過者:</span>
+                    <span className={`font-bold text-gray-900 ${
+                      fontSize === 'small' ? 'text-2xl' : fontSize === 'large' ? 'text-4xl' : 'text-3xl'
+                    }`}>{passedArchers.length}<span className={`text-gray-500 ml-1 ${
+                      fontSize === 'small' ? 'text-base' : fontSize === 'large' ? 'text-xl' : 'text-lg'
+                    }`}>人</span></span>
                   </div>
+                  
                   <div 
-                    className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                    className="bg-white px-8 py-4 rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:bg-blue-50 transition-colors"
                     onClick={() => setView('program')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}
                   >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-xs text-gray-500 font-medium mb-1">プログラム</p>
-                        <p className="text-sm font-medium">表示/印刷</p>
-                      </div>
-                      <Maximize2 className="w-4 h-4 text-gray-400" />
-                    </div>
+                    <span className={`text-gray-700 font-semibold ${
+                      fontSize === 'small' ? 'text-base' : fontSize === 'large' ? 'text-xl' : 'text-lg'
+                    }`}>📋 プログラム</span>
                   </div>
+                  
                   <div 
-                    className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                    className="bg-white px-8 py-4 rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:bg-orange-50 transition-colors"
                     onClick={() => setView('shichuma')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}
                   >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-xs text-gray-500 font-medium mb-1">競射結果</p>
-                        <p className="text-sm font-medium">結果表示</p>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-gray-400" />
-                    </div>
+                    <span className={`text-gray-700 font-semibold ${
+                      fontSize === 'small' ? 'text-base' : fontSize === 'large' ? 'text-xl' : 'text-lg'
+                    }`}>🏆 競射結果</span>
                   </div>
-                  <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                    <p className="text-xs text-gray-500 font-medium mb-1">通過ルール</p>
-                    <p className="text-sm font-medium">
+                  
+                  <div className="bg-white px-8 py-4 rounded-lg shadow-sm border border-gray-200" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <span className={`text-gray-600 font-medium ${
+                      fontSize === 'small' ? 'text-base' : fontSize === 'large' ? 'text-xl' : 'text-lg'
+                    }`}>📏 ルール:</span>
+                    <span className={`font-semibold text-gray-900 ${
+                      fontSize === 'small' ? 'text-base' : fontSize === 'large' ? 'text-xl' : 'text-lg'
+                    }`}>
                       {tournament.passRule === 'all_four' ? '全て的中' :
-                       tournament.passRule === 'four_or_more' ? '4本以上的中' :
-                       tournament.passRule === 'three_or_more' ? '3本以上的中' :
-                       tournament.passRule === 'two_or_more' ? '2本以上的中' : '未設定'}
-                    </p>
+                       tournament.passRule === 'four_or_more' ? '4本以上' :
+                       tournament.passRule === 'three_or_more' ? '3本以上' :
+                       tournament.passRule === 'two_or_more' ? '2本以上' : '未設定'}
+                    </span>
                   </div>
-                  <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                    <p className="text-xs text-gray-500 font-medium mb-1">1立ち目矢数</p>
-                    <p className="text-lg font-semibold">{tournament.arrowsRound1 || 0}<span className="text-sm text-gray-500 ml-1">本</span></p>
+                  
+                  <div className="bg-white px-8 py-4 rounded-lg shadow-sm border border-gray-200" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <span className={`text-gray-600 font-medium ${
+                      fontSize === 'small' ? 'text-base' : fontSize === 'large' ? 'text-xl' : 'text-lg'
+                    }`}>🎯 1立ち目:</span>
+                    <span className={`font-bold text-gray-900 ${
+                      fontSize === 'small' ? 'text-2xl' : fontSize === 'large' ? 'text-4xl' : 'text-3xl'
+                    }`}>{tournament.arrowsRound1 || 0}<span className={`text-gray-500 ml-1 ${
+                      fontSize === 'small' ? 'text-base' : fontSize === 'large' ? 'text-xl' : 'text-lg'
+                    }`}>本</span></span>
                   </div>
-                  <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                    <p className="text-xs text-gray-500 font-medium mb-1">2立ち目矢数</p>
-                    <p className="text-lg font-semibold">{tournament.arrowsRound2 || 0}<span className="text-sm text-gray-500 ml-1">本</span></p>
+                  
+                  <div className="bg-white px-8 py-4 rounded-lg shadow-sm border border-gray-200" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <span className={`text-gray-600 font-medium ${
+                      fontSize === 'small' ? 'text-base' : fontSize === 'large' ? 'text-xl' : 'text-lg'
+                    }`}>🎯 2立ち目:</span>
+                    <span className={`font-bold text-gray-900 ${
+                      fontSize === 'small' ? 'text-2xl' : fontSize === 'large' ? 'text-4xl' : 'text-3xl'
+                    }`}>{tournament.arrowsRound2 || 0}<span className={`text-gray-500 ml-1 ${
+                      fontSize === 'small' ? 'text-base' : fontSize === 'large' ? 'text-xl' : 'text-lg'
+                    }`}>本</span></span>
                   </div>
                 </div>
 
                 <div className="card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <p className="card-title">立ち順表</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1f2937' }}>📊 立ち順表</h2>
                     {autoRefresh && (
-                        <span style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <span style={{ fontSize: '0.875rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '600', padding: '0.25rem 0.75rem', backgroundColor: '#d1fae5', borderRadius: '0.375rem' }}>
                           <span style={{ display: 'inline-block', width: '0.5rem', height: '0.5rem', backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 1.5s ease-in-out infinite' }}></span>
                           Live
                         </span>
                       )}
                   </div>
                   <div className="table-responsive">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
+                    <table className="min-w-full divide-y divide-gray-200" style={{ minWidth: '900px' }}>
+                      <thead className="bg-gray-100">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">支部</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">性別</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">結果</th>
+                          <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider align-middle">番号</th>
+                          <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider align-middle">選手名</th>
+                          <th rowSpan="2" className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider align-middle">支部</th>
+                          <th rowSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider align-middle">性別</th>
+                          <th rowSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider align-middle">称号段位</th>
+                          <th colSpan={tournament.arrowsRound1} className="px-2 py-2 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-l-2 border-gray-300">1立目</th>
+                          <th colSpan={tournament.arrowsRound2} className="px-2 py-2 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-l-2 border-gray-300">2立目</th>
+                          <th rowSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider align-middle border-l-2 border-gray-300">競射</th>
+                          <th rowSpan="2" className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider align-middle">合計</th>
+                        </tr>
+                        <tr>
+                          {Array.from({ length: tournament.arrowsRound1 }, (_, i) => (
+                            <th key={`r1-${i}`} className="px-2 py-2 text-center text-xs font-semibold text-gray-700 border-l border-gray-300">{i + 1}</th>
+                          ))}
+                          {Array.from({ length: tournament.arrowsRound2 }, (_, i) => (
+                            <th key={`r2-${i}`} className="px-2 py-2 text-center text-xs font-semibold text-gray-700 border-l border-gray-300">{i + 1}</th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
                         {isLoading && archers.length === 0 ? (
                           <tr>
-                            <td colSpan="8" className="px-4 py-4 text-center text-sm text-gray-500">
+                            <td colSpan={5 + tournament.arrowsRound1 + tournament.arrowsRound2 + 2} className="px-4 py-4 text-center text-sm text-gray-500">
                               読み込み中...
                             </td>
                           </tr>
                         ) : archers.length === 0 ? (
                           <tr>
-                            <td colSpan="8" className="px-4 py-4 text-center text-sm text-gray-500">
+                            <td colSpan={5 + tournament.arrowsRound1 + tournament.arrowsRound2 + 2} className="px-4 py-4 text-center text-sm text-gray-500">
                               受付済みの選手がいません
                             </td>
                           </tr>
@@ -1930,14 +2011,15 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                                     {maleArchers.length > 0 && (
                                       <>
                                         <tr>
-                                          <td colSpan="8" className="px-4 py-2 bg-blue-50 text-center font-medium text-blue-700">
+                                          <td colSpan={5 + tournament.arrowsRound1 + tournament.arrowsRound2 + 2} className="px-4 py-2 bg-blue-50 text-center font-medium text-blue-700">
                                             男部門
                                           </td>
                                         </tr>
                                         {maleArchers.map((archer) => {
                                           const { ceremony, rank } = getRankCategory(archer.rank);
-                                          const stand1Result = archer.results?.stand1?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null);
-                                          const stand2Result = archer.results?.stand1?.slice(tournament.arrowsRound1, tournament.arrowsRound1 + tournament.arrowsRound2) || Array(tournament.arrowsRound2).fill(null);
+                                          const stand1Result = getArcherRoundResults(archer, 1);
+                                          const stand2Result = getArcherRoundResults(archer, 2);
+                                          const totalHits = [...stand1Result, ...stand2Result].filter(r => r === 'o').length;
                                           const passed = isPassed(archer);
                                           
                                           return (
@@ -1945,59 +2027,66 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                                               key={archer.archerId} 
                                               className={`${passed ? 'bg-green-50' : ''} hover:bg-gray-50`}
                                             >
-                                              <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                                              <td className={`px-4 py-4 whitespace-nowrap font-bold text-gray-900 ${
+                                                fontSize === 'small' ? 'text-sm' : fontSize === 'large' ? 'text-xl' : 'text-base'
+                                              }`}>
                                                 {archer.standOrder}
                                               </td>
-                                              <td className="px-4 py-3 whitespace-nowrap">
+                                              <td className="px-4 py-4 whitespace-nowrap">
                                                 <div className="flex items-center">
-                                                  <span className="font-medium">{archer.name}</span>
+                                                  <span className={`font-bold text-gray-900 ${
+                                                    fontSize === 'small' ? 'text-sm' : fontSize === 'large' ? 'text-xl' : 'text-base'
+                                                  }`}>{archer.name}</span>
                                                 </div>
                                               </td>
-                                              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                              <td className={`px-4 py-4 whitespace-nowrap text-gray-700 ${
+                                                fontSize === 'small' ? 'text-xs' : fontSize === 'large' ? 'text-lg' : 'text-sm'
+                                              }`}>
                                                 {archer.affiliation}
                                               </td>
-                                              <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
-                                                {ceremony}{rank}
-                                              </td>
-                                              <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
+                                              <td className={`px-4 py-4 whitespace-nowrap text-center font-semibold text-gray-700 ${
+                                                fontSize === 'small' ? 'text-xs' : fontSize === 'large' ? 'text-lg' : 'text-sm'
+                                              }`}>
                                                 男
                                               </td>
-                                              <td className="px-4 py-3 whitespace-nowrap">
-                                                <div className="flex gap-1 justify-center">
-                                                  {stand1Result.map((result, idx) => (
-                                                    <span 
-                                                      key={idx} 
-                                                      className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
-                                                        result === 'o' ? 'bg-gray-900 text-white' : 
-                                                        result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
-                                                      }`}
-                                                    >
-                                                      {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
-                                                    </span>
-                                                  ))}
-                                                </div>
+                                              <td className={`px-4 py-4 whitespace-nowrap text-center font-semibold text-gray-700 ${
+                                                fontSize === 'small' ? 'text-xs' : fontSize === 'large' ? 'text-lg' : 'text-sm'
+                                              }`}>
+                                                {ceremony}{rank}
                                               </td>
-                                              <td className="px-4 py-3 whitespace-nowrap">
-                                                <div className="flex gap-1 justify-center">
-                                                  {stand2Result.map((result, idx) => (
-                                                    <span 
-                                                      key={idx} 
-                                                      className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
-                                                        result === 'o' ? 'bg-gray-900 text-white' : 
-                                                        result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
-                                                      }`}
-                                                    >
-                                                      {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
-                                                    </span>
-                                                  ))}
-                                                </div>
-                                              </td>
-                                              <td className="px-4 py-3 whitespace-nowrap text-center">
-                                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                                  passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                                }`}>
-                                                  {passed ? '合格' : '不合格'}
-                                                </span>
+                                              {stand1Result.map((result, idx) => (
+                                                <td key={`r1-${idx}`} className="px-2 py-4 whitespace-nowrap text-center border-l border-gray-200">
+                                                  <span 
+                                                    className={`inline-flex items-center justify-center rounded-lg font-bold shadow-sm ${
+                                                      result === 'o' ? 'bg-green-600 text-white' : 
+                                                      result === 'x' ? 'bg-red-500 text-white' : 'bg-gray-300 text-gray-600'
+                                                    } ${
+                                                      fontSize === 'small' ? 'w-7 h-7 text-sm' : fontSize === 'large' ? 'w-12 h-12 text-2xl' : 'w-9 h-9 text-lg'
+                                                    }`}
+                                                  >
+                                                    {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
+                                                  </span>
+                                                </td>
+                                              ))}
+                                              {stand2Result.map((result, idx) => (
+                                                <td key={`r2-${idx}`} className="px-2 py-4 whitespace-nowrap text-center border-l border-gray-200">
+                                                  <span 
+                                                    className={`inline-flex items-center justify-center rounded-lg font-bold shadow-sm ${
+                                                      result === 'o' ? 'bg-green-600 text-white' : 
+                                                      result === 'x' ? 'bg-red-500 text-white' : 'bg-gray-300 text-gray-600'
+                                                    } ${
+                                                      fontSize === 'small' ? 'w-7 h-7 text-sm' : fontSize === 'large' ? 'w-12 h-12 text-2xl' : 'w-9 h-9 text-lg'
+                                                    }`}
+                                                  >
+                                                    {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
+                                                  </span>
+                                                </td>
+                                              ))}
+                                              <td className="px-2 py-4 whitespace-nowrap text-center border-l-2 border-gray-300"></td>
+                                              <td className={`px-2 py-4 whitespace-nowrap text-center font-bold text-gray-900 ${
+                                                fontSize === 'small' ? 'text-sm' : fontSize === 'large' ? 'text-xl' : 'text-base'
+                                              }`}>
+                                                {totalHits}
                                               </td>
                                             </tr>
                                           );
@@ -2008,14 +2097,15 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                                     {femaleArchers.length > 0 && (
                                       <>
                                         <tr>
-                                          <td colSpan="8" className="px-4 py-2 bg-pink-50 text-center font-medium text-pink-700">
+                                          <td colSpan={5 + tournament.arrowsRound1 + tournament.arrowsRound2 + 2} className="px-4 py-2 bg-pink-50 text-center font-medium text-pink-700">
                                             女部門
                                           </td>
                                         </tr>
                                         {femaleArchers.map((archer) => {
                                           const { ceremony, rank } = getRankCategory(archer.rank);
-                                          const stand1Result = archer.results?.stand1?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null);
-                                          const stand2Result = archer.results?.stand1?.slice(tournament.arrowsRound1, tournament.arrowsRound1 + tournament.arrowsRound2) || Array(tournament.arrowsRound2).fill(null);
+                                          const stand1Result = getArcherRoundResults(archer, 1);
+                                          const stand2Result = getArcherRoundResults(archer, 2);
+                                          const totalHits = [...stand1Result, ...stand2Result].filter(r => r === 'o').length;
                                           const passed = isPassed(archer);
                                           
                                           return (
@@ -2035,47 +2125,38 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                                                 {archer.affiliation}
                                               </td>
                                               <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
-                                                {ceremony}{rank}
-                                              </td>
-                                              <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
                                                 女
                                               </td>
-                                              <td className="px-4 py-3 whitespace-nowrap">
-                                                <div className="flex gap-1 justify-center">
-                                                  {stand1Result.map((result, idx) => (
-                                                    <span 
-                                                      key={idx} 
-                                                      className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
-                                                        result === 'o' ? 'bg-gray-900 text-white' : 
-                                                        result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
-                                                      }`}
-                                                    >
-                                                      {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
-                                                    </span>
-                                                  ))}
-                                                </div>
+                                              <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
+                                                {ceremony}{rank}
                                               </td>
-                                              <td className="px-4 py-3 whitespace-nowrap">
-                                                <div className="flex gap-1 justify-center">
-                                                  {stand2Result.map((result, idx) => (
-                                                    <span 
-                                                      key={idx} 
-                                                      className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
-                                                        result === 'o' ? 'bg-gray-900 text-white' : 
-                                                        result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
-                                                      }`}
-                                                    >
-                                                      {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
-                                                    </span>
-                                                  ))}
-                                                </div>
-                                              </td>
-                                              <td className="px-4 py-3 whitespace-nowrap text-center">
-                                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                                  passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                                }`}>
-                                                  {passed ? '合格' : '不合格'}
-                                                </span>
+                                              {stand1Result.map((result, idx) => (
+                                                <td key={`r1-${idx}`} className="px-2 py-3 whitespace-nowrap text-center border-l border-gray-200">
+                                                  <span 
+                                                    className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
+                                                      result === 'o' ? 'bg-gray-900 text-white' : 
+                                                      result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
+                                                    }`}
+                                                  >
+                                                    {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
+                                                  </span>
+                                                </td>
+                                              ))}
+                                              {stand2Result.map((result, idx) => (
+                                                <td key={`r2-${idx}`} className="px-2 py-3 whitespace-nowrap text-center border-l border-gray-200">
+                                                  <span 
+                                                    className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
+                                                      result === 'o' ? 'bg-gray-900 text-white' : 
+                                                      result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
+                                                    }`}
+                                                  >
+                                                    {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
+                                                  </span>
+                                                </td>
+                                              ))}
+                                              <td className="px-2 py-3 whitespace-nowrap text-center border-l-2 border-gray-300"></td>
+                                              <td className="px-2 py-3 whitespace-nowrap text-center text-sm font-semibold text-gray-900">
+                                                {totalHits}
                                               </td>
                                             </tr>
                                           );
@@ -2088,8 +2169,9 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                                 // 通常表示（男女混合）
                                 return currentArchers.map((archer) => {
                             const { ceremony, rank } = getRankCategory(archer.rank);
-                            const stand1Result = archer.results?.stand1?.slice(0, tournament.arrowsRound1) || Array(tournament.arrowsRound1).fill(null);
-                            const stand2Result = archer.results?.stand1?.slice(tournament.arrowsRound1, tournament.arrowsRound1 + tournament.arrowsRound2) || Array(tournament.arrowsRound2).fill(null);
+                            const stand1Result = getArcherRoundResults(archer, 1);
+                            const stand2Result = getArcherRoundResults(archer, 2);
+                            const totalHits = [...stand1Result, ...stand2Result].filter(r => r === 'o').length;
                             const passed = isPassed(archer);
                             
                             return (
@@ -2097,69 +2179,66 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                                 key={archer.archerId} 
                                 className={`${passed ? 'bg-green-50' : ''} hover:bg-gray-50`}
                               >
-                                <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                                <td className={`px-4 py-4 whitespace-nowrap font-bold text-gray-900 ${
+                                  fontSize === 'small' ? 'text-sm' : fontSize === 'large' ? 'text-xl' : 'text-base'
+                                }`}>
                                   {archer.standOrder}
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
+                                <td className="px-4 py-4 whitespace-nowrap">
                                   <div className="flex items-center">
-                                    <span className="font-medium">{archer.name}</span>
+                                    <span className={`font-bold text-gray-900 ${
+                                      fontSize === 'small' ? 'text-sm' : fontSize === 'large' ? 'text-xl' : 'text-base'
+                                    }`}>{archer.name}</span>
                                   </div>
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                <td className={`px-4 py-4 whitespace-nowrap text-gray-700 ${
+                                  fontSize === 'small' ? 'text-xs' : fontSize === 'large' ? 'text-lg' : 'text-sm'
+                                }`}>
                                   {archer.affiliation}
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
-                                  {ceremony}{rank}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-center text-gray-500">
+                                <td className={`px-4 py-4 whitespace-nowrap text-center font-semibold text-gray-700 ${
+                                  fontSize === 'small' ? 'text-xs' : fontSize === 'large' ? 'text-lg' : 'text-sm'
+                                }`}>
                                   {archer.gender === 'female' ? '女' : '男'}
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="flex gap-1 justify-center">
-                                    {stand1Result.map((result, idx) => (
-                                      <span 
-                                        key={idx} 
-                                        className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
-                                          result === 'o' ? 'bg-gray-900 text-white' : 
-                                          result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
-                                        }`}
-                                      >
-                                        {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
-                                      </span>
-                                    ))}
-                                  </div>
+                                <td className={`px-4 py-4 whitespace-nowrap text-center font-semibold text-gray-700 ${
+                                  fontSize === 'small' ? 'text-xs' : fontSize === 'large' ? 'text-lg' : 'text-sm'
+                                }`}>
+                                  {ceremony}{rank}
                                 </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="flex gap-1 justify-center">
-                                    {stand2Result.map((result, idx) => (
-                                      <span 
-                                        key={idx} 
-                                        className={`inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${
-                                          result === 'o' ? 'bg-gray-900 text-white' : 
-                                          result === 'x' ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'
-                                        }`}
-                                      >
-                                        {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-center">
-                                  {passed === true && (
-                                    <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
-                                      通過
+                                {stand1Result.map((result, idx) => (
+                                  <td key={`r1-${idx}`} className="px-2 py-4 whitespace-nowrap text-center border-l border-gray-200">
+                                    <span 
+                                      className={`inline-flex items-center justify-center rounded-lg font-bold shadow-sm ${
+                                        result === 'o' ? 'bg-green-600 text-white' : 
+                                        result === 'x' ? 'bg-red-500 text-white' : 'bg-gray-300 text-gray-600'
+                                      } ${
+                                        fontSize === 'small' ? 'w-7 h-7 text-sm' : fontSize === 'large' ? 'w-12 h-12 text-2xl' : 'w-9 h-9 text-lg'
+                                      }`}
+                                    >
+                                      {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
                                     </span>
-                                  )}
-                                  {passed === false && (
-                                    <span className="px-2 py-1 text-xs font-semibold text-gray-600 bg-gray-100 rounded-full">
-                                      ?
+                                  </td>
+                                ))}
+                                {stand2Result.map((result, idx) => (
+                                  <td key={`r2-${idx}`} className="px-2 py-4 whitespace-nowrap text-center border-l border-gray-200">
+                                    <span 
+                                      className={`inline-flex items-center justify-center rounded-lg font-bold shadow-sm ${
+                                        result === 'o' ? 'bg-green-600 text-white' : 
+                                        result === 'x' ? 'bg-red-500 text-white' : 'bg-gray-300 text-gray-600'
+                                      } ${
+                                        fontSize === 'small' ? 'w-7 h-7 text-sm' : fontSize === 'large' ? 'w-12 h-12 text-2xl' : 'w-9 h-9 text-lg'
+                                      }`}
+                                    >
+                                      {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
                                     </span>
-                                  )}
-                                  {passed === null && (
-                                    <span className="px-2 py-1 text-xs font-semibold text-yellow-800 bg-yellow-100 rounded-full">
-                                      未完了
-                                    </span>
-                                  )}
+                                  </td>
+                                ))}
+                                <td className="px-2 py-4 whitespace-nowrap text-center border-l-2 border-gray-300"></td>
+                                <td className={`px-2 py-4 whitespace-nowrap text-center font-bold text-gray-900 ${
+                                  fontSize === 'small' ? 'text-sm' : fontSize === 'large' ? 'text-xl' : 'text-base'
+                                }`}>
+                                  {totalHits}
                                 </td>
                               </tr>
                             );

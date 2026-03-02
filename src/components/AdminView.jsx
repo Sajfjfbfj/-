@@ -7,19 +7,25 @@ import ProgramView from './ProgramView';
 import RankingView from './RankingView';
 
 const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedTournamentId, setSelectedTournamentId, onLogout }) => {
+  const renderHeader = () => (
+    <div className="admin-header" style={{ padding: '1rem', background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+      <div className="button-group" style={{ marginBottom: '1rem' }}>
+        <button onClick={() => setAdminView('recording')} className={`btn ${adminView === 'recording' ? 'btn-active' : ''}`}>記録入力</button>
+        <button onClick={() => setAdminView('settings')} className={`btn ${adminView === 'settings' ? 'btn-active' : ''}`}>設定</button>
+        <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
+        <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>
+        <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
+      </div>
+      <button onClick={onLogout} style={{ width: '100%', padding: '0.875rem 1.5rem', fontSize: '1rem', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: 'white', border: 'none', borderRadius: '0.75rem', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(239, 68, 68, 0.3)', transition: 'all 0.2s' }}>
+        <LogOut size={18} />ログアウト
+      </button>
+    </div>
+  );
+
   if (adminView === 'recording') {
     return (
       <div>
-        <div className="admin-header">
-          <div className="button-group">
-            <button onClick={() => setAdminView('recording')} className={`btn ${adminView === 'recording' ? 'btn-active' : ''}`}>記録入力</button>
-            <button onClick={() => setAdminView('settings')} className={`btn ${adminView === 'settings' ? 'btn-active' : ''}`}>設定</button>
-            <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
-            <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>
-            <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
-          </div>
-          <button onClick={onLogout} className="btn-logout"><LogOut size={14} />ログアウト</button>
-        </div>
+        {renderHeader()}
         <RecordingView state={state} dispatch={dispatch} stands={stands} />
       </div>
     );
@@ -27,16 +33,7 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedT
   if (adminView === 'settings') {
     return (
       <div>
-        <div className="admin-header">
-          <div className="button-group">
-            <button onClick={() => setAdminView('recording')} className={`btn ${adminView === 'recording' ? 'btn-active' : ''}`}>記録入力</button>
-            <button onClick={() => setAdminView('settings')} className={`btn ${adminView === 'settings' ? 'btn-active' : ''}`}>設定</button>
-            <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
-            <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>
-            <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
-          </div>
-          <button onClick={onLogout} className="btn-logout"><LogOut size={14} />ログアウト</button>
-        </div>
+        {renderHeader()}
         <SettingsView state={state} dispatch={dispatch} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} />
       </div>
     );
@@ -44,16 +41,7 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedT
   if (adminView === 'awards') {
     return (
       <div>
-        <div className="admin-header">
-          <div className="button-group">
-            <button onClick={() => setAdminView('recording')} className={`btn ${adminView === 'recording' ? 'btn-active' : ''}`}>記録入力</button>
-            <button onClick={() => setAdminView('settings')} className={`btn ${adminView === 'settings' ? 'btn-active' : ''}`}>設定</button>
-            <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
-            <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>
-            <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
-          </div>
-          <button onClick={onLogout} className="btn-logout"><LogOut size={14} />ログアウト</button>
-        </div>
+        {renderHeader()}
         <AwardsView state={state} dispatch={dispatch} selectedTournamentId={selectedTournamentId} setSelectedTournamentId={setSelectedTournamentId} />
       </div>
     );
@@ -61,16 +49,7 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedT
   if (adminView === 'program') {
     return (
       <div>
-        <div className="admin-header">
-          <div className="button-group">
-            <button onClick={() => setAdminView('recording')} className={`btn ${adminView === 'recording' ? 'btn-active' : ''}`}>記録入力</button>
-            <button onClick={() => setAdminView('settings')} className={`btn ${adminView === 'settings' ? 'btn-active' : ''}`}>設定</button>
-            <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
-            <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>
-            <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
-          </div>
-          <button onClick={onLogout} className="btn-logout"><LogOut size={14} />ログアウト</button>
-        </div>
+        {renderHeader()}
         <ProgramView state={state} />
       </div>
     );
@@ -78,16 +57,7 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedT
   if (adminView === 'ranking') {
     return (
       <div>
-        <div className="admin-header">
-          <div className="button-group">
-            <button onClick={() => setAdminView('recording')} className={`btn ${adminView === 'recording' ? 'btn-active' : ''}`}>記録入力</button>
-            <button onClick={() => setAdminView('settings')} className={`btn ${adminView === 'settings' ? 'btn-active' : ''}`}>設定</button>
-            <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
-            <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>
-            <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
-          </div>
-          <button onClick={onLogout} className="btn-logout"><LogOut size={14} />ログアウト</button>
-        </div>
+        {renderHeader()}
         <RankingView state={state} dispatch={dispatch} selectedTournamentId={selectedTournamentId} />
       </div>
     );

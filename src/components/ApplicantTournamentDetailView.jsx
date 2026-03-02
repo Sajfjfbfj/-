@@ -237,8 +237,8 @@ const ApplicantTournamentDetailView = ({ state }) => {
       </div>
 
       <div className="view-content">
-        <div className="card" style={{ marginBottom: '1rem' }}>
-          <h2 className="card-title">出場大会</h2>
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <label className="block text-sm font-medium text-gray-700 mb-2">出場大会を選択</label>
           <select
             value={selectedTournamentId}
             onChange={(e) => setSelectedTournamentId(e.target.value)}
@@ -250,53 +250,75 @@ const ApplicantTournamentDetailView = ({ state }) => {
           </select>
         </div>
 
-        <div className="card" style={{ marginBottom: '1rem' }}>
-          <h2 className="card-title">大会概要</h2>
-          <p><strong>大会名:</strong> {tplData?.name || selectedTournamentId}</p>
-          <p><strong>日時:</strong> {tplData?.datetime || tplData?.date || '未設定'}</p>
-          <p><strong>場所:</strong> {tplData?.location || '未設定'}</p>
+        <div className="card" style={{ marginBottom: '1.5rem', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>{tplData?.name || selectedTournamentId}</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+            <div>
+              <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.25rem' }}>📅 日時</div>
+              <div style={{ fontSize: '1rem', fontWeight: '500' }}>{tplData?.datetime || tplData?.date || '未設定'}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.25rem' }}>📍 場所</div>
+              <div style={{ fontSize: '1rem', fontWeight: '500' }}>{tplData?.location || '未設定'}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.25rem' }}>👥 申込者数</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{allApplicants.length} 名</div>
+            </div>
+          </div>
         </div>
 
         <div className="card">
-          <div className="flex justify-between items-center">
-            <h2 className="card-title">申込者全員のプログラム表</h2>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <span className="text-sm text-gray-600">{allApplicants.length} 名</span>
-              <button onClick={downloadProgramPdf} className="btn-secondary">PDF</button>
-              <button onClick={downloadProgramExcel} className="btn-secondary">Excel</button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h2 className="card-title">申込者一覧</h2>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button onClick={downloadProgramPdf} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <span>📄</span> PDF
+              </button>
+              <button onClick={downloadProgramExcel} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <span>📊</span> Excel
+              </button>
             </div>
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-3" style={{ marginTop: '0.75rem' }}>
-              <span className="text-red-700">{error}</span>
+            <div className="bg-red-50 border border-red-200 rounded-md p-3" style={{ marginBottom: '1rem' }}>
+              <span className="text-red-700">⚠️ {error}</span>
             </div>
           )}
 
-          <div className="table-responsive" style={{ marginTop: '0.75rem' }}>
+          <div className="table-responsive">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '60px' }}>#</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">所属</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">性別</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '100px' }}>段位</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ width: '80px' }}>性別</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {isLoading && allApplicants.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-4 text-center">読み込み中...</td></tr>
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500">読み込み中...</td></tr>
                 ) : allApplicants.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-4 text-center">申込者がいません</td></tr>
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500">申込者がいません</td></tr>
                 ) : (
-                  allApplicants.map(a => (
-                    <tr key={a.archerId}>
-                      <td className="px-4 py-3 text-sm font-medium">{a.standOrder}</td>
-                      <td className="px-4 py-3">{a.name}</td>
-                      <td className="px-4 py-3">{a.affiliation}</td>
-                      <td className="px-4 py-3 text-center">{a.rank}</td>
-                      <td className="px-4 py-3 text-center">{a.gender === 'female' ? '女' : '男'}</td>
+                  allApplicants.map((a, idx) => (
+                    <tr key={a.archerId} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-sm font-semibold text-gray-900">{a.standOrder}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{a.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{a.affiliation}</td>
+                      <td className="px-4 py-3 text-sm text-center">
+                        <span className="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded-md font-medium">{a.rank}</span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-center">
+                        <span className={`inline-block px-2 py-1 rounded-md font-medium ${
+                          a.gender === 'female' ? 'bg-pink-100 text-pink-800' : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {a.gender === 'female' ? '女' : '男'}
+                        </span>
+                      </td>
                     </tr>
                   ))
                 )}
