@@ -489,53 +489,13 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       .att{margin-top:10px}
       .att-item{margin:0 0 8px}
       .att-img{max-width:100%;height:auto;border:1px solid #ddd}
+      .print-button{position:fixed;top:20px;right:20px;padding:12px 24px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 6px rgba(0,0,0,0.1);z-index:1000}
+      .print-button:hover{background:#1d4ed8}
+      @media print{.print-button{display:none}}
     `;
 
     let html = `<!doctype html><html><head><meta charset="utf-8"><title>${title} プログラム</title><style>${styles}</style></head><body>`;
-
-    // Page 1: tournament info only
-    html += `<div class="page"><div class="tourney"><h1>${title}</h1>`;
-    html += `<p>${tplData?.datetime || ''}</p>`;
-    html += `<p>${tplData?.location || ''}</p>`;
-    html += `<p>目的: ${tplData?.purpose || ''}</p>`;
-    if (tplData?.schedule) {
-      html += `<p>大会次第:</p><pre style="white-space:pre-wrap;font-family:inherit;margin:0 0 8px;padding:4px;background:#f9f9f9;border-radius:4px;font-size:11px">${tplData.schedule}</pre>`;
-    }
-    html += `<p>主催: ${tplData?.organizer || ''}</p>`;
-    html += `<p>後援: ${tplData?.coOrganizer || ''}</p>`;
-    html += `<p>主管: ${tplData?.administrator || ''}</p>`;
-    html += `<p>種目: ${tplData?.event || ''}</p>`;
-    html += `<p>種類: ${tplData?.type || ''}</p>`;
-    html += `<p>種別: ${tplData?.category || ''}</p>`;
-    html += `<p>内容: ${tplData?.description || ''}</p>`;
-    html += `<p>競技方法: ${tplData?.competitionMethod || ''}</p>`;
-    html += `<p>表彰: ${tplData?.award || ''}</p>`;
-    html += `<p>参加資格: ${tplData?.qualifications || ''}</p>`;
-    html += `<p>適用規則: ${tplData?.applicableRules || ''}</p>`;
-    html += `<p>申込方法: ${tplData?.applicationMethod || ''}</p>`;
-    html += `<p>その他: ${tplData?.remarks || ''}</p>`;
-    if (attachments.length > 0) {
-      html += `<div class="att"><h2 style="margin:0 0 6px">添付資料</h2><ul style="margin:0;padding-left:18px">`;
-      for (const att of attachments) {
-        const safeName = (att?.name || 'file').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const href = att?.dataUrl || '';
-        html += `<li style="margin:0 0 4px"><a href="${href}" target="_blank" rel="noopener noreferrer">${safeName}</a></li>`;
-      }
-      html += `</ul>`;
-      // Image previews (only for image/*)
-      for (const att of attachments) {
-        const href = att?.dataUrl || '';
-        const type = (att?.type || '').toLowerCase();
-        const isImage = type.startsWith('image/') || href.startsWith('data:image/');
-        if (!isImage || !href) continue;
-        const safeName = (att?.name || 'image').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        html += `<div class="att-item"><div style="font-size:12px;margin:6px 0 4px">${safeName}</div><img class="att-img" src="${href}" alt="${safeName}" /></div>`;
-      }
-      html += `</div>`;
-    }
-    html += `</div></div>`;
-
-    // Page 2..: standings table
+    html += `<button class="print-button" onclick="window.print()">🖨️ 印刷する</button>`;
     for (let p = 0; p < pages; p++) {
       html += `<div class="page">`;
       html += `<h2 style="margin:0 0 8px">立ち順表</h2>`;
@@ -557,14 +517,22 @@ const TournamentView = ({ state, stands, checkInCount }) => {
         continue;
       }
 
-      html += `<table><thead><tr><th>#</th><th>氏名</th><th>所属</th><th>段位</th><th>性別</th><th>1立ち目</th><th>2立ち目</th></tr></thead><tbody>`;
+      // チェックイン済みモード：2行ヘッダー構造
+      html += `<table><thead><tr>`;
+      html += `<th rowspan="2">番号</th><th rowspan="2">選手名</th><th rowspan="2">支部</th><th rowspan="2">性別</th><th rowspan="2">称号段位</th>`;
+      html += `<th colspan="${arrows1}" style="border-left:2px solid #999">1立目</th>`;
+      html += `<th colspan="${arrows2}" style="border-left:2px solid #999">2立目</th>`;
+      html += `<th rowspan="2" style="border-left:2px solid #999">競射</th><th rowspan="2">合計</th>`;
+      html += `</tr><tr>`;
+      for (let i = 1; i <= arrows1; i++) html += `<th style="border-left:1px solid #ddd">${i}</th>`;
+      for (let i = 1; i <= arrows2; i++) html += `<th style="border-left:1px solid #ddd">${i}</th>`;
+      html += `</tr></thead><tbody>`;
 
       const start = p * perPage;
       const end = Math.min(start + perPage, printSource.length);
       for (let i = start; i < end; i++) {
         const a = printSource[i];
-        html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td><td>${a.gender === 'female' ? '女' : '男'}</td>`;
-        // 記録データが入っていいるstandキーを自動検出し、適切な結果を取得
+        const sym = (r) => r === 'o' ? '◯' : r === 'x' ? '×' : r === '?' ? '?' : '';
         const getArcherRoundResultsForPrint = (archer, roundNum) => {
           const arrowsRound1 = tplData?.arrowsRound1 ?? 4;
           const arrowsRound2 = tplData?.arrowsRound2 ?? 4;
@@ -645,33 +613,34 @@ const TournamentView = ({ state, stands, checkInCount }) => {
           return standResults.slice(arrowsRound1, arrowsRound1 + arrowsRound2);
         };
 
-        const sym = (r) => r === 'o' ? '◯' : r === 'x' ? '×' : r === '?' ? '?' : '　';
+        const r1 = getArcherRoundResultsForPrint(a, 1);
+        const r2 = getArcherRoundResultsForPrint(a, 2);
+        const totalHits = [...r1, ...r2].filter(x => x === 'o').length;
 
-        // 1立ち目 actual results
-        const stand1Results = getArcherRoundResultsForPrint(a, 1);
-        html += `<td style="white-space:nowrap;text-align:center">`;
-        if (stand1Results.length > 0) {
-          stand1Results.forEach(r => {
+        html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.gender === 'female' ? '女' : '男'}</td><td>${a.rank || ''}</td>`;
+
+        // 1立目 results
+        if (r1.length > 0) {
+          r1.forEach(r => {
             const color = r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#9ca3af';
-            html += `<span style="display:inline-block;width:20px;text-align:center;font-size:13px;color:${color};font-weight:${r === 'o' ? 700 : 400}">${sym(r)}</span>`;
+            html += `<td style="border-left:1px solid #ddd;text-align:center;color:${color};font-weight:${r === 'o' ? 700 : 400}">${sym(r)}</td>`;
           });
         } else {
-          for (let x = 0; x < arrows1; x++) html += `<span style="display:inline-block;width:20px;text-align:center">&nbsp;</span>`;
+          for (let x = 0; x < arrows1; x++) html += `<td style="border-left:1px solid #ddd;text-align:center">&nbsp;</td>`;
         }
-        html += `</td>`;
-        // 2立ち目 actual results
-        const stand2Results = getArcherRoundResultsForPrint(a, 2);
-        html += `<td style="white-space:nowrap;text-align:center">`;
-        if (stand2Results.length > 0) {
-          stand2Results.forEach(r => {
+
+        // 2立目 results
+        if (r2.length > 0) {
+          r2.forEach(r => {
             const color = r === 'o' ? '#16a34a' : r === 'x' ? '#dc2626' : '#9ca3af';
-            html += `<span style="display:inline-block;width:20px;text-align:center;font-size:13px;color:${color};font-weight:${r === 'o' ? 700 : 400}">${sym(r)}</span>`;
+            html += `<td style="border-left:1px solid #ddd;text-align:center;color:${color};font-weight:${r === 'o' ? 700 : 400}">${sym(r)}</td>`;
           });
         } else {
-          for (let x = 0; x < arrows2; x++) html += `<span style="display:inline-block;width:20px;text-align:center">&nbsp;</span>`;
+          for (let x = 0; x < arrows2; x++) html += `<td style="border-left:1px solid #ddd;text-align:center">&nbsp;</td>`;
         }
-        html += `</td>`;
-        html += `</tr>`;
+
+        html += `<td style="border-left:2px solid #999;text-align:center"></td>`;
+        html += `<td style="text-align:center;font-weight:700">${totalHits}</td></tr>`;
       }
 
       html += `</tbody></table></div>`;
@@ -873,7 +842,8 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       return block;
     };
 
-    if (programTableMode !== 'all_applicants') {
+    // 常に最終順位表を含める（利用可能な場合）
+    if (finalResults && (finalResults.shichuma || finalResults.enkin)) {
       html += buildFinalResultsHtml();
     }
 
@@ -897,41 +867,115 @@ const TournamentView = ({ state, stands, checkInCount }) => {
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const fontInfo = await ensureJapaneseFont(doc);
-    doc.setFontSize(14);
-    doc.text(`${title} プログラム表`, 14, 16);
-    doc.setFontSize(10);
-    const datetime = tplData?.datetime || '';
-    const location = tplData?.location || '';
-    if (datetime) doc.text(datetime, 14, 22);
-    if (location) doc.text(location, 14, 27);
+    
+    doc.setFontSize(16);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const titleText = `${title} プログラム表`;
+    const titleWidth = doc.getTextWidth(titleText);
+    doc.text(titleText, (pageWidth - titleWidth) / 2, 20);
+    
+    const overview = [
+      ['大会期日', tplData?.datetime || ''],
+      ['場　　所', tplData?.location || ''],
+      ['大会次第', tplData?.schedule || ''],
+      ['競技種別', tplData?.category || ''],
+      ['競技方法', tplData?.competitionMethod || ''],
+      ['表　　彰', tplData?.award || ''],
+      ['参加資格', tplData?.qualifications || ''],
+      ['適用規則', tplData?.applicableRules || '']
+    ].filter(([_, val]) => val);
+    
+    if (overview.length > 0) {
+      autoTable(doc, {
+        body: overview,
+        startY: 30,
+        styles: { 
+          fontSize: 12, 
+          cellPadding: 5, 
+          lineWidth: 0.3,
+          lineColor: [0, 0, 0],
+          textColor: [0, 0, 0],
+          ...(fontInfo?.loaded ? { font: fontInfo.fontName } : {}) 
+        },
+        columnStyles: { 
+          0: { cellWidth: 45, halign: 'left', fontStyle: 'bold' },
+          1: { cellWidth: 125, halign: 'left' }
+        },
+        margin: { left: 20, right: 20 },
+        theme: 'grid'
+      });
+      doc.addPage();
+    }
+
+    const arrows1 = tplData?.arrowsRound1 || 2;
+    const arrows2 = tplData?.arrowsRound2 || 4;
 
     const head = programTableMode === 'all_applicants'
       ? [['#', '氏名', '所属', '段位', '性別']]
-      : [['#', '氏名', '所属', '段位', '性別', '1立ち目', '2立ち目']];
+      : [
+          [
+            { content: '番号', rowSpan: 2 },
+            { content: '選手名', rowSpan: 2 },
+            { content: '支部', rowSpan: 2 },
+            { content: '性別', rowSpan: 2 },
+            { content: '称号段位', rowSpan: 2 },
+            { content: '1立目', colSpan: arrows1 },
+            { content: '2立目', colSpan: arrows2 },
+            { content: '競射', rowSpan: 2 },
+            { content: '合計', rowSpan: 2 }
+          ],
+          [...Array.from({ length: arrows1 }, (_, i) => `${i+1}`), ...Array.from({ length: arrows2 }, (_, i) => `${i+1}`)]
+        ];
 
-    const body = exportSource.map((a, idx) => {
-      const base = [
-        String(a.standOrder || idx + 1),
-        String(a.name || ''),
-        String(a.affiliation || ''),
-        String(a.rank || ''),
-        a.gender === 'female' ? '女' : '男'
-      ];
-      if (programTableMode === 'all_applicants') return base;
+    const perPage = programArchersPerPage;
+    const totalPages = Math.ceil(exportSource.length / perPage);
+    
+    for (let page = 0; page < totalPages; page++) {
+      if (page > 0) doc.addPage();
+      
+      const start = page * perPage;
+      const end = Math.min(start + perPage, exportSource.length);
+      const pageData = exportSource.slice(start, end);
+      
+      const body = pageData.map((a, idx) => {
+        const base = [
+          String(a.standOrder || start + idx + 1),
+          String(a.name || ''),
+          String(a.affiliation || ''),
+          a.gender === 'female' ? '女' : '男',
+          String(a.rank || '')
+        ];
+        if (programTableMode === 'all_applicants') return base;
 
-      const r1 = getArcherRoundResults(a, 1).map(resultSymbol).join('');
-      const r2 = getArcherRoundResults(a, 2).map(resultSymbol).join('');
-      return [...base, r1, r2];
-    });
-
-    autoTable(doc, {
-      head,
-      body,
-      startY: 32,
-      styles: { fontSize: 9, cellPadding: 1.5, ...(fontInfo?.loaded ? { font: fontInfo.fontName } : {}) },
-      headStyles: { fillColor: [245, 245, 245], textColor: 20 },
-      margin: { left: 10, right: 10 }
-    });
+        const r1 = getArcherRoundResults(a, 1).map(resultSymbol);
+        const r2 = getArcherRoundResults(a, 2).map(resultSymbol);
+        const totalHits = [...getArcherRoundResults(a, 1), ...getArcherRoundResults(a, 2)].filter(r => r === 'o').length;
+        return [...base, ...r1, ...r2, '', totalHits];
+      });
+      
+      autoTable(doc, {
+        head,
+        body,
+        startY: 20,
+        styles: { 
+          fontSize: 11, 
+          cellPadding: 3, 
+          halign: 'center',
+          lineWidth: 0.2,
+          lineColor: [0, 0, 0],
+          textColor: [0, 0, 0],
+          ...(fontInfo?.loaded ? { font: fontInfo.fontName } : {}) 
+        },
+        headStyles: { 
+          fillColor: [220, 220, 220], 
+          textColor: [0, 0, 0], 
+          halign: 'center',
+          fontStyle: 'bold',
+          lineWidth: 0.3
+        },
+        margin: { left: 10, right: 10 }
+      });
+    }
 
     const safeTitle = String(title).replace(/[\\/:*?"<>|]/g, '_');
     doc.save(`${safeTitle}_program.pdf`);
@@ -944,28 +988,55 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     const title = tplData?.name || selectedTournamentId;
     const exportSource = programTableMode === 'all_applicants' ? allApplicants : archers;
 
+    const overviewData = [
+      ['大会期日', tplData?.datetime || ''],
+      ['場　　所', tplData?.location || ''],
+      ['大会次第', tplData?.schedule || ''],
+      ['競技種別', tplData?.category || ''],
+      ['競技方法', tplData?.competitionMethod || ''],
+      ['表　　彰', tplData?.award || ''],
+      ['参加資格', tplData?.qualifications || ''],
+      ['適用規則', tplData?.applicableRules || '']
+    ].filter(([_, val]) => val);
+
+    const arrows1 = tplData?.arrowsRound1 || 2;
+    const arrows2 = tplData?.arrowsRound2 || 4;
+
     const header = programTableMode === 'all_applicants'
       ? ['#', '氏名', '所属', '段位', '性別']
-      : ['#', '氏名', '所属', '段位', '性別', '1立ち目', '2立ち目'];
+      : ['番号', '選手名', '支部', '性別', '称号段位', ...Array.from({ length: arrows1 }, (_, i) => `1立目-${i+1}`), ...Array.from({ length: arrows2 }, (_, i) => `2立目-${i+1}`), '競射', '合計'];
 
-    const rows = exportSource.map((a, idx) => {
-      const base = [
-        a.standOrder || idx + 1,
-        a.name || '',
-        a.affiliation || '',
-        a.rank || '',
-        a.gender === 'female' ? '女' : '男'
-      ];
-      if (programTableMode === 'all_applicants') return base;
-
-      const r1 = getArcherRoundResults(a, 1).map(resultSymbol).join('');
-      const r2 = getArcherRoundResults(a, 2).map(resultSymbol).join('');
-      return [...base, r1, r2];
-    });
-
-    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'program');
+    
+    const perPage = programArchersPerPage;
+    const totalPages = Math.ceil(exportSource.length / perPage);
+    
+    for (let page = 0; page < totalPages; page++) {
+      const start = page * perPage;
+      const end = Math.min(start + perPage, exportSource.length);
+      const pageData = exportSource.slice(start, end);
+      
+      const rows = pageData.map((a, idx) => {
+        const base = [
+          a.standOrder || start + idx + 1,
+          a.name || '',
+          a.affiliation || '',
+          a.gender === 'female' ? '女' : '男',
+          a.rank || ''
+        ];
+        if (programTableMode === 'all_applicants') return base;
+
+        const r1 = getArcherRoundResults(a, 1).map(resultSymbol);
+        const r2 = getArcherRoundResults(a, 2).map(resultSymbol);
+        const totalHits = [...getArcherRoundResults(a, 1), ...getArcherRoundResults(a, 2)].filter(r => r === 'o').length;
+        return [...base, ...r1, ...r2, '', totalHits];
+      });
+
+      const sheetData = page === 0 ? [...overviewData, [], header, ...rows] : [header, ...rows];
+      const ws = XLSX.utils.aoa_to_sheet(sheetData);
+      XLSX.utils.book_append_sheet(wb, ws, `Page${page + 1}`);
+    }
+    
     const safeTitle = String(title).replace(/[\\/:*?"<>|]/g, '_');
     XLSX.writeFile(wb, `${safeTitle}_program.xlsx`);
   };
@@ -1636,7 +1707,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                 {tplData?.schedule && (
                   <>
                     <p><strong>大会次第:</strong></p>
-                    <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: '0 0 1rem 0', padding: '0.5rem', background: '#f9fafb', borderRadius: '0.25rem', fontSize: '0.875rem' }}>{tplData.schedule}</pre>
+                    <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: '0.5rem 0 1rem 0', padding: '0.75rem', background: '#f0f9ff', border: '2px solid #bfdbfe', borderRadius: '0.5rem', fontSize: '0.875rem', lineHeight: '1.6' }}>{tplData.schedule}</pre>
                   </>
                 )}
                 <p><strong>主催:</strong> {tplData?.organizer || '-'}</p>

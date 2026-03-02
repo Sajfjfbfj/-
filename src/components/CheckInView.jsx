@@ -217,7 +217,7 @@ const CheckInView = ({ state, dispatch }) => {
     setShowQRModal(true);
   };
 
-  const handleQRCodeScanned = (qrCode) => {
+  const handleQRCodeScanned = async (qrCode) => {
     try {
       let archerId = qrCode.trim();
       try {
@@ -227,14 +227,11 @@ const CheckInView = ({ state, dispatch }) => {
         }
       } catch (parseError) {}
       
-      setScannedQR(archerId);
       setShowQRScanner(false);
-      
-      setTimeout(() => {
-        handleCheckIn(archerId);
-      }, 100);
+      await handleCheckIn(archerId);
     } catch (error) {
       setMessage('? QRコードの読み込みに失敗しました');
+      setShowQRScanner(false);
     }
   };
 

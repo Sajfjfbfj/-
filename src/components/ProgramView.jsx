@@ -849,9 +849,13 @@ const ProgramView = ({ state }) => {
       .no-results{text-align:center;color:#666;padding:16px}
       .page{page-break-after:always}
       .last-page{page-break-after:auto}
+      .print-button{position:fixed;top:20px;right:20px;padding:12px 24px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 6px rgba(0,0,0,0.1);z-index:1000}
+      .print-button:hover{background:#1d4ed8}
+      @media print{.print-button{display:none}}
     `;
 
     let html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${styles}</style></head><body>`;
+    html += `<button class="print-button" onclick="window.print()">🖨️ 印刷する</button>`;
     
     // Header
     html += `<div class="header">`;
@@ -1075,6 +1079,9 @@ const ProgramView = ({ state }) => {
 
   const printProgram = () => {
     if (!selectedTournamentId) { alert('大会を選択してください'); return; }
+    
+    console.log('🖨️ printProgramが呼ばれました');
+    
     const printSource = programTableMode === 'all_applicants' ? allApplicants : archers;
 
     const perPage = archersPerPage;
@@ -1093,9 +1100,13 @@ const ProgramView = ({ state }) => {
       .att{margin-top:10px}
       .att-item{margin:0 0 8px}
       .att-img{max-width:100%;height:auto;border:1px solid #ddd}
+      .print-button{position:fixed;top:20px;right:20px;padding:12px 24px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 6px rgba(0,0,0,0.1);z-index:1000}
+      .print-button:hover{background:#1d4ed8}
+      @media print{.print-button{display:none}}
     `;
 
     let html = `<!doctype html><html><head><meta charset="utf-8"><title>${title} プログラム</title><style>${styles}</style></head><body>`;
+    html += `<button class="print-button" onclick="window.print()">🖨️ 印刷する</button>`;
 
     for (let p = 0; p < pages; p++) {
       html += `<div class="page">`;
@@ -1135,6 +1146,7 @@ const ProgramView = ({ state }) => {
         const localDivisions = (tournament?.data?.divisions) || [
           { id: 'lower' }, { id: 'middle' }, { id: 'title' }
         ];
+        const rankOrderLocal = ['無指定','五級','四級','三級','弐級','壱級','初段','弐段','参段','四段','五段','錬士五段','錬士六段','教士七段','教士八段','範士八段','範士九段'];
         const normalizeRankLocal = (r) => {
           if (!r) return '無指定';
           return String(r).trim().replace(/[\s　]+/g, '')
@@ -1211,8 +1223,8 @@ const ProgramView = ({ state }) => {
         });
 
         const getStandNumForPrint = (archer) => {
-          const divId = getDivLocal(archer);
-          const sameDiv = sortedCheckedInForPrint.filter(a => getDivLocal(a) === divId);
+          const divId = getDivisionIdLocal(archer);
+          const sameDiv = sortedCheckedInForPrint.filter(a => getDivisionIdLocal(a) === divId);
           const idx = sameDiv.findIndex(a => a.archerId === archer.archerId);
           if (idx === -1) return null;
           return Math.floor(idx / archersPerStand) + 1;
@@ -1499,14 +1511,25 @@ const ProgramView = ({ state }) => {
 
     html += `</body></html>`;
 
-    const win = window.open('', '_blank', 'width=800,height=600');
-    if (!win) {
-      alert('ポップアップがブロックされました。ポップアップを許可してください。');
-      return;
+    console.log('📝 HTML生成完了:', html.length, '文字');
+
+    try {
+      const win = window.open('', '_blank', 'width=800,height=600');
+      console.log('👉 window.open結果:', win);
+      
+      if (!win) {
+        alert('ポップアップがブロックされました。ポップアップを許可してください。');
+        return;
+      }
+      
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      console.log('✅ 印刷プレビューを開きました');
+    } catch (error) {
+      console.error('❌ エラー:', error);
+      alert('印刷プレビューの表示に失敗しました: ' + error.message);
     }
-    win.document.write(html);
-    win.document.close();
-    win.focus();
   };
 
   const downloadProgramPdf = async () => {
@@ -1516,13 +1539,47 @@ const ProgramView = ({ state }) => {
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const fontInfo = await ensureJapaneseFont(doc);
-    doc.setFontSize(14);
-    doc.text(`${title} プログラム表`, 14, 16);
-    doc.setFontSize(10);
-    const datetime = tournament?.data?.datetime || '';
-    const location = tournament?.data?.location || '';
-    if (datetime) doc.text(datetime, 14, 22);
-    if (location) doc.text(location, 14, 27);
+    
+    // 大会名を中央揃えで表示
+    doc.setFontSize(16);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const titleText = `${title} プログラム表`;
+    const titleWidth = doc.getTextWidth(titleText);
+    doc.text(titleText, (pageWidth - titleWidth) / 2, 20);
+
+    // 大会概要を追加（画像の順番に合わせる）
+    const overview = [
+      ['大会期日', tournament?.data?.datetime || ''],
+      ['場　　所', tournament?.data?.location || ''],
+      ['大会次第', tournament?.data?.schedule || ''],
+      ['競技種別', tournament?.data?.category || ''],
+      ['競技方法', tournament?.data?.competitionMethod || ''],
+      ['表　　彰', tournament?.data?.award || ''],
+      ['参加資格', tournament?.data?.qualifications || ''],
+      ['適用規則', tournament?.data?.applicableRules || '']
+    ].filter(([_, val]) => val);
+
+    if (overview.length > 0) {
+      autoTable(doc, {
+        body: overview,
+        startY: 30,
+        styles: { 
+          fontSize: 12, 
+          cellPadding: 5, 
+          lineWidth: 0.3,
+          lineColor: [0, 0, 0],
+          textColor: [0, 0, 0],
+          ...(fontInfo?.loaded ? { font: fontInfo.fontName } : {}) 
+        },
+        columnStyles: { 
+          0: { cellWidth: 45, halign: 'left', fontStyle: 'bold' },
+          1: { cellWidth: 125, halign: 'left' }
+        },
+        margin: { left: 20, right: 20 },
+        theme: 'grid'
+      });
+      doc.addPage();
+    }
 
     const arrows1 = tournament?.data?.arrowsRound1 ?? 2;
     const arrows2 = tournament?.data?.arrowsRound2 ?? 4;
@@ -1530,33 +1587,70 @@ const ProgramView = ({ state }) => {
     const head = programTableMode === 'all_applicants'
       ? [['#', '氏名', '所属', '段位', '性別']]
       : [
-          ['番号', '選手名', '支部', '性別', '称号段位', ...Array.from({ length: arrows1 }, (_, i) => `1立目-${i+1}`), ...Array.from({ length: arrows2 }, (_, i) => `2立目-${i+1}`), '競射', '合計']
+          [
+            { content: '番号', rowSpan: 2 },
+            { content: '選手名', rowSpan: 2 },
+            { content: '支部', rowSpan: 2 },
+            { content: '性別', rowSpan: 2 },
+            { content: '称号段位', rowSpan: 2 },
+            { content: '1立目', colSpan: arrows1 },
+            { content: '2立目', colSpan: arrows2 },
+            { content: '競射', rowSpan: 2 },
+            { content: '合計', rowSpan: 2 }
+          ],
+          [...Array.from({ length: arrows1 }, (_, i) => `${i+1}`), ...Array.from({ length: arrows2 }, (_, i) => `${i+1}`)]
         ];
 
-    const body = exportSource.map((a, idx) => {
-      const base = [
-        String(a.standOrder || idx + 1),
-        String(a.name || ''),
-        String(a.affiliation || ''),
-        a.gender === 'female' ? '女' : '男',
-        String(a.rank || '')
-      ];
-      if (programTableMode === 'all_applicants') return base;
+    // 36人ごとにページ分割
+    const perPage = archersPerPage;
+    const totalPages = Math.ceil(exportSource.length / perPage);
+    
+    for (let page = 0; page < totalPages; page++) {
+      if (page > 0) doc.addPage();
+      
+      const start = page * perPage;
+      const end = Math.min(start + perPage, exportSource.length);
+      const pageData = exportSource.slice(start, end);
+      
+      const body = pageData.map((a, idx) => {
+        const base = [
+          String(a.standOrder || start + idx + 1),
+          String(a.name || ''),
+          String(a.affiliation || ''),
+          a.gender === 'female' ? '女' : '男',
+          String(a.rank || '')
+        ];
+        if (programTableMode === 'all_applicants') return base;
 
-      const r1 = getArcherRoundResults(a, 1).map(resultSymbol);
-      const r2 = getArcherRoundResults(a, 2).map(resultSymbol);
-      const totalHits = [...getArcherRoundResults(a, 1), ...getArcherRoundResults(a, 2)].filter(r => r === 'o').length;
-      return [...base, ...r1, ...r2, '', totalHits];
-    });
-
-    autoTable(doc, {
-      head,
-      body,
-      startY: 32,
-      styles: { fontSize: 9, cellPadding: 1.5, ...(fontInfo?.loaded ? { font: fontInfo.fontName } : {}) },
-      headStyles: { fillColor: [245, 245, 245], textColor: 20 },
-      margin: { left: 10, right: 10 }
-    });
+        const r1 = getArcherRoundResults(a, 1).map(resultSymbol);
+        const r2 = getArcherRoundResults(a, 2).map(resultSymbol);
+        const totalHits = [...getArcherRoundResults(a, 1), ...getArcherRoundResults(a, 2)].filter(r => r === 'o').length;
+        return [...base, ...r1, ...r2, '', totalHits];
+      });
+      
+      autoTable(doc, {
+        head,
+        body,
+        startY: 20,
+        styles: { 
+          fontSize: 11, 
+          cellPadding: 3, 
+          halign: 'center',
+          lineWidth: 0.2,
+          lineColor: [0, 0, 0],
+          textColor: [0, 0, 0],
+          ...(fontInfo?.loaded ? { font: fontInfo.fontName } : {}) 
+        },
+        headStyles: { 
+          fillColor: [220, 220, 220], 
+          textColor: [0, 0, 0], 
+          halign: 'center',
+          fontStyle: 'bold',
+          lineWidth: 0.3
+        },
+        margin: { left: 10, right: 10 }
+      });
+    }
 
     const safeTitle = String(title).replace(/[\\/:*?"<>|]/g, '_');
     doc.save(`${safeTitle}_program.pdf`);
@@ -1567,6 +1661,17 @@ const ProgramView = ({ state }) => {
     const title = tournament?.data?.name || selectedTournamentId;
     const exportSource = programTableMode === 'all_applicants' ? allApplicants : archers;
 
+    const overviewData = [
+      ['大会期日', tournament?.data?.datetime || ''],
+      ['場　　所', tournament?.data?.location || ''],
+      ['大会次第', tournament?.data?.schedule || ''],
+      ['競技種別', tournament?.data?.category || ''],
+      ['競技方法', tournament?.data?.competitionMethod || ''],
+      ['表　　彰', tournament?.data?.award || ''],
+      ['参加資格', tournament?.data?.qualifications || ''],
+      ['適用規則', tournament?.data?.applicableRules || '']
+    ].filter(([_, val]) => val);
+
     const arrows1 = tournament?.data?.arrowsRound1 ?? 2;
     const arrows2 = tournament?.data?.arrowsRound2 ?? 4;
 
@@ -1574,25 +1679,38 @@ const ProgramView = ({ state }) => {
       ? ['#', '氏名', '所属', '段位', '性別']
       : ['番号', '選手名', '支部', '性別', '称号段位', ...Array.from({ length: arrows1 }, (_, i) => `1立目-${i+1}`), ...Array.from({ length: arrows2 }, (_, i) => `2立目-${i+1}`), '競射', '合計'];
 
-    const rows = exportSource.map((a, idx) => {
-      const base = [
-        a.standOrder || idx + 1,
-        a.name || '',
-        a.affiliation || '',
-        a.gender === 'female' ? '女' : '男',
-        a.rank || ''
-      ];
-      if (programTableMode === 'all_applicants') return base;
-
-      const r1 = getArcherRoundResults(a, 1).map(resultSymbol);
-      const r2 = getArcherRoundResults(a, 2).map(resultSymbol);
-      const totalHits = [...getArcherRoundResults(a, 1), ...getArcherRoundResults(a, 2)].filter(r => r === 'o').length;
-      return [...base, ...r1, ...r2, '', totalHits];
-    });
-
-    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'program');
+    
+    // 36人ごとにシート分割
+    const perPage = archersPerPage;
+    const totalPages = Math.ceil(exportSource.length / perPage);
+    
+    for (let page = 0; page < totalPages; page++) {
+      const start = page * perPage;
+      const end = Math.min(start + perPage, exportSource.length);
+      const pageData = exportSource.slice(start, end);
+      
+      const rows = pageData.map((a, idx) => {
+        const base = [
+          a.standOrder || start + idx + 1,
+          a.name || '',
+          a.affiliation || '',
+          a.gender === 'female' ? '女' : '男',
+          a.rank || ''
+        ];
+        if (programTableMode === 'all_applicants') return base;
+
+        const r1 = getArcherRoundResults(a, 1).map(resultSymbol);
+        const r2 = getArcherRoundResults(a, 2).map(resultSymbol);
+        const totalHits = [...getArcherRoundResults(a, 1), ...getArcherRoundResults(a, 2)].filter(r => r === 'o').length;
+        return [...base, ...r1, ...r2, '', totalHits];
+      });
+
+      const sheetData = page === 0 ? [...overviewData, [], header, ...rows] : [header, ...rows];
+      const ws = XLSX.utils.aoa_to_sheet(sheetData);
+      XLSX.utils.book_append_sheet(wb, ws, `Page${page + 1}`);
+    }
+    
     const safeTitle = String(title).replace(/[\\/:*?"<>|]/g, '_');
     XLSX.writeFile(wb, `${safeTitle}_program.xlsx`);
   };
