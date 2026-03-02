@@ -836,17 +836,17 @@ const ProgramView = ({ state }) => {
     const awardRankLimit = tournament?.data?.awardRankLimit || 3;
 
     const styles = `
-      body{font-family: Arial, Helvetica, sans-serif; padding:20px; color:#111}
-      h1,h2{margin:0 0 12px}
-      .header{margin-bottom:20px}
-      .division{margin-bottom:24px;page-break-inside:avoid}
-      table{width:100%;border-collapse:collapse;margin-top:8px}
-      th,td{border:1px solid #333;padding:8px;font-size:12px;text-align:left}
-      th{background:#f0f0f0;font-weight:700;text-align:center}
+      body{font-family: Arial, Helvetica, sans-serif; padding:6mm; color:#111}
+      h1,h2{margin:0 0 8px}
+      .header{margin-bottom:12px}
+      .division{margin-bottom:16px;page-break-inside:avoid}
+      table{width:100%;border-collapse:collapse;margin-top:6px}
+      th,td{border:1px solid #333;padding:1.8mm;font-size:8.5pt;text-align:left}
+      th{background:#dcdcdc;font-weight:700;text-align:center}
       .rank{font-weight:700;text-align:center}
       .method{text-align:center}
-      .detail{text-align:center;font-size:11px}
-      .no-results{text-align:center;color:#666;padding:16px}
+      .detail{text-align:center;font-size:8pt}
+      .no-results{text-align:center;color:#666;padding:12px}
       .page{page-break-after:always}
       .last-page{page-break-after:auto}
       .print-button{position:fixed;top:20px;right:20px;padding:12px 24px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;box-shadow:0 4px 6px rgba(0,0,0,0.1);z-index:1000}
@@ -1631,12 +1631,12 @@ const ProgramView = ({ state }) => {
       autoTable(doc, {
         head,
         body,
-        startY: 20,
+        startY: 8,
         styles: { 
-          fontSize: 11, 
-          cellPadding: 3, 
+          fontSize: 8.5, 
+          cellPadding: 1.8, 
           halign: 'center',
-          lineWidth: 0.2,
+          lineWidth: 0.1,
           lineColor: [0, 0, 0],
           textColor: [0, 0, 0],
           ...(fontInfo?.loaded ? { font: fontInfo.fontName } : {}) 
@@ -1646,9 +1646,11 @@ const ProgramView = ({ state }) => {
           textColor: [0, 0, 0], 
           halign: 'center',
           fontStyle: 'bold',
-          lineWidth: 0.3
+          lineWidth: 0.2,
+          fontSize: 8.5,
+          cellPadding: 1.8
         },
-        margin: { left: 10, right: 10 }
+        margin: { left: 6, right: 6, top: 6, bottom: 6 }
       });
     }
 
