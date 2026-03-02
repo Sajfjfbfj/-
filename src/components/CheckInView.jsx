@@ -12,6 +12,16 @@ const CheckInView = ({ state, dispatch }) => {
   const [checkIns, setCheckIns] = useState([]);
   const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
   const [showQRModal, setShowQRModal] = useState(false);
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [locationFilter, setLocationFilter] = useState('');
+  const [geoStatus, setGeoStatus] = useState('');
+  const [currentQRCodeData, setCurrentQRCodeData] = useState(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [myApplicantData, setMyApplicantData] = useState(null);
+  const [showManualInput, setShowManualInput] = useState(true);
+  const checkinListRef = React.useRef(null);
+  const isProcessingRef = React.useRef(false);
 
   useEffect(() => {
     if (selectedTournamentId) {
@@ -20,12 +30,17 @@ const CheckInView = ({ state, dispatch }) => {
       localStorage.removeItem('selectedTournamentId');
     }
   }, [selectedTournamentId]);
-  const [showQRScanner, setShowQRScanner] = useState(false);
-  const [locationFilter, setLocationFilter] = useState('');
-  const [geoStatus, setGeoStatus] = useState('');
-  const [currentQRCodeData, setCurrentQRCodeData] = useState(null);
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const checkinListRef = React.useRef(null);
+
+  const distanceKm = (lat1, lng1, lat2, lng2) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
   
   const filteredTournaments = state.registeredTournaments.filter(tournament => {
     if (locationFilter === '') return true;
@@ -76,10 +91,7 @@ const CheckInView = ({ state, dispatch }) => {
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
     );
   };
-  
-  const [currentUser, setCurrentUser] = useState(null);
-  const [myApplicantData, setMyApplicantData] = useState(null);
-  const [showManualInput, setShowManualInput] = useState(true);
+
 
   useEffect(() => {
     const savedUser = localStorage.getItem('kyudo_tournament_user');
@@ -218,6 +230,9 @@ const CheckInView = ({ state, dispatch }) => {
   };
 
   const handleQRCodeScanned = async (qrCode) => {
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
+    
     try {
       let archerId = qrCode.trim();
       try {
@@ -232,6 +247,10 @@ const CheckInView = ({ state, dispatch }) => {
     } catch (error) {
       setMessage('? QRコードの読み込みに失敗しました');
       setShowQRScanner(false);
+    } finally {
+      setTimeout(() => {
+        isProcessingRef.current = false;
+      }, 1000);
     }
   };
 
