@@ -11,8 +11,12 @@ export const QRCodeScanner = ({ onScanSuccess, onError, onClose }) => {
   const [cameraId, setCameraId] = useState(null);
   const [availableCameras, setAvailableCameras] = useState([]);
 
+  const hasScannedRef = useRef(false);
+
   // このuseEffectはカメラの初期化とクリーンアップを担当
   useEffect(() => {
+    hasScannedRef.current = false;
+    
     const initializeScanner = async () => {
       try {
         const devices = await Html5Qrcode.getCameras();
@@ -68,8 +72,11 @@ export const QRCodeScanner = ({ onScanSuccess, onError, onClose }) => {
         selectedCameraId,
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
-          // スキャン成功！ 親コンポーネントに通知
-          onScanSuccess(decodedText);
+          // 一度だけスキャン成功を通知
+          if (!hasScannedRef.current) {
+            hasScannedRef.current = true;
+            onScanSuccess(decodedText);
+          }
         },
         (errorMessage) => { /* 失敗時は何もしない */ }
       );
