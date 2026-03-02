@@ -10,30 +10,18 @@ export const QRCodeScanner = ({ onScanSuccess, onError, onClose }) => {
   const qrScannerRef = useRef(null);
   const [cameraId, setCameraId] = useState(null);
   const [availableCameras, setAvailableCameras] = useState([]);
-
-  const hasScannedRef = useRef(false);
+  const isProcessingRef = useRef(false); // 二重スキャン防止フラグ
 
   // このuseEffectはカメラの初期化とクリーンアップを担当
   useEffect(() => {
-    hasScannedRef.current = false;
-    
     const initializeScanner = async () => {
       try {
         const devices = await Html5Qrcode.getCameras();
         if (devices && devices.length) {
           setAvailableCameras(devices);
-          // バックカメラのみを選択
-          const rearCamera = devices.find(d => 
-            d.label.toLowerCase().includes('back') || 
-            d.label.toLowerCase().includes('背面') ||
-            d.label.toLowerCase().includes('rear') ||
-            d.label.toLowerCase().includes('environment')
-          );
-          if (rearCamera) {
-            setCameraId(rearCamera.id);
-          } else {
-            onError('バックカメラが見つかりませんでした');
-          }
+          // 背面カメラがあれば優先的に選択
+          const rearCamera = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('背面'));
+          setCameraId(rearCamera ? rearCamera.id : devices[0].id);
         } else {
           onError('利用可能なカメラが見つかりませんでした');
         }
@@ -64,19 +52,26 @@ export const QRCodeScanner = ({ onScanSuccess, onError, onClose }) => {
     if (qrScannerRef.current && qrScannerRef.current.isScanning) {
       await qrScannerRef.current.stop();
     }
-    
+
+    isProcessingRef.current = false; // スキャン開始時にフラグをリセット
     qrScannerRef.current = new Html5Qrcode('qr-reader-container');
     
     try {
       await qrScannerRef.current.start(
         selectedCameraId,
         { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
-          // 一度だけスキャン成功を通知
-          if (!hasScannedRef.current) {
-            hasScannedRef.current = true;
-            onScanSuccess(decodedText);
+        async (decodedText) => {
+          // 処理中なら無視（二重スキャン防止）
+          if (isProcessingRef.current) return;
+          isProcessingRef.current = true;
+
+          // スキャナーを即停止してから親に通知
+          if (qrScannerRef.current && qrScannerRef.current.isScanning) {
+            await qrScannerRef.current.stop().catch(err => console.error("Scanner stop failed", err));
+            setIsScanning(false);
           }
+
+          onScanSuccess(decodedText);
         },
         (errorMessage) => { /* 失敗時は何もしない */ }
       );
@@ -101,31 +96,38 @@ export const QRCodeScanner = ({ onScanSuccess, onError, onClose }) => {
   };
 
   return (
+    // モーダルのオーバーレイ
     <div className="qr-scanner-overlay">
+      {/* モーダルの本体 */}
       <div className="qr-scanner-modal">
         <div className="qr-scanner-header">
-          <h3>📷 QRコード受付</h3>
-          <button onClick={onClose} className="qr-scanner-close-button" aria-label="閉じる">
+          <h3>QRコード受付</h3>
+          <button onClick={onClose} className="qr-scanner-close-button">
             <X size={24} />
           </button>
         </div>
 
-        {availableCameras.length > 1 && cameraId && (
+        {/* カメラ選択UI */}
+        {availableCameras.length > 1 && (
           <div className="camera-selector">
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
-              📹 バックカメラ使用中
-            </label>
-            <p style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
-              {availableCameras.find(c => c.id === cameraId)?.label || 'バックカメラ'}
-            </p>
+            <select
+              value={cameraId || ''}
+              onChange={handleCameraChange}
+            >
+              {availableCameras.map(camera => (
+                <option key={camera.id} value={camera.id}>
+                  {camera.label || `カメラ ${camera.id.substring(0, 8)}`}
+                </option>
+              ))}
+            </select>
           </div>
         )}
 
+        {/* スキャナーの描画領域 */}
         <div id="qr-reader-container" className="qr-reader-view"></div>
 
         <div className="scanner-instructions">
-          <p>📱 選手のQRコードを枠内に収めてください</p>
-          <p style={{ fontSize: '0.8125rem', color: '#9ca3af', marginTop: '0.5rem' }}>自動的にスキャンされます</p>
+          <p>選手のQRコードを枠内に収めてください</p>
         </div>
       </div>
     </div>

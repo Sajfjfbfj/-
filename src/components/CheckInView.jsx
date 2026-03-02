@@ -259,6 +259,7 @@ const CheckInView = ({ state, dispatch }) => {
       setMessage('? 大会を選択してください');
       return;
     }
+    isProcessingRef.current = false;
     setShowQRScanner(true);
   };
 
@@ -545,9 +546,13 @@ const CheckInView = ({ state, dispatch }) => {
 
               {showQRScanner && (
                 <QRCodeScanner
+                  key={Date.now()}
                   onScanSuccess={handleQRCodeScanned}
                   onError={(msg) => setMessage('? ' + msg)}
-                  onClose={() => setShowQRScanner(false)}
+                  onClose={() => {
+                    setShowQRScanner(false);
+                    isProcessingRef.current = false;
+                  }}
                 />
               )}
             </div>
