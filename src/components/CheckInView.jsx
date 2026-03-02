@@ -121,18 +121,15 @@ const CheckInView = ({ state, dispatch }) => {
           );
           
           if (myRegistrations.length > 0) {
-            setMyApplicantData(myRegistrations[0]);
-            setShowManualInput(false);
-            if (myRegistrations.length > 1) {
-              setMyApplicantData(myRegistrations);
-            }
+            setMyApplicantData(myRegistrations.length === 1 ? myRegistrations[0] : myRegistrations);
+            if (!silent) setShowManualInput(false);
           } else {
             setMyApplicantData(null);
-            setShowManualInput(true);
+            if (!silent) setShowManualInput(true);
           }
         } else {
           setMyApplicantData(null);
-          setShowManualInput(true);
+          if (!silent) setShowManualInput(true);
         }
       }
     } catch (error) {
