@@ -230,7 +230,10 @@ const CheckInView = ({ state, dispatch }) => {
   };
 
   const handleQRCodeScanned = async (qrCode) => {
-    if (isProcessingRef.current) return;
+    if (isProcessingRef.current) {
+      console.log('Already processing, ignoring scan');
+      return;
+    }
     isProcessingRef.current = true;
     
     try {
@@ -248,9 +251,7 @@ const CheckInView = ({ state, dispatch }) => {
       setMessage('? QRコードの読み込みに失敗しました');
       setShowQRScanner(false);
     } finally {
-      setTimeout(() => {
-        isProcessingRef.current = false;
-      }, 1000);
+      isProcessingRef.current = false;
     }
   };
 

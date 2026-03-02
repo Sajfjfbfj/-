@@ -10,10 +10,12 @@ export const QRCodeScanner = ({ onScanSuccess, onError, onClose }) => {
   const qrScannerRef = useRef(null);
   const [cameraId, setCameraId] = useState(null);
   const [availableCameras, setAvailableCameras] = useState([]);
-  const isProcessingRef = useRef(false); // 二重スキャン防止フラグ
+  const hasScannedRef = useRef(false);
 
   // このuseEffectはカメラの初期化とクリーンアップを担当
   useEffect(() => {
+    hasScannedRef.current = false;
+    
     const initializeScanner = async () => {
       try {
         const devices = await Html5Qrcode.getCameras();
@@ -53,24 +55,15 @@ export const QRCodeScanner = ({ onScanSuccess, onError, onClose }) => {
       await qrScannerRef.current.stop();
     }
 
-    isProcessingRef.current = false; // スキャン開始時にフラグをリセット
     qrScannerRef.current = new Html5Qrcode('qr-reader-container');
     
     try {
       await qrScannerRef.current.start(
         selectedCameraId,
         { fps: 10, qrbox: { width: 250, height: 250 } },
-        async (decodedText) => {
-          // 処理中なら無視（二重スキャン防止）
-          if (isProcessingRef.current) return;
-          isProcessingRef.current = true;
-
-          // スキャナーを即停止してから親に通知
-          if (qrScannerRef.current && qrScannerRef.current.isScanning) {
-            await qrScannerRef.current.stop().catch(err => console.error("Scanner stop failed", err));
-            setIsScanning(false);
-          }
-
+        (decodedText) => {
+          if (hasScannedRef.current) return;
+          hasScannedRef.current = true;
           onScanSuccess(decodedText);
         },
         (errorMessage) => { /* 失敗時は何もしない */ }
