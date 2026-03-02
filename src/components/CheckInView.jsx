@@ -591,8 +591,36 @@ const CheckInView = ({ state, dispatch }) => {
                 }}>
                   <div className="qr-modal-container">
                     <div className="qr-modal-header">
-                      <h2>✅ {currentQRCodeData.type}登録完了</h2>
-                      <p className="qr-tournament-name">🏹 {currentQRCodeData.tournamentName}</p>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <h2>✅ {currentQRCodeData.type}登録完了</h2>
+                          <p className="qr-tournament-name">🏹 {currentQRCodeData.tournamentName}</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowQRModal(false);
+                            setAutoRefresh(false);
+                          }}
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.2)',
+                            border: 'none',
+                            color: 'white',
+                            fontSize: '1.5rem',
+                            width: '2.5rem',
+                            height: '2.5rem',
+                            borderRadius: '50%',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'background 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.3)'}
+                          onMouseLeave={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
+                        >
+                          ×
+                        </button>
+                      </div>
                     </div>
                     
                     <div className="qr-modal-body">
@@ -659,18 +687,6 @@ const CheckInView = ({ state, dispatch }) => {
                           </p>
                         </div>
                       </div>
-                    </div>
-                    
-                    <div className="qr-modal-footer">
-                      <button
-                        onClick={() => {
-                          setShowQRModal(false);
-                          setAutoRefresh(false);
-                        }}
-                        className="btn-primary"
-                      >
-                        閉じる
-                      </button>
                     </div>
                   </div>
                 </div>

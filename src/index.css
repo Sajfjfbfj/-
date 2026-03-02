@@ -355,8 +355,6 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   border-radius: 1.5rem;
   width: 100%;
   max-width: 450px;
-  max-height: 90vh;
-  overflow-y: auto;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   animation: scaleIn 0.3s ease-out;
 }
