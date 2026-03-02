@@ -446,7 +446,8 @@ const CheckInView = ({ state, dispatch }) => {
                         onClick={showMyQRCode}
                         className="btn-primary"
                         style={{ 
-                          marginTop: 0, 
+                          marginTop: 0,
+                          width: '100%',
                           padding: '1.5rem',
                           display: 'flex',
                           alignItems: 'center',
