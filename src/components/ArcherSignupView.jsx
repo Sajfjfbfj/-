@@ -309,39 +309,6 @@ const ArcherSignupView = ({ state, dispatch }) => {
             </div>
           </div>
         )}
-          <div className="sport-card">
-            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: 700, color: '#1f2937', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span>📝</span>申し込み情報
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <input type="text" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="氏名 *" style={{ padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }} />
-              <input type="text" value={formData.affiliation} onChange={(e) => handleInputChange('affiliation', e.target.value)} placeholder="所属（○○支部とお書きください） *" style={{ padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }} />
-              <select value={formData.rank} onChange={(e) => handleInputChange('rank', e.target.value)} style={{ padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }}>
-                {rankOrder.map(rank => (<option key={rank} value={rank}>{rank}</option>))}
-              </select>
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#6b7280' }}>性別 *</label>
-                <select value={formData.gender} onChange={(e) => handleInputChange('gender', e.target.value)} style={{ width: '100%', padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }}>
-                  <option value="male">👨 男</option>
-                  <option value="female">👩 女</option>
-                </select>
-              </div>
-              {formData.rank !== '無指定' && (
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#6b7280' }}>段位取得日 *</label>
-                  <input 
-                    type="date" 
-                    value={formData.rankAcquiredDate} 
-                    onChange={(e) => handleInputChange('rankAcquiredDate', e.target.value)} 
-                    style={{ width: '100%', padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }}
-                    max={new Date().toISOString().split('T')[0]}
-                  />
-                </div>
-              )}
-              <button onClick={handleApply} className="btn-primary" style={{ marginTop: '0.5rem', width: '100%', padding: '1rem', fontSize: '1.125rem', fontWeight: 700 }}>申し込む</button>
-            </div>
-          </div>
-        )}
 
         {showQRModal && (
           <div className="qr-modal-overlay" onClick={(e) => {
