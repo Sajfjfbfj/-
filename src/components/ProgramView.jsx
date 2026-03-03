@@ -661,11 +661,11 @@ const ProgramView = ({ state }) => {
                 <thead>
                   <tr className="bg-green-100">
                     <th className="border border-green-300 px-4 py-2 text-left">順位</th>
+                    <th className="border border-green-300 px-4 py-2 text-center">的中数</th>
                     <th className="border border-green-300 px-4 py-2 text-left">氏名</th>
+                    <th className="border border-green-300 px-4 py-2 text-center">詳細</th>
                     <th className="border border-green-300 px-4 py-2 text-left">所属</th>
                     <th className="border border-green-300 px-4 py-2 text-left">段位</th>
-                    <th className="border border-green-300 px-4 py-2 text-center">決定方法</th>
-                    <th className="border border-green-300 px-4 py-2 text-center">詳細</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -684,74 +684,35 @@ const ProgramView = ({ state }) => {
                           <td className="border border-green-300 px-4 py-2 font-bold">
                             <span className="text-green-900">{result.rank}位</span>
                           </td>
-                          <td className="border border-green-300 px-4 py-2 font-semibold">{result.name}</td>
-                          <td className="border border-green-300 px-4 py-2 text-gray-600">{result.affiliation}</td>
-                          <td className="border border-green-300 px-4 py-2 text-gray-600">{archer?.rank || '-'}</td>
-                          {/* 決定方法セル - RankingViewと同一 */}
-                          <td className="border border-green-300 px-4 py-2 text-center">
+                          <td className="border border-green-300 px-4 py-2 text-center font-semibold">
                             {(() => {
-                              if (result.shootOffType === 'shichuma') {
-                                return <span className="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded">射詰</span>;
-                              } else if (result.shootOffType === 'enkin') {
-                                return <span className="text-sm bg-orange-100 text-orange-800 px-2 py-1 rounded">遠近</span>;
-                              } else if (result.rank_source === 'confirmed') {
-                                return <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">的中数</span>;
-                              } else {
-                                return <span className="text-sm bg-gray-100 text-gray-600 px-2 py-1 rounded">-</span>;
-                              }
+                              const getTotalHitCountLocal = (a) => {
+                                const arrows1 = tournament?.data?.arrowsRound1 ?? 4;
+                                const arrows2 = tournament?.data?.arrowsRound2 ?? 4;
+                                const total = arrows1 + arrows2;
+                                const results = a?.results || {};
+                                let count = 0;
+                                for (let s = 1; s <= 6; s++) {
+                                  const arr = results[`stand${s}`] || [];
+                                  for (let i = 0; i < Math.min(total, arr.length); i++) {
+                                    if (arr[i] === 'o') count++;
+                                  }
+                                }
+                                return count;
+                              };
+                              return getTotalHitCountLocal(archer) || '-';
                             })()}
                           </td>
+                          <td className="border border-green-300 px-4 py-2 font-semibold">{result.name}</td>
                           {/* 詳細セル - RankingViewと同一 */}
                           <td className="border border-green-300 px-4 py-2 text-sm text-center">
-                            {result.shootOffType === 'shichuma' && (
-                              <div>
-                                {(() => {
-                                  const hasEnkinResults = divisionData.results.some(r => r.shootOffType === 'enkin');
-                                  const hasShichumaResults = divisionData.results.some(r => r.shootOffType === 'shichuma');
-                                  const allDeterminedByShootOff = divisionData.results.every(r => r.shootOffType === 'shichuma' || r.shootOffType === 'enkin');
-                                  if (hasShichumaResults && !hasEnkinResults && allDeterminedByShootOff) {
-                                    if (result.isWinner) return <span className="text-yellow-700 font-bold">🏆 優勝</span>;
-                                    return <span className="text-blue-700 font-bold">射詰{result.rank}位</span>;
-                                  } else {
-                                    return (
-                                      <>
-                                        {result.isWinner && <span className="text-yellow-700 font-bold">🏆 優勝</span>}
-                                        {result.eliminatedAt && <span className="text-red-700">{result.eliminatedAt}本目脱落</span>}
-                                        {!result.isWinner && !result.eliminatedAt && <span>射詰{result.rank}位</span>}
-                                      </>
-                                    );
-                                  }
-                                })()}
-                                {result.isFromEnkin && (
-                                  <span className="text-blue-600 ml-2">→遠近で{result.rank}位確定</span>
-                                )}
-                              </div>
-                            )}
-                            {result.shootOffType === 'enkin' && (
-                              <div>
-                                <span className="text-orange-700">
-                                  {(() => {
-                                    const sameTargetRankResults = (finalResults?.enkin?.results || []).filter(r => r.targetRank === result.targetRank);
-                                    const groupSize = sameTargetRankResults.length;
-                                    const willHaveDefeated = (result.targetRank + groupSize - 1) > awardRankLimit;
-                                    if (willHaveDefeated) {
-                                      return `${result.targetRank}位決定戦`;
-                                    } else if (groupSize > 1) {
-                                      return `${result.targetRank}位～${result.targetRank + groupSize - 1}位決定戦`;
-                                    } else {
-                                      return `${result.targetRank}位決定戦`;
-                                    }
-                                  })()}
-                                </span>
-                                <span className="text-gray-600 ml-1">→{result.rank}位</span>
-                              </div>
-                            )}
-                            {result.rank_source === 'confirmed' && (
-                              <div>
-                                <span className="text-green-700">{result.hitCount}本的中</span>
-                              </div>
-                            )}
+                            {result.shootOffType === 'shichuma' && '射詰'}
+                            {result.shootOffType === 'enkin' && '遠近'}
+                            {result.rank_source === 'confirmed' && '的中数'}
+                            {!result.shootOffType && result.rank_source !== 'confirmed' && '-'}
                           </td>
+                          <td className="border border-green-300 px-4 py-2 text-gray-600">{result.affiliation}</td>
+                          <td className="border border-green-300 px-4 py-2 text-gray-600">{archer?.rank || '-'}</td>
                         </tr>
                       );
                     })
@@ -1016,14 +977,27 @@ const ProgramView = ({ state }) => {
       } else {
         html += `<table>`;
         html += `<thead><tr>`;
-        html += `<th>順位</th><th>氏名</th><th>所属</th><th>段位</th><th>決定方法</th><th>詳細</th>`;
+        html += `<th>順位</th><th>的中数</th><th>氏名</th><th>詳細</th><th>所属</th><th>段位</th>`;
         html += `</tr></thead><tbody>`;
         
         divisionData.results.forEach(result => {
           const archer = archers.find(a => a.archerId === result.archerId);
-          const method = result.shootOffType === 'shichuma' ? '射詰'
-                        : result.shootOffType === 'enkin' ? '遠近'
-                        : result.rank_source === 'confirmed' ? '的中数' : '-';
+          // 的中数を計算
+          const getTotalHitCountLocal = (a) => {
+            const arrows1 = tournament?.data?.arrowsRound1 ?? 4;
+            const arrows2 = tournament?.data?.arrowsRound2 ?? 4;
+            const total = arrows1 + arrows2;
+            const results = a?.results || {};
+            let count = 0;
+            for (let s = 1; s <= 6; s++) {
+              const arr = results[`stand${s}`] || [];
+              for (let i = 0; i < Math.min(total, arr.length); i++) {
+                if (arr[i] === 'o') count++;
+              }
+            }
+            return count;
+          };
+          const hitCount = getTotalHitCountLocal(archer);
           
           // 詳細テキスト - RankingViewと同一ロジック
           let detail = '-';
@@ -1052,11 +1026,11 @@ const ProgramView = ({ state }) => {
 
           html += `<tr>`;
           html += `<td class="rank">${result.rank}位</td>`;
+          html += `<td style="text-align:center;font-weight:600">${hitCount || '-'}</td>`;
           html += `<td>${result.name}</td>`;
+          html += `<td class="detail">${detail}</td>`;
           html += `<td>${result.affiliation}</td>`;
           html += `<td>${archer?.rank || '-'}</td>`;
-          html += `<td class="method">${method}</td>`;
-          html += `<td class="detail">${detail}</td>`;
           html += `</tr>`;
         });
         
@@ -1318,9 +1292,22 @@ const ProgramView = ({ state }) => {
         .sort((a, b) => a.rank - b.rank)
         .map(r => {
           const a = getArcherById(r.archerId);
-          const method = r.shootOffType === 'shichuma' ? '射詰'
-                      : r.shootOffType === 'enkin' ? '遠近'
-                      : r.rank_source === 'confirmed' ? '的中数' : '-';
+          // 的中数を計算
+          const getTotalHitCountLocal = (archer) => {
+            const arrows1 = tournament?.data?.arrowsRound1 ?? 4;
+            const arrows2 = tournament?.data?.arrowsRound2 ?? 4;
+            const total = arrows1 + arrows2;
+            const results = archer?.results || {};
+            let count = 0;
+            for (let s = 1; s <= 6; s++) {
+              const arr = results[`stand${s}`] || [];
+              for (let i = 0; i < Math.min(total, arr.length); i++) {
+                if (arr[i] === 'o') count++;
+              }
+            }
+            return count;
+          };
+          const hitCount = getTotalHitCountLocal(a);
 
           // 詳細テキスト - RankingViewと同一ロジック
           let detail = '-';
@@ -1349,11 +1336,11 @@ const ProgramView = ({ state }) => {
 
           return `<tr>`
             + `<td style="font-weight:700">${escapeHtml(r.rank)}位</td>`
+            + `<td style="text-align:center;font-weight:600">${escapeHtml(hitCount || '-')}</td>`
             + `<td>${escapeHtml(r.name)}</td>`
+            + `<td style="text-align:center">${escapeHtml(detail)}</td>`
             + `<td>${escapeHtml(r.affiliation)}</td>`
             + `<td>${escapeHtml(a?.rank || '-')}</td>`
-            + `<td style="text-align:center">${escapeHtml(method)}</td>`
-            + `<td style="text-align:center">${escapeHtml(detail)}</td>`
             + `</tr>`;
         })
         .join('');
@@ -1491,7 +1478,7 @@ const ProgramView = ({ state }) => {
       orderedDivisions.forEach(divData => {
         block += `<h3 style="margin:14px 0 6px">${escapeHtml(divData.division.label || divData.division.id)}</h3>`;
         block += `<table><thead><tr>`
-          + `<th>順位</th><th>氏名</th><th>所属</th><th>段位</th><th>決定方法</th><th>詳細</th>`
+          + `<th>順位</th><th>的中数</th><th>氏名</th><th>詳細</th><th>所属</th><th>段位</th>`
           + `</tr></thead><tbody>`;
         if (!divData.results || divData.results.length === 0) {
           block += `<tr><td colspan="6" style="text-align:center;color:#666;padding:16px">この部門の最終順位表の記録がありません</td></tr>`;
@@ -1747,6 +1734,9 @@ const ProgramView = ({ state }) => {
               <p><strong>大会名:</strong> {tournament?.data?.name || '未設定'}</p>
               <p><strong>日時:</strong> {tournament?.data?.datetime || '未設定'}</p>
               <p><strong>場所:</strong> {tournament?.data?.location || '未設定'}</p>
+              {enableGenderSeparation && (
+                <p><strong>プログラム表順序:</strong> {femaleFirst ? '女子→男子' : '男子→女子'}</p>
+              )}
               <p><strong>目的:</strong> {tournament?.data?.purpose || '-'}</p>
               {tournament?.data?.schedule && (
                 <>

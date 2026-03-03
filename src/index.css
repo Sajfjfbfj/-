@@ -731,6 +731,43 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   padding: 0 1rem;
 }
 
+/* 立ち順表の名前列固定 */
+.table-responsive table {
+  position: relative;
+}
+
+/* 名前列（2列目）固定 */
+.table-responsive table thead th:nth-child(2),
+.table-responsive table tbody td:nth-child(2) {
+  position: sticky;
+  left: -1rem;
+  background-color: #f9fafb;
+  z-index: 10;
+  padding-left: 1rem !important;
+}
+
+.table-responsive table tbody td:nth-child(2) {
+  background-color: white;
+}
+
+.table-responsive table tbody tr.bg-green-50 td:nth-child(2) {
+  background-color: #f0fdf4;
+}
+
+.table-responsive table tbody tr:hover td:nth-child(2) {
+  background-color: #f9fafb;
+}
+
+.table-responsive table tbody tr.bg-green-50:hover td:nth-child(2) {
+  background-color: #dcfce7;
+}
+
+/* 1列目を名前列の下に隠す */
+.table-responsive table thead th:nth-child(1),
+.table-responsive table tbody td:nth-child(1) {
+  z-index: 5;
+}
+
 @media (max-width: 768px) {
   .table-responsive {
     margin: 0 -0.75rem;

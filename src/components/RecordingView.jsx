@@ -8,6 +8,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
   const [selectedStand, setSelectedStand] = useState(() => parseInt(localStorage.getItem('recording_selectedStand')) || 1);
   const [selectedRound, setSelectedRound] = useState(() => parseInt(localStorage.getItem('recording_selectedRound')) || 1); // 1: 1立ち目, 2: 2立ち目
   const [selectedGender, setSelectedGender] = useState(() => localStorage.getItem('recording_selectedGender') || 'all'); // 'all' | 'male' | 'female'
+  const [currentPage, setCurrentPage] = useState(1);
   const [archers, setArchers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -251,13 +252,19 @@ const RecordingView = ({ state, dispatch, stands }) => {
     return true;
   });
 
+  const archersPerPage = tournament.archersPerStand || 12;
+  const totalPages = Math.ceil(divisionArchers.length / archersPerPage);
+  const startIndex = (currentPage - 1) * archersPerPage;
+  const endIndex = startIndex + archersPerPage;
+  const paginatedArchers = divisionArchers.slice(startIndex, endIndex);
+
   const getArchersForStand = (standNumber) => {
     const archersPerStand = tournament.archersPerStand;
     const startIdx = (standNumber - 1) * archersPerStand;
-    return divisionArchers.slice(startIdx, startIdx + archersPerStand);
+    return paginatedArchers.slice(startIdx, startIdx + archersPerStand);
   };
 
-  const standArchers = getArchersForStand(selectedStand);
+  const standArchers = paginatedArchers;
 
   // API経由で記録を保存
   const saveResultToApi = async (archerId, standNum, arrowIndex, result, updatedResults) => {
@@ -441,9 +448,35 @@ const RecordingView = ({ state, dispatch, stands }) => {
                 );
               })()}
               <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '0.5rem', border: '1px solid #bfdbfe' }}>
-                <p style={{ margin: 0, fontSize: '0.875rem', color: '#1e40af', fontWeight: 500 }}>👥 この部門の選手数: {divisionArchers.length}人</p>
+                <p style={{ margin: 0, fontSize: '0.875rem', color: '#1e40af', fontWeight: 500 }}>👥 この部門の選手数: {divisionArchers.length}人 | 表示中: {paginatedArchers.length}人</p>
               </div>
             </div>
+
+            {totalPages > 1 && (
+              <div className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="btn"
+                    style={{ opacity: currentPage === 1 ? 0.5 : 1 }}
+                  >
+                    ← 前のページ
+                  </button>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1f2937' }}>
+                    {currentPage} / {totalPages} ページ
+                  </span>
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="btn"
+                    style={{ opacity: currentPage === totalPages ? 0.5 : 1 }}
+                  >
+                    次のページ →
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="card">
               <div className="round-selector">
@@ -523,6 +556,32 @@ const RecordingView = ({ state, dispatch, stands }) => {
                 })
               )}
             </div>
+
+            {totalPages > 1 && (
+              <div className="card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="btn"
+                    style={{ opacity: currentPage === 1 ? 0.5 : 1 }}
+                  >
+                    ← 前のページ
+                  </button>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1f2937' }}>
+                    {currentPage} / {totalPages} ページ
+                  </span>
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="btn"
+                    style={{ opacity: currentPage === totalPages ? 0.5 : 1 }}
+                  >
+                    次のページ →
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

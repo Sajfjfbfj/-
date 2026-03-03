@@ -10,6 +10,8 @@ const ApplicantTournamentDetailView = ({ state }) => {
   const [error, setError] = useState('');
   const [allApplicants, setAllApplicants] = useState([]);
   const [selectedTournamentId, setSelectedTournamentId] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const archersPerPage = 36;
 
   const appliedUsers = useMemo(() => {
     try {
@@ -112,11 +114,47 @@ const ApplicantTournamentDetailView = ({ state }) => {
 
         const enableGenderSeparation = tplData?.enableGenderSeparation ?? false;
         const femaleFirst = enableGenderSeparation && (tplData?.femaleFirst ?? false);
+        const divisions = tplData?.divisions || [
+          { id: 'lower', label: '級位~三段以下の部', minRank: '無指定', maxRank: '参段' },
+          { id: 'middle', label: '四・五段の部', minRank: '四段', maxRank: '五段' },
+          { id: 'title', label: '称号者の部', minRank: '錬士五段', maxRank: '範士九段' }
+        ];
+
+        const getDivisionIdForArcher = (archer) => {
+          const rIdx = getRankIndex(archer?.rank);
+          for (const d of divisions) {
+            const minIdx = d?.minRank ? getRankIndex(d.minRank) : 0;
+            const maxIdx = d?.maxRank ? getRankIndex(d.maxRank) : rankOrder.length - 1;
+            if (rIdx >= minIdx && rIdx <= maxIdx) return d.id;
+          }
+          return 'unassigned';
+        };
+
+        const divisionOrder = [...divisions]
+          .sort((a, b) => {
+            const ai = a?.minRank ? getRankIndex(a.minRank) : 0;
+            const bi = b?.minRank ? getRankIndex(b.minRank) : 0;
+            return ai - bi;
+          })
+          .map(d => d?.id)
+          .filter(Boolean);
 
         const sorted = data
           .slice()
           .sort((a, b) => {
             if (enableGenderSeparation) {
+              // 部門ごとに性別を交互に表示
+              const adiv = getDivisionIdForArcher(a);
+              const bdiv = getDivisionIdForArcher(b);
+              const adi = divisionOrder.indexOf(adiv);
+              const bdi = divisionOrder.indexOf(bdiv);
+              if (adi !== bdi) {
+                if (adi === -1) return 1;
+                if (bdi === -1) return -1;
+                return adi - bdi;
+              }
+
+              // 同じ部門内では性別で分ける
               const ag = a.gender || 'male';
               const bg = b.gender || 'male';
               if (ag !== bg) return femaleFirst
@@ -173,6 +211,11 @@ const ApplicantTournamentDetailView = ({ state }) => {
   }
 
   const tplData = tournamentTemplate?.data || {};
+
+  const totalPages = Math.max(1, Math.ceil(allApplicants.length / archersPerPage));
+  const indexOfFirst = (currentPage - 1) * archersPerPage;
+  const indexOfLast = indexOfFirst + archersPerPage;
+  const currentApplicants = allApplicants.slice(indexOfFirst, indexOfLast);
 
   const downloadProgramPdf = async () => {
     if (!selectedTournamentId) return;
@@ -304,7 +347,7 @@ const ApplicantTournamentDetailView = ({ state }) => {
                 ) : allApplicants.length === 0 ? (
                   <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500">申込者がいません</td></tr>
                 ) : (
-                  allApplicants.map((a, idx) => (
+                  currentApplicants.map((a, idx) => (
                     <tr key={a.archerId} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-sm font-semibold text-gray-900">{a.standOrder}</td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{a.name}</td>
@@ -325,6 +368,23 @@ const ApplicantTournamentDetailView = ({ state }) => {
               </tbody>
             </table>
           </div>
+
+          {allApplicants.length > archersPerPage && (
+            <div className="flex items-center justify-between mt-4">
+              <div>
+                <p className="text-sm">{indexOfFirst + 1} 〜 {Math.min(indexOfLast, allApplicants.length)} / {allApplicants.length} 名</p>
+              </div>
+              <div className="flex space-x-1">
+                <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage === 1} className="btn">前へ</button>
+                <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                  {Array.from({ length: totalPages }, (_, i) => (
+                    <button key={i} onClick={() => setCurrentPage(i+1)} className={`btn ${currentPage === i+1 ? 'btn-active' : ''}`}>{i+1}</button>
+                  ))}
+                </div>
+                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage === totalPages} className="btn">次へ</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import SettingsView from './SettingsView';
 import AwardsView from './AwardsView';
 import ProgramView from './ProgramView';
 import RankingView from './RankingView';
+import StatsView from './StatsView';
 
 const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedTournamentId, setSelectedTournamentId, onLogout }) => {
   const renderHeader = () => (
@@ -15,6 +16,7 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedT
         <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
         <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>
         <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
+        <button onClick={() => setAdminView('stats')} className={`btn ${adminView === 'stats' ? 'btn-active' : ''}`}>支部別集計</button>
       </div>
       <button onClick={onLogout} style={{ width: '100%', padding: '0.875rem 1.5rem', fontSize: '1rem', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: 'white', border: 'none', borderRadius: '0.75rem', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(239, 68, 68, 0.3)', transition: 'all 0.2s' }}>
         <LogOut size={18} />ログアウト
@@ -59,6 +61,14 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedT
       <div>
         {renderHeader()}
         <RankingView state={state} dispatch={dispatch} selectedTournamentId={selectedTournamentId} />
+      </div>
+    );
+  }
+  if (adminView === 'stats') {
+    return (
+      <div>
+        {renderHeader()}
+        <StatsView state={state} selectedTournamentId={selectedTournamentId} />
       </div>
     );
   }

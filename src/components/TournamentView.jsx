@@ -3,6 +3,7 @@ import { LogOut, RotateCcw, Copy, Check, Filter, X, Maximize2, ChevronLeft, Chev
 import { applicantsApi, rankingApi, API_URL } from '../utils/api';
 import { judgeNearFarCompetition, calculateRanksWithTies } from '../utils/competition';
 import { getStoredAttachments, getLocalDateKey } from '../utils/tournament';
+import ProgramView from './ProgramView';
 
 const TournamentView = ({ state, stands, checkInCount }) => {
   const [view, setView] = useState('standings'); // 'standings', 'qualifiers', or 'shichuma'
@@ -114,14 +115,18 @@ const TournamentView = ({ state, stands, checkInCount }) => {
             .replace('一級', '壱級');
         };
 
+        const enableGenderSeparation = tournament?.data?.enableGenderSeparation || false;
+        const femaleFirst = enableGenderSeparation && (tournament?.data?.femaleFirst || false);
+
         const sortedArchers = [...checkedIn].sort((a, b) => {
-          // 男女分けが有効な場合、男を先に配置
-          const enableGenderSeparation = tournament?.data?.enableGenderSeparation || false;
+          // 男女分けが有効な場合、femaleFirst設定に従って並べる
           if (enableGenderSeparation) {
             const aGender = a.gender || "male";
             const bGender = b.gender || "male";
             if (aGender !== bGender) {
-              return aGender === "male" ? -1 : 1;
+              return femaleFirst
+                ? (aGender === "female" ? -1 : 1)
+                : (aGender === "male" ? -1 : 1);
             }
           }
 
@@ -849,14 +854,6 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   }
 
   if (view === 'program') {
-    const tpl = state.registeredTournaments.find(t => t.id === selectedTournamentId);
-    const tplData = tpl?.data || {};
-    const attachments = getStoredAttachments(selectedTournamentId);
-    const totalPagesProgram = Math.max(1, Math.ceil(archers.length / programArchersPerPage));
-    const indexOfFirstProgram = (currentPageProgram - 1) * programArchersPerPage;
-    const indexOfLastProgram = indexOfFirstProgram + programArchersPerPage;
-    const currentArchersProgram = archers.slice(indexOfFirstProgram, indexOfLastProgram);
-
     return (
       <div className="view-container">
         <div className="view-header">
@@ -866,124 +863,8 @@ const TournamentView = ({ state, stands, checkInCount }) => {
           >
             <ChevronLeft className="w-4 h-4 mr-1" /> 立ち順表に戻る
           </button>
-          <div className="flex justify-between items-center">
-            <h1>プログラム表</h1>
-            <button onClick={printProgram} className="btn-primary">印刷</button>
-          </div>
         </div>
-
-        <div className="view-content">
-          {!selectedTournamentId ? (
-            <div className="card">大会を選択してください</div>
-          ) : (
-            <>
-              <div className="card" style={{ marginBottom: '1rem' }}>
-                <h2 className="card-title">大会概要</h2>
-                <p><strong>大会名:</strong> {tplData?.name || '未設定'}</p>
-                <p><strong>日時:</strong> {tplData?.datetime || '未設定'}</p>
-                <p><strong>場所:</strong> {tplData?.location || '未設定'}</p>
-                <p><strong>目的:</strong> {tplData?.purpose || '-'}</p>
-                <p><strong>主催:</strong> {tplData?.organizer || '-'}</p>
-                <p><strong>後援:</strong> {tplData?.coOrganizer || '-'}</p>
-                <p><strong>主管:</strong> {tplData?.administrator || '-'}</p>
-                <p><strong>種目:</strong> {tplData?.event || '-'}</p>
-                <p><strong>種類:</strong> {tplData?.type || '-'}</p>
-                <p><strong>種別:</strong> {tplData?.category || '-'}</p>
-                <p><strong>内容:</strong> {tplData?.description || '-'}</p>
-                <p><strong>競技方法:</strong> {tplData?.competitionMethod || '-'}</p>
-                <p><strong>表彰:</strong> {tplData?.award || '-'}</p>
-                <p><strong>参加資格:</strong> {tplData?.qualifications || '-'}</p>
-                <p><strong>適用規則:</strong> {tplData?.applicableRules || '-'}</p>
-                <p><strong>申込方法:</strong> {tplData?.applicationMethod || '-'}</p>
-                <p><strong>その他:</strong> {tplData?.remarks || '-'}</p>
-              </div>
-
-              <div className="card" style={{ marginBottom: '1rem' }}>
-                <h2 className="card-title">添付資料</h2>
-                {attachments.length === 0 ? (
-                  <p className="text-sm text-gray-500">添付資料はありません</p>
-                ) : (
-                  <div className="space-y-2">
-                    {attachments.map((att, idx) => (
-                      <div key={`${att?.name || 'file'}_${idx}`} className="flex items-center justify-between">
-                        <a className="text-sm text-blue-600 hover:underline" href={att?.dataUrl || ''} target="_blank" rel="noopener noreferrer">
-                          {att?.name || `file_${idx+1}`}
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="card">
-                <h2 className="card-title">立ち順表</h2>
-                <div className="table-responsive">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">氏名</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">所属</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">段位</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">性別</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">1立ち目</th>
-                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">2立ち目</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {isLoading && archers.length === 0 ? (
-                        <tr><td colSpan="7" className="px-4 py-4 text-center">読み込み中...</td></tr>
-                      ) : archers.length === 0 ? (
-                        <tr><td colSpan="7" className="px-4 py-4 text-center">選手が登録されていません</td></tr>
-                      ) : (
-                        currentArchersProgram.map(a => (
-                          <tr key={a.archerId}>
-                            <td className="px-4 py-3 text-sm font-medium">{a.standOrder}</td>
-                            <td className="px-4 py-3">{a.name}</td>
-                            <td className="px-4 py-3">{a.affiliation}</td>
-                            <td className="px-4 py-3 text-center">{a.rank}</td>
-                            <td className="px-4 py-3 text-center">{a.gender === 'female' ? '女' : '男'}</td>
-                            <td className="px-4 py-3">
-                              <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
-                                {Array.from({ length: (tplData?.arrowsRound1 || 0) }).map((_, idx) => (
-                                  <span key={idx} className="inline-flex items-center justify-center w-6 h-4 text-xs text-gray-600">&nbsp;</span>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
-                                {Array.from({ length: (tplData?.arrowsRound2 || 0) }).map((_, idx) => (
-                                  <span key={idx} className="inline-flex items-center justify-center w-6 h-4 text-xs text-gray-600">&nbsp;</span>
-                                ))}
-                              </div>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {archers.length > programArchersPerPage && (
-                  <div className="flex items-center justify-between mt-4">
-                    <div>
-                      <p className="text-sm">{indexOfFirstProgram + 1} ? {Math.min(indexOfLastProgram, archers.length)} / {archers.length} 名</p>
-                    </div>
-                    <div className="flex space-x-1">
-                      <button onClick={() => paginateProgram(Math.max(1, currentPageProgram-1))} disabled={currentPageProgram === 1} className="btn">前へ</button>
-                      <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-                        {Array.from({ length: totalPagesProgram }, (_, i) => (
-                          <button key={i} onClick={() => paginateProgram(i+1)} className={`btn ${currentPageProgram === i+1 ? 'btn-active' : ''}`}>{i+1}</button>
-                        ))}
-                      </div>
-                      <button onClick={() => paginateProgram(Math.min(totalPagesProgram, currentPageProgram+1))} disabled={currentPageProgram === totalPagesProgram} className="btn">次へ</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+        <ProgramView state={state} />
       </div>
     );
   }
@@ -1017,97 +898,100 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       ) : (
         <div className="view-container">
           <div className="view-header">
-            <h1>大会進行 (リアルタイム)</h1>
-            <div style={{ marginTop: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h1 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#1f2937' }}>大会進行 (リアルタイム)</h1>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <div className="input w-full" style={{ display: 'flex', alignItems: 'center', padding: '0.5rem' }}>
-                  <span style={{ fontWeight: 600 }}>{(state.registeredTournaments.find(t => t.id === selectedTournamentId)?.data?.name) || (selectedTournamentId ? selectedTournamentId : '-- 大会が選択されていません --')}</span>
+                {autoRefresh && (
+                  <span style={{ fontSize: '0.875rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', backgroundColor: '#d1fae5', borderRadius: '0.5rem', fontWeight: 600 }}>
+                    <span style={{ display: 'inline-block', width: '0.5rem', height: '0.5rem', backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 1.5s ease-in-out infinite' }}></span>
+                    Live更新中
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ fontSize: '3rem' }}>🏹</div>
+                <div style={{ flex: 1 }}>
+                  <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, marginBottom: '0.5rem' }}>
+                    {(state.registeredTournaments.find(t => t.id === selectedTournamentId)?.data?.name) || selectedTournamentId || '大会が選択されていません'}
+                  </h2>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 2rem', fontSize: '0.875rem', opacity: 0.95 }}>
+                    <div>📅 {state.registeredTournaments.find(t => t.id === selectedTournamentId)?.data?.datetime || '日時未設定'}</div>
+                    <div>📍 {state.registeredTournaments.find(t => t.id === selectedTournamentId)?.data?.location || '場所未設定'}</div>
+                  </div>
                 </div>
-                <button
-                  onClick={printProgram}
-                  className="btn-secondary"
-                  style={{ padding: '0 1rem' }}
-                  title="プログラムを表示/印刷"
-                >
-                  <Maximize2 size={18} />
-                </button>
               </div>
             </div>
           </div>
           <div className="view-content">
             {selectedTournamentId && (
               <>
-                <div className="settings-grid">
-                  <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                    <p className="text-xs text-gray-500 font-medium mb-1">受付済み</p>
-                    <p className="text-lg font-semibold">{archers.length}<span className="text-sm text-gray-500 ml-1">人</span></p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                  <div className="card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>👥 受付済み</div>
+                    <div style={{ fontSize: '2.5rem', fontWeight: 700 }}>{archers.length}<span style={{ fontSize: '1rem', marginLeft: '0.5rem' }}>人</span></div>
                   </div>
+                  
                   <div 
-                    className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                    className="card" 
+                    style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white', textAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
                     onClick={() => setView('qualifiers')}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                   >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-xs text-gray-500 font-medium mb-1">通過者</p>
-                        <p className="text-lg font-semibold">
-                          {passedArchers.length}<span className="text-sm text-gray-500 ml-1">人</span>
-                        </p>
-                      </div>
-                      <Users className="w-4 h-4 text-gray-400" />
-                    </div>
+                    <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>✅ 通過者</div>
+                    <div style={{ fontSize: '2.5rem', fontWeight: 700 }}>{passedArchers.length}<span style={{ fontSize: '1rem', marginLeft: '0.5rem' }}>人</span></div>
                   </div>
+                  
                   <div 
-                    className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                    className="card" 
+                    style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white', textAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
                     onClick={() => setView('program')}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                   >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-xs text-gray-500 font-medium mb-1">プログラム</p>
-                        <p className="text-sm font-medium">表示/印刷</p>
-                      </div>
-                      <Maximize2 className="w-4 h-4 text-gray-400" />
-                    </div>
+                    <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>📋 プログラム</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 600, marginTop: '0.5rem' }}>表示/印刷</div>
                   </div>
+                  
                   <div 
-                    className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
+                    className="card" 
+                    style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', color: 'white', textAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
                     onClick={() => setView('shichuma')}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                   >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-xs text-gray-500 font-medium mb-1">競射結果</p>
-                        <p className="text-sm font-medium">結果表示</p>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-gray-400" />
-                    </div>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                    <p className="text-xs text-gray-500 font-medium mb-1">通過ルール</p>
-                    <p className="text-sm font-medium">
-                      {tournament.passRule === 'all_four' ? '全て的中' :
-                       tournament.passRule === 'four_or_more' ? '4本以上的中' :
-                       tournament.passRule === 'three_or_more' ? '3本以上的中' :
-                       tournament.passRule === 'two_or_more' ? '2本以上的中' : '未設定'}
-                    </p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                    <p className="text-xs text-gray-500 font-medium mb-1">1立ち目矢数</p>
-                    <p className="text-lg font-semibold">{tournament.arrowsRound1 || 0}<span className="text-sm text-gray-500 ml-1">本</span></p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                    <p className="text-xs text-gray-500 font-medium mb-1">2立ち目矢数</p>
-                    <p className="text-lg font-semibold">{tournament.arrowsRound2 || 0}<span className="text-sm text-gray-500 ml-1">本</span></p>
+                    <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>🏆 競射結果</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 600, marginTop: '0.5rem' }}>結果表示</div>
                   </div>
                 </div>
 
-                <div className="card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <p className="card-title">立ち順表</p>
-                    {autoRefresh && (
-                        <span style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                          <span style={{ display: 'inline-block', width: '0.5rem', height: '0.5rem', backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 1.5s ease-in-out infinite' }}></span>
-                          Live
-                        </span>
-                      )}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                  <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid #3b82f6' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600, marginBottom: '0.5rem' }}>📏 通過ルール</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1f2937' }}>
+                      {tournament.passRule === 'all_four' ? '全て的中' :
+                       tournament.passRule === 'four_or_more' ? '4本以上' :
+                       tournament.passRule === 'three_or_more' ? '3本以上' :
+                       tournament.passRule === 'two_or_more' ? '2本以上' : '未設定'}
+                    </div>
+                  </div>
+                  
+                  <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid #10b981' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600, marginBottom: '0.5rem' }}>🎯 1立ち目</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1f2937' }}>{tournament.arrowsRound1 || 0}<span style={{ fontSize: '0.875rem', marginLeft: '0.25rem' }}>本</span></div>
+                  </div>
+                  
+                  <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid #f59e0b' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600, marginBottom: '0.5rem' }}>🎯 2立ち目</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1f2937' }}>{tournament.arrowsRound2 || 0}<span style={{ fontSize: '0.875rem', marginLeft: '0.25rem' }}>本</span></div>
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1f2937', margin: 0 }}>📊 立ち順表</h2>
                   </div>
                   <div className="table-responsive">
                     <table className="min-w-full divide-y divide-gray-200">

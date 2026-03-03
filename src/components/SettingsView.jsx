@@ -111,14 +111,14 @@ const SettingsView = ({ state, dispatch, selectedTournamentId, setSelectedTourna
           </div>
 
           <div style={{ marginBottom: '2rem' }}>
-            <p style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.75rem', color: '#374151' }}>👥 道場に入る最大の人数</p>
+            <p style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.75rem', color: '#374151' }}>👥 射場に入る最大の人数</p>
             <select 
               value={localSettings.archersPerStand} 
               onChange={(e) => setLocalSettings(prev => ({ ...prev, archersPerStand: parseInt(e.target.value) }))} 
               className="input"
               style={{ fontSize: '1rem', padding: '0.875rem' }}
             >
-              {[6, 8, 10, 12].map(n => (
+              {[5, 6, 12].map(n => (
                 <option key={n} value={n}>{n}人</option>
               ))}
             </select>

@@ -10,6 +10,24 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
   const [archers, setArchers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [shootoffResults, setShootoffResults] = useState(null);
+  const [shichumaFinalResults, setShichumaFinalResults] = useState(() => {
+    // ローカルストレージから読み込み
+    try {
+      const saved = localStorage.getItem(`shichumaResults_${selectedTournamentId}`);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [enkinFinalResults, setEnkinFinalResults] = useState(() => {
+    // ローカルストレージから読み込み
+    try {
+      const saved = localStorage.getItem(`enkinResults_${selectedTournamentId}`);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const tournaments = state.registeredTournaments || [];
   const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
 
@@ -19,14 +37,13 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
     const arrows1 = tournament?.data?.arrowsRound1 || state.tournament.arrowsRound1 || 0;
     const arrows2 = tournament?.data?.arrowsRound2 || state.tournament.arrowsRound2 || 0;
     const total = arrows1 + arrows2;
-    
+    const results = archer?.results || {};
     let count = 0;
-    for (let i = 0; i < total; i++) {
-      const standKey = `stand${Math.floor(i / 4) + 1}`;
-      const arrowIndex = i % 4;
-      const results = archer.results || {};
-      const standResults = results[standKey] || [];
-      if (standResults[arrowIndex] === 'o') count++;
+    for (let s = 1; s <= 6; s++) {
+      const arr = results[`stand${s}`] || [];
+      for (let i = 0; i < Math.min(total, arr.length); i++) {
+        if (arr[i] === 'o') count++;
+      }
     }
     return count;
   }, [tournament, state.tournament]);
@@ -61,7 +78,20 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
     fetchArchers();
   }, [selectedTournamentId]);
 
-  // ★ 競射結果を取得・10秒ごとにポーリング
+  // ローカルストレージに保存
+  useEffect(() => {
+    if (selectedTournamentId && shichumaFinalResults) {
+      localStorage.setItem(`shichumaResults_${selectedTournamentId}`, JSON.stringify(shichumaFinalResults));
+    }
+  }, [shichumaFinalResults, selectedTournamentId]);
+
+  useEffect(() => {
+    if (selectedTournamentId && enkinFinalResults) {
+      localStorage.setItem(`enkinResults_${selectedTournamentId}`, JSON.stringify(enkinFinalResults));
+    }
+  }, [enkinFinalResults, selectedTournamentId]);
+
+  // ★ 競射結果を取得・10秒ごとにポーリング（RankingViewと同じロジック）
   const fetchShootoffResults = useCallback(async () => {
     if (!selectedTournamentId) return;
     try {
@@ -69,6 +99,13 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
       if (response.ok) {
         const result = await response.json();
         if (result.success) {
+          // サーバーから取得したデータでローカルを更新
+          if (result.data.shichuma) {
+            setShichumaFinalResults(result.data.shichuma);
+          }
+          if (result.data.enkin) {
+            setEnkinFinalResults(result.data.enkin);
+          }
           setShootoffResults(result.data);
         }
       }
@@ -102,140 +139,180 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
   const femaleFirst = enableGenderSeparation && (selectedTournament?.data?.femaleFirst ?? false);
 
   const divisionRankings = useMemo(() => {
-    // 競射結果に含まれる選手IDセットを作成（的中数ベースの順位を上書きするため）
-    const shootoffArcherIds = new Set([
-      ...((shootoffResults?.shichuma?.results || []).map(r => r.archerId)),
-      ...((shootoffResults?.enkin?.results || []).filter(r => !r.isDefeated && r.rank !== '敗退').map(r => r.archerId)),
-    ]);
+    // RankingViewのgetMergedFinalResultsと同じロジックで統合結果を構築
+    const mergedResults = [];
+    const processedArcherIds = new Set();
 
-    // 競射結果から archerId → 最終順位 マップを構築
-    const shootoffRankMap = {};
-    if (shootoffResults?.shichuma?.results) {
-      for (const r of shootoffResults.shichuma.results) {
-        if (!r.pendingEnkin) shootoffRankMap[r.archerId] = { rank: r.rank, source: '射詰' };
+    // 部門ごとに処理
+    divisions.forEach(div => {
+      const divArchers = archers.filter(a => getDivisionForArcher(a, divisions) === div.id);
+      const divisionUsedRanks = new Set();
+      const divisionProcessedArchers = new Set();
+
+      const divisionEnkinResults = (enkinFinalResults?.results || []).filter(result => {
+        if (result.divisionId) return result.divisionId === div.id;
+        return divArchers.some(a => a.archerId === result.archerId);
+      });
+
+      // 射詰競射の結果を処理
+      if (shichumaFinalResults?.results) {
+        const divShichumaResults = shichumaFinalResults.results.filter(result => {
+          if (result.divisionId) return result.divisionId === div.id;
+          return divArchers.some(a => a.archerId === result.archerId);
+        });
+
+        [...divShichumaResults]
+          .sort((a, b) => a.rank - b.rank)
+          .forEach(result => {
+            const archer = divArchers.find(a => a.archerId === result.archerId);
+            if (!archer) return;
+            const isFromShichumaToEnkin = result.pendingEnkin || divisionEnkinResults.some(e => e.archerId === result.archerId);
+            if (isFromShichumaToEnkin) return;
+            if (divisionProcessedArchers.has(result.archerId)) return;
+
+            mergedResults.push({
+              archerId: result.archerId,
+              name: archer.name,
+              affiliation: archer.affiliation,
+              rank: result.rank,
+              rank_source: 'shichuma',
+              shootOffType: 'shichuma',
+              hitCount: getTotalHitCountAllStands(archer),
+              divisionId: div.id,
+              danRank: archer.rank
+            });
+            divisionUsedRanks.add(result.rank);
+            divisionProcessedArchers.add(result.archerId);
+            processedArcherIds.add(result.archerId);
+          });
       }
-    }
-    if (shootoffResults?.enkin?.results) {
-      for (const r of shootoffResults.enkin.results) {
-        if (!r.isDefeated && r.rank !== '敗退') {
-          const rank = typeof r.rank === 'number' ? r.rank : parseInt(r.rank);
-          if (!isNaN(rank)) shootoffRankMap[r.archerId] = { rank, source: '遠近' };
+
+      // 遠近競射の結果を処理
+      if (divisionEnkinResults.length > 0) {
+        [...divisionEnkinResults]
+          .sort((a, b) => {
+            const aT = a.targetRank != null ? a.targetRank : 9999;
+            const bT = b.targetRank != null ? b.targetRank : 9999;
+            if (aT !== bT) return aT - bT;
+            return (parseInt(a.rank) || 9999) - (parseInt(b.rank) || 9999);
+          })
+          .forEach(result => {
+            if (divisionProcessedArchers.has(result.archerId)) return;
+            const archer = divArchers.find(a => a.archerId === result.archerId);
+            if (!archer) return;
+            if (result.rank === '敗退' || result.isDefeated) return;
+            const finalRank = parseInt(result.rank);
+            if (divisionUsedRanks.has(finalRank)) return;
+
+            mergedResults.push({
+              archerId: result.archerId,
+              name: archer.name,
+              affiliation: archer.affiliation,
+              rank: finalRank,
+              rank_source: 'enkin',
+              shootOffType: 'enkin',
+              hitCount: getTotalHitCountAllStands(archer),
+              divisionId: div.id,
+              danRank: archer.rank
+            });
+            divisionUsedRanks.add(finalRank);
+            divisionProcessedArchers.add(result.archerId);
+            processedArcherIds.add(result.archerId);
+          });
+      }
+    });
+
+    // 的中数確定結果を追加
+    divisions.forEach(div => {
+      const divArchers = archers.filter(a => getDivisionForArcher(a, divisions) === div.id);
+      const rankGroups = {};
+      divArchers.forEach(archer => {
+        const hitCount = getTotalHitCountAllStands(archer);
+        if (!rankGroups[hitCount]) rankGroups[hitCount] = [];
+        rankGroups[hitCount].push(archer);
+      });
+      const sortedGroups = Object.entries(rankGroups)
+        .map(([h, g]) => [parseInt(h), g])
+        .sort(([a], [b]) => b - a);
+      let currentRank = 1;
+      sortedGroups.forEach(([hitCount, group]) => {
+        const isTied = group.length > 1;
+        const isInAwardRange = currentRank <= awardRankLimit;
+        if (!isTied && isInAwardRange) {
+          group.forEach(archer => {
+            if (!processedArcherIds.has(archer.archerId)) {
+              mergedResults.push({
+                archerId: archer.archerId,
+                name: archer.name,
+                affiliation: archer.affiliation,
+                rank: currentRank,
+                rank_source: 'confirmed',
+                shootOffType: null,
+                hitCount: hitCount,
+                divisionId: div.id,
+                danRank: archer.rank
+              });
+              processedArcherIds.add(archer.archerId);
+            }
+          });
         }
-      }
-    }
+        currentRank += group.length;
+      });
+    });
 
-    const groups = {};
-    
-    // Create groups based on individual division gender separation settings
-    for (const div of divisions) {
+    // 部門ごとに分類
+    const resultsByDivision = {};
+    divisions.forEach(div => {
       const divGenderSeparation = div.enableGenderSeparation || enableGenderSeparation;
       if (divGenderSeparation) {
-        groups[`${div.id}_male`] = { division: { ...div, gender: 'male' }, rows: [] };
-        groups[`${div.id}_female`] = { division: { ...div, gender: 'female' }, rows: [] };
+        resultsByDivision[`${div.id}_male`] = { division: { ...div, gender: 'male' }, ranked: [] };
+        resultsByDivision[`${div.id}_female`] = { division: { ...div, gender: 'female' }, ranked: [] };
       } else {
-        groups[div.id] = { division: div, rows: [] };
+        resultsByDivision[div.id] = { division: div, ranked: [] };
       }
-    }
+    });
 
-    for (const a of archers) {
-      const division = getDivisionForArcher(a, divisions);
-      const divId = division.replace(/_male$|_female$/, '');
-      const hitCount = getTotalHitCountAllStands(a);
-      const gender = a.gender || 'male'; // Default to male if not specified
-      
-      // Find division configuration to check gender separation
-      const divisionConfig = divisions.find(d => d.id === divId);
-      const divGenderSeparation = divisionConfig?.enableGenderSeparation || enableGenderSeparation;
-      
-      let targetGroupId;
-      if (divGenderSeparation) {
-        targetGroupId = `${divId}_${gender}`;
-      } else {
-        targetGroupId = divId;
-      }
-      
-      if (!groups[targetGroupId]) {
-        // Fallback to unassigned if division not found
-        targetGroupId = divGenderSeparation ? 'unassigned_male' : 'unassigned';
-        if (!groups[targetGroupId]) {
-          groups[targetGroupId] = { 
-            division: { id: 'unassigned', label: '未分類', gender: divGenderSeparation ? 'male' : undefined }, 
-            rows: [] 
-          };
+    mergedResults.forEach(result => {
+      const archer = archers.find(a => a.archerId === result.archerId);
+      if (archer) {
+        const divId = result.divisionId;
+        const gender = archer.gender || 'male';
+        const divisionConfig = divisions.find(d => d.id === divId);
+        const divGenderSeparation = divisionConfig?.enableGenderSeparation || enableGenderSeparation;
+        const targetDivId = divGenderSeparation ? `${divId}_${gender}` : divId;
+        if (!resultsByDivision[targetDivId]) {
+          resultsByDivision[targetDivId] = { division: { id: targetDivId, label: targetDivId }, ranked: [] };
         }
+        resultsByDivision[targetDivId].ranked.push({
+          ...result,
+          shootoffSource: result.shootOffType === 'shichuma' ? '射詰' : result.shootOffType === 'enkin' ? '遠近' : null
+        });
       }
-      
-      groups[targetGroupId].rows.push({
-        ...a,
-        hitCount,
-        divisionId: targetGroupId,
-        // 競射結果があれば source を付与（表示用）
-        shootoffSource: shootoffRankMap[a.archerId]?.source || null,
-      });
-    }
+    });
 
     const result = [];
-    
-    for (const key of Object.keys(groups)) {
-      const g = groups[key];
-      if (g.rows.length === 0) continue; // Skip empty groups
-
-      // 的中数ベースで順位計算
-      const hitRanked = calculateRanksWithTiesCallback(g.rows.map(r => ({ ...r })));
-
-      // 競射結果がある場合は上書き
-      const ranked = hitRanked.map(archer => {
-        const so = shootoffRankMap[archer.archerId];
-        if (so) {
-          return { ...archer, rank: so.rank, shootoffSource: so.source };
+    divisions.forEach(div => {
+      const divGenderSeparation = div.enableGenderSeparation || enableGenderSeparation;
+      if (divGenderSeparation) {
+        const firstG = femaleFirst ? 'female' : 'male';
+        const secondG = femaleFirst ? 'male' : 'female';
+        const firstL = femaleFirst ? '女' : '男';
+        const secondL = femaleFirst ? '男' : '女';
+        if (resultsByDivision[`${div.id}_${firstG}`]?.ranked.length > 0) {
+          result.push(resultsByDivision[`${div.id}_${firstG}`]);
         }
-        return archer;
-      });
-
-      // 競射対象で順位が同率になっている場合を再整理して最終ソート
-      ranked.sort((a, b) => a.rank - b.rank);
-
-      result.push({
-        division: g.division,
-        ranked,
-      });
-    }
-    
-    // Sort groups: maintain original division order, with configured gender first for each division
-    result.sort((a, b) => {
-      const getBaseDivisionId = (id) => {
-        const hasGenderSuffix = /_male$|_female$/.test(id);
-        if (hasGenderSuffix) {
-          return id.replace(/_male$|_female$/, '');
+        if (resultsByDivision[`${div.id}_${secondG}`]?.ranked.length > 0) {
+          result.push(resultsByDivision[`${div.id}_${secondG}`]);
         }
-        return id;
-      };
-      
-      const getGenderOrder = (id) => {
-        if (/_male$|_female$/.test(id)) {
-          if (femaleFirst) {
-            return id.endsWith('_female') ? 0 : 1;
-          }
-          return id.endsWith('_male') ? 0 : 1;
+      } else {
+        if (resultsByDivision[div.id]?.ranked.length > 0) {
+          result.push(resultsByDivision[div.id]);
         }
-        return 0;
-      };
-      
-      const baseA = getBaseDivisionId(a.division.id);
-      const baseB = getBaseDivisionId(b.division.id);
-      const ai = divisions.findIndex(d => d.id === baseA);
-      const bi = divisions.findIndex(d => d.id === baseB);
-      
-      if (ai !== bi) {
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
       }
-      
-      // If same base division, sort by gender
-      return getGenderOrder(a.division.id) - getGenderOrder(b.division.id);
     });
-    
+
     return result;
-  }, [archers, divisions, enableGenderSeparation, femaleFirst, getTotalHitCountAllStands, calculateRanksWithTiesCallback, shootoffResults]);
+  }, [archers, divisions, enableGenderSeparation, femaleFirst, getTotalHitCountAllStands, shichumaFinalResults, enkinFinalResults, awardRankLimit]);
 
   if (isLoading) {
     return (
@@ -247,95 +324,82 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
 
   return (
     <div className="space-y-6">
+      {/* 最終順位表（RankingViewと同じ形式） */}
       <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-2xl font-bold mb-4">表彰</h2>
+        <h2 className="text-2xl font-bold mb-4">🏆 最終順位表</h2>
+        <p className="text-sm text-gray-600 mb-4">表彰範囲：{awardRankLimit}位まで</p>
         
         {divisionRankings.length === 0 ? (
-          <p className="text-gray-500">該当する選手がいません</p>
+          <p className="text-gray-500">最終順位表の記録がありません</p>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-6">
             {divisionRankings.map((group, groupIndex) => (
-              <div key={groupIndex} className="border rounded-lg p-4">
-                <h3 className="text-xl font-semibold mb-4">
+              <div key={groupIndex}>
+                <h3 className="text-lg font-semibold text-green-600 mb-3">
                   {group.division.label}
                   {group.division.gender && (
                     <span className="ml-2 text-sm text-gray-500">
-                      ({group.division.gender === 'male' ? '男子' : '女子'})
+                      （{group.division.gender === 'male' ? '男' : '女'}）
                     </span>
                   )}
                 </h3>
-                
-                {group.ranked.length === 0 ? (
-                  <p className="text-gray-500">該当選手なし</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse border border-green-300">
+                    <thead>
+                      <tr className="bg-green-100">
+                        <th className="border border-green-300 px-4 py-2 text-left">順位</th>
+                        <th className="border border-green-300 px-4 py-2 text-center">的中数</th>
+                        <th className="border border-green-300 px-4 py-2 text-left">氏名</th>
+                        <th className="border border-green-300 px-4 py-2 text-center">詳細</th>
+                        <th className="border border-green-300 px-4 py-2 text-left">所属</th>
+                        <th className="border border-green-300 px-4 py-2 text-left">段位</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.ranked.filter(archer => archer.rank <= awardRankLimit).length === 0 ? (
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            順位
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            氏名
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            所属
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            段位
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            的中数
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            決定
-                          </th>
+                          <td colSpan="6" className="border border-green-300 px-4 py-8 text-center text-gray-500">
+                            この部門の最終順位表の記録がありません<br />
+                            <span className="text-xs">（表彰範囲：{awardRankLimit}位まで）</span>
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {group.ranked
+                      ) : (
+                        group.ranked
                           .filter(archer => archer.rank <= awardRankLimit)
                           .map((archer, index) => (
-                            <tr key={archer.id || archer.archerId || `archer-${index}`} className={archer.rank <= 3 ? 'bg-yellow-50' : ''}>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`inline-flex items-center justify-center px-2 py-1 text-xs font-bold rounded-full ${
-                                  archer.rank === 1 ? 'bg-yellow-400 text-white' :
-                                  archer.rank === 2 ? 'bg-gray-400 text-white' :
-                                  archer.rank === 3 ? 'bg-orange-400 text-white' :
-                                  'bg-gray-200 text-gray-800'
-                                }`}>
-                                  {archer.rank}位
-                                </span>
+                            <tr key={archer.id || archer.archerId || `archer-${index}`} className="hover:bg-green-50">
+                              <td className="border border-green-300 px-4 py-2 font-bold">
+                                <span className="text-green-900">{archer.rank}位</span>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              <td className="border border-green-300 px-4 py-2 text-center font-semibold">
+                                {archer.hitCount || '-'}
+                              </td>
+                              <td className="border border-green-300 px-4 py-2 font-semibold">
                                 {archer.name}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {archer.affiliation}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {archer.danRank || archer.grade || '-'}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {archer.hitCount}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm">
+                              <td className="border border-green-300 px-4 py-2 text-sm text-center">
                                 {archer.shootoffSource ? (
-                                  <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                  <span className={`text-sm px-2 py-1 rounded ${
                                     archer.shootoffSource === '射詰' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'
                                   }`}>
                                     {archer.shootoffSource}
                                   </span>
                                 ) : (
-                                  <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800">的中数</span>
+                                  <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">的中数</span>
                                 )}
                               </td>
+                              <td className="border border-green-300 px-4 py-2 text-gray-600">
+                                {archer.affiliation}
+                              </td>
+                              <td className="border border-green-300 px-4 py-2 text-gray-600">
+                                {archer.danRank || archer.rank || '-'}
+                              </td>
                             </tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                          ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ))}
           </div>

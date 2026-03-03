@@ -1911,6 +1911,8 @@ const categorizedGroups = useMemo(() => {
     const existingResults = {};
     const existingMethods = {};
     const existingTargetRanks = {};
+    const existingArchers = {}; // 選手情報を保持
+    
     // 部門内の全選手の現在の順位、決定方法、targetRankを取得
     const divisionResults = getMergedFinalResults().filter(r => {
       const archer = archers.find(a => a.archerId === r.archerId);
@@ -1918,11 +1920,14 @@ const categorizedGroups = useMemo(() => {
       const archerDivisionId = getDivisionIdForArcher(archer, divisions);
       return archerDivisionId === divisionId.replace(/_male$|_female$/, '');
     });
+    
     divisionResults.forEach(r => {
       existingResults[r.archerId] = r.rank;
       existingMethods[r.archerId] = r.shootOffType || 'confirmed';
-      existingTargetRanks[r.archerId] = r.targetRank || r.rank; // targetRankを保持
+      existingTargetRanks[r.archerId] = r.targetRank || r.rank;
+      existingArchers[r.archerId] = r.archerId; // 既存選手を記録
     });
+    
     setCorrectionResults(existingResults);
     setCorrectionMethods(existingMethods);
     setCorrectionTargetRanks(existingTargetRanks);
@@ -2417,11 +2422,11 @@ const categorizedGroups = useMemo(() => {
                 <thead>
                   <tr className="bg-green-100">
                     <th className="border border-green-300 px-4 py-2 text-left">順位</th>
+                    <th className="border border-green-300 px-4 py-2 text-center">的中数</th>
                     <th className="border border-green-300 px-4 py-2 text-left">氏名</th>
-                    <th className="border border-green-300 px-4 py-2 text-left">所属</th>
-                    <th className="border border-green-300 px-4 py-2 text-left">部門</th>
-                    <th className="border border-green-300 px-4 py-2 text-center">決定方法</th>
                     <th className="border border-green-300 px-4 py-2 text-center">詳細</th>
+                    <th className="border border-green-300 px-4 py-2 text-left">所属</th>
+                    <th className="border border-green-300 px-4 py-2 text-left">段位</th>
                     <th className="border border-green-300 px-4 py-2 text-center">訂正</th>
                   </tr>
                 </thead>
@@ -2439,6 +2444,12 @@ const categorizedGroups = useMemo(() => {
                       <tr key={`${result.archerId}-${result.shootOffType || 'unknown'}`} className="hover:bg-green-50">
                         <td className="border border-green-300 px-4 py-2 font-bold">
                           <span className="text-green-900">{result.rank}位</span>
+                        </td>
+                        <td className="border border-green-300 px-4 py-2 text-center font-semibold">
+                          {(() => {
+                            const hitCount = getTotalHitCountAllStands(archer);
+                            return hitCount || '-';
+                          })()}
                         </td>
                         <td className="border border-green-300 px-4 py-2 font-semibold">
                           {result.name}
@@ -2584,20 +2595,45 @@ const categorizedGroups = useMemo(() => {
                           const isInCorrectionMode = correctionMode?.divisionId === divisionData.division.id;
                           if (isInCorrectionMode) {
                             const awardRankLimit = tournament?.data?.awardRankLimit || 3;
-                            const allResults = divisionData.results;
                             const rankOptions = [];
                             for (let i = 1; i <= awardRankLimit; i++) {
                               rankOptions.push(i);
                             }
                             rankOptions.push('敗退');
+                            
+                            // 部門内の全選手を取得（大元の枠）
+                            const baseDivisionId = divisionData.division.id.replace(/_male$|_female$/, '');
+                            const allDivisionArchers = archers.filter(a => {
+                              const archerDivisionId = getDivisionIdForArcher(a, divisions);
+                              const archerGender = a.gender || 'male';
+                              const targetDivId = enableGenderSeparation ? `${archerDivisionId}_${archerGender}` : archerDivisionId;
+                              return targetDivId === divisionData.division.id;
+                            });
+                            
                             return (
                               <div className="flex flex-col gap-1">
                                 <select
-                                  value={correctionResults[result.archerId] || result.rank}
-                                  onChange={(e) => setCorrectionResults(prev => ({ ...prev, [result.archerId]: e.target.value }))}
+                                  value={correctionResults[result.archerId] || result.archerId}
+                                  onChange={(e) => {
+                                    const selectedArcherId = e.target.value;
+                                    // 選手情報を更新（名前選択時に所属・段位も連動）
+                                    setCorrectionResults(prev => ({ ...prev, [result.archerId]: selectedArcherId }));
+                                  }}
+                                  className="input text-sm mb-1"
+                                >
+                                  <option value="">選手を選択</option>
+                                  {allDivisionArchers.map(a => (
+                                    <option key={a.archerId} value={a.archerId}>
+                                      {a.name} ({a.affiliation}) - {a.rank}
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={correctionResults[`${result.archerId}_rank`] || result.rank}
+                                  onChange={(e) => setCorrectionResults(prev => ({ ...prev, [`${result.archerId}_rank`]: e.target.value }))}
                                   className="input text-sm"
                                 >
-                                  <option value="">選択</option>
+                                  <option value="">順位を選択</option>
                                   {rankOptions.map(rank => <option key={rank} value={rank}>{rank}位</option>)}
                                 </select>
                               </div>
@@ -2682,11 +2718,12 @@ const categorizedGroups = useMemo(() => {
                 ))}
               </div>
               {(() => {
-                // 選択された部門の男女分け設定を確認
-                const selectedDivisionData = divisions.find(d => d.id === selectedDivision);
-                const divGenderSeparation = selectedDivisionData?.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation || false;
+                // 全部門選択時は全体の設定、個別部門選択時はその部門の設定を確認
+                const hasGenderSeparation = selectedDivision === ''
+                  ? divisions.some(d => d.enableGenderSeparation) || selectedTournament?.data?.enableGenderSeparation
+                  : divisions.find(d => d.id === selectedDivision)?.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation;
                 
-                return divGenderSeparation && (
+                return hasGenderSeparation && (
                   <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
                     <button onClick={() => setSelectedGender('male')} className={`btn ${selectedGender === 'male' ? 'btn-active' : ''}`} style={{ flex: 1 }}>男子</button>
                     <button onClick={() => setSelectedGender('female')} className={`btn ${selectedGender === 'female' ? 'btn-active' : ''}`} style={{ flex: 1 }}>女子</button>
@@ -2726,12 +2763,28 @@ const categorizedGroups = useMemo(() => {
               <div key={divisionData.division.id} className="space-y-4">
                 {/* 部門タイトル */}
                 <div className="card border-l-4 border-purple-500">
-                  <h2 className="card-title text-purple-700">🏹 {divisionData.division.label}</h2>
+                  <h2 className="card-title text-purple-700">🏹 {(() => {
+                    const label = divisionData.division.label;
+                    const hasGenderSep = divisionData.division.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation;
+                    if (hasGenderSep && selectedGender !== 'all') {
+                      const genderLabel = selectedGender === 'male' ? '男子' : '女子';
+                      return `${label}（${genderLabel}）`;
+                    }
+                    return label;
+                  })()}</h2>
                 </div>
                 {/* === 1. 射詰競射（優勝決定戦）の表示エリア === */}
                 {divisionData.izume.length > 0 && (
                   <div className="card border-l-4 border-blue-500">
-                    <h3 className="card-title text-blue-700">🎯 射詰競射 対象（優勝決定）</h3>
+                    <h3 className="card-title text-blue-700">🎯 {(() => {
+                      const label = divisionData.division.label;
+                      const hasGenderSep = divisionData.division.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation;
+                      if (hasGenderSep && selectedGender !== 'all') {
+                        const genderLabel = selectedGender === 'male' ? '男子' : '女子';
+                        return `${label}（${genderLabel}）射詰競射 対象（優勝決定）`;
+                      }
+                      return `${label}射詰競射 対象（優勝決定）`;
+                    })()}</h3>
                     <p className="text-sm text-gray-600 mb-3">
                       1位が同率のため、射詰競射を行います。
                     </p>
@@ -2762,7 +2815,15 @@ const categorizedGroups = useMemo(() => {
                 {/* === 2. 遠近競射（順位決定）の表示エリア === */}
                 {divisionData.enkin.length > 0 && (
                   <div className="card border-l-4 border-orange-500">
-                    <h3 className="card-title text-orange-700">🎯 遠近競射 対象（順位決定）</h3>
+                    <h3 className="card-title text-orange-700">🎯 {(() => {
+                      const label = divisionData.division.label;
+                      const hasGenderSep = divisionData.division.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation;
+                      if (hasGenderSep && selectedGender !== 'all') {
+                        const genderLabel = selectedGender === 'male' ? '男子' : '女子';
+                        return `${label}（${genderLabel}）遠近競射 対象（順位決定）`;
+                      }
+                      return `${label}遠近競射 対象（順位決定）`;
+                    })()}</h3>
                     <p className="text-sm text-gray-600 mb-3">
                       入賞圏内で同順位がいるため、遠近競射を行います。
                     </p>
@@ -2822,27 +2883,71 @@ const categorizedGroups = useMemo(() => {
                 {/* === 3. 順位確定者の表示エリア === */}
                 {divisionData.confirmed.length > 0 && (
                   <div className="card border-l-4 border-green-500">
-                    <h3 className="card-title text-green-700">✅ 順位確定</h3>
-                    <div className="space-y-3">
-                      {divisionData.confirmed.map(({ hitCount, group, rank }) => (
-                        <div key={`${divisionData.division.id}_${rank}_confirmed`} className="bg-green-50 p-2 rounded flex justify-between items-center">
-                          <div>
-                            <span className="font-bold text-green-900 mr-2">{rank}位</span>
-                            <span>{group[0].name}</span>
-                            <span className="text-xs text-gray-600 ml-2">({group[0].affiliation})</span>
-                          </div>
-                          <span className="font-bold text-green-800">{hitCount}本</span>
-                        </div>
-                      ))}
+                    <h3 className="card-title text-green-700 mb-4">✅ 順位確定</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse border border-green-300">
+                        <thead>
+                          <tr className="bg-green-100">
+                            <th className="border border-green-300 px-4 py-2 text-left">順位</th>
+                            <th className="border border-green-300 px-4 py-2 text-center">的中数</th>
+                            <th className="border border-green-300 px-4 py-2 text-left">氏名</th>
+                            <th className="border border-green-300 px-4 py-2 text-center">詳細</th>
+                            <th className="border border-green-300 px-4 py-2 text-left">所属</th>
+                            <th className="border border-green-300 px-4 py-2 text-left">段位</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {divisionData.confirmed.map(({ hitCount, group, rank }) => (
+                            <tr key={`${divisionData.division.id}_${rank}_confirmed`} className="hover:bg-green-50">
+                              <td className="border border-green-300 px-4 py-2 font-bold">
+                                <span className="text-green-900">{rank}位</span>
+                              </td>
+                              <td className="border border-green-300 px-4 py-2 text-center font-semibold">
+                                {hitCount}
+                              </td>
+                              <td className="border border-green-300 px-4 py-2 font-semibold">{group[0].name}</td>
+                              <td className="border border-green-300 px-4 py-2 text-sm text-center">
+                                <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">
+                                  的中数
+                                </span>
+                              </td>
+                              <td className="border border-green-300 px-4 py-2 text-gray-600">{group[0].affiliation}</td>
+                              <td className="border border-green-300 px-4 py-2 text-gray-600">{group[0].rank || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 )}
               </div>
             ))}
 
-            {isShootOffActive && shootOffType === 'shichuma' && (
+            {isShootOffActive && shootOffType === 'shichuma' && (() => {
+              // 競射中の選手の性別をチェック
+              if (currentShootOffArchers.length > 0) {
+                const shootOffGender = currentShootOffArchers[0].gender || 'male';
+                // 選択中の性別と競射中の性別が一致する場合のみ表示
+                if (selectedGender !== 'all' && selectedGender !== shootOffGender) {
+                  return null;
+                }
+              }
+              return true;
+            })() && (
               <div className="card">
-                <h2 className="card-title">射詰競射中</h2>
+                <h2 className="card-title">{(() => {
+                  // 現在の部門名を取得
+                  if (currentShootOffArchers.length > 0) {
+                    const firstArcher = currentShootOffArchers[0];
+                    const divisionId = getDivisionIdForArcher(firstArcher, divisions);
+                    const division = divisions.find(d => d.id === divisionId);
+                    const gender = firstArcher.gender || 'male';
+                    const genderLabel = gender === 'female' ? '女子' : '男子';
+                    const divisionLabel = division?.label || divisionId;
+                    return enableGenderSeparation ? `${divisionLabel}${genderLabel}射詰競射中` : `${divisionLabel}射詰競射中`;
+                  }
+                  return '射詰競射中';
+                })()}</h2>
                 <div className="mb-4">
                   <p className="text-sm text-gray-600 mb-2">
                     射詰競射ルール：
@@ -3051,10 +3156,33 @@ const categorizedGroups = useMemo(() => {
                 )}
               </div>
             )}
-            {isShootOffActive && shootOffType === 'enkin' && (
+            {isShootOffActive && shootOffType === 'enkin' && (() => {
+              // 競射中の選手の性別をチェック
+              if (currentShootOffArchers.length > 0) {
+                const shootOffGender = currentShootOffArchers[0].gender || 'male';
+                // 選択中の性別と競射中の性別が一致する場合のみ表示
+                if (selectedGender !== 'all' && selectedGender !== shootOffGender) {
+                  return null;
+                }
+              }
+              return true;
+            })() && (
               <div className="card">
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="card-title">{getEnkinTitle()}中</h2>
+                  <h2 className="card-title">{(() => {
+                    // 現在の部門名を取得
+                    if (currentShootOffArchers.length > 0) {
+                      const firstArcher = currentShootOffArchers[0];
+                      const divisionId = getDivisionIdForArcher(firstArcher, divisions);
+                      const division = divisions.find(d => d.id === divisionId);
+                      const gender = firstArcher.gender || 'male';
+                      const genderLabel = gender === 'female' ? '女子' : '男子';
+                      const divisionLabel = division?.label || divisionId;
+                      const baseTitle = getEnkinTitle();
+                      return enableGenderSeparation ? `${divisionLabel}${genderLabel}${baseTitle}中` : `${divisionLabel}${baseTitle}中`;
+                    }
+                    return `${getEnkinTitle()}中`;
+                  })()}</h2>
                   {enkinTargetRank === null && (
                     <div className="flex items-center gap-2">
                       <label className="text-sm text-gray-600">開始順位:</label>
