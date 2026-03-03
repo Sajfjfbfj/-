@@ -7,6 +7,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
   const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
   const [isStaff, setIsStaff] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
+  const [myApplications, setMyApplications] = useState([]);
   const [formData, setFormData] = useState({
     name: '', 
     affiliation: '', 
@@ -31,10 +32,29 @@ const ArcherSignupView = ({ state, dispatch }) => {
   useEffect(() => {
     if (selectedTournamentId) {
       localStorage.setItem('selectedTournamentId', selectedTournamentId);
+      fetchMyApplications();
     } else {
       localStorage.removeItem('selectedTournamentId');
+      setMyApplications([]);
     }
   }, [selectedTournamentId]);
+
+  const fetchMyApplications = async () => {
+    if (!selectedTournamentId) return;
+    const deviceId = localStorage.getItem('kyudo_tournament_device_id');
+    if (!deviceId) return;
+
+    try {
+      const response = await fetch(`${API_URL}/applicants/${selectedTournamentId}`);
+      const result = await response.json();
+      if (result.success) {
+        const myApps = result.data.filter(a => a.deviceId === deviceId);
+        setMyApplications(myApps);
+      }
+    } catch (error) {
+      console.error('Failed to fetch applications:', error);
+    }
+  };
 
   const filteredTournaments = state.registeredTournaments.filter(tournament => 
     locationFilter === '' || 
@@ -289,6 +309,39 @@ const ArcherSignupView = ({ state, dispatch }) => {
             </div>
           </div>
         )}
+          <div className="sport-card">
+            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: 700, color: '#1f2937', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>📝</span>申し込み情報
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <input type="text" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="氏名 *" style={{ padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }} />
+              <input type="text" value={formData.affiliation} onChange={(e) => handleInputChange('affiliation', e.target.value)} placeholder="所属（○○支部とお書きください） *" style={{ padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }} />
+              <select value={formData.rank} onChange={(e) => handleInputChange('rank', e.target.value)} style={{ padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                {rankOrder.map(rank => (<option key={rank} value={rank}>{rank}</option>))}
+              </select>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#6b7280' }}>性別 *</label>
+                <select value={formData.gender} onChange={(e) => handleInputChange('gender', e.target.value)} style={{ width: '100%', padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }}>
+                  <option value="male">👨 男</option>
+                  <option value="female">👩 女</option>
+                </select>
+              </div>
+              {formData.rank !== '無指定' && (
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#6b7280' }}>段位取得日 *</label>
+                  <input 
+                    type="date" 
+                    value={formData.rankAcquiredDate} 
+                    onChange={(e) => handleInputChange('rankAcquiredDate', e.target.value)} 
+                    style={{ width: '100%', padding: '0.875rem 1rem', border: '2px solid #e5e7eb', borderRadius: '0.5rem', fontSize: '1rem' }}
+                    max={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+              )}
+              <button onClick={handleApply} className="btn-primary" style={{ marginTop: '0.5rem', width: '100%', padding: '1rem', fontSize: '1.125rem', fontWeight: 700 }}>申し込む</button>
+            </div>
+          </div>
+        )}
 
         {showQRModal && (
           <div className="qr-modal-overlay" onClick={(e) => {
@@ -391,6 +444,55 @@ const ArcherSignupView = ({ state, dispatch }) => {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {myApplications.length > 0 && (
+          <div className="sport-card">
+            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: 700, color: '#1f2937', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>📋</span>この端末からの申し込み一覧
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {myApplications.map(app => (
+                <div key={app.archerId} style={{ padding: '1rem', border: '2px solid #e5e7eb', borderRadius: '0.75rem', background: '#f9fafb' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <p style={{ margin: 0, fontWeight: 600, fontSize: '1rem', color: '#1f2937' }}>{app.name} 様</p>
+                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
+                        {app.affiliation} | {app.rank}
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => showQRCode(
+                        app.archerId,
+                        app.name,
+                        app.isStaff ? '役員' : '選手',
+                        state.registeredTournaments.find(t => t.id === selectedTournamentId)?.data?.name || '',
+                        app.affiliation,
+                        app.rank,
+                        app.gender
+                      )}
+                      style={{ 
+                        padding: '0.75rem 1.5rem',
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.5rem',
+                        fontSize: '0.875rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.transform = 'translateY(-1px)'}
+                      onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
+                    >
+                      QRコード表示
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

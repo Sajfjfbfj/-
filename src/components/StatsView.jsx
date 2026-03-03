@@ -46,6 +46,8 @@ const StatsView = ({ state, selectedTournamentId }) => {
   }, [archers]);
 
   const tournament = state.registeredTournaments?.find(t => t.id === selectedTournamentId);
+  const participationFee = Number(tournament?.data?.participationFee) || 0;
+  const totalFee = participationFee * archers.length;
 
   if (isLoading) {
     return (
@@ -75,6 +77,16 @@ const StatsView = ({ state, selectedTournamentId }) => {
             </div>
           </div>
 
+          {participationFee > 0 && (
+            <div className="mb-6 bg-green-50 p-4 rounded-lg border-2 border-green-300">
+              <div className="text-sm text-green-600 mb-1">💰 参加費合計</div>
+              <div className="flex items-baseline gap-2">
+                <div className="text-3xl font-bold text-green-900">{totalFee.toLocaleString()}円</div>
+                <div className="text-sm text-green-700">(一人 {participationFee.toLocaleString()}円 × {archers.length}名)</div>
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <table className="w-full border-collapse border border-gray-300">
               <thead>
@@ -82,12 +94,15 @@ const StatsView = ({ state, selectedTournamentId }) => {
                   <th className="border border-gray-300 px-4 py-2 text-left">順位</th>
                   <th className="border border-gray-300 px-4 py-2 text-left">支部名</th>
                   <th className="border border-gray-300 px-4 py-2 text-center">申込人数</th>
+                  {participationFee > 0 && (
+                    <th className="border border-gray-300 px-4 py-2 text-center">参加費合計</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {affiliationStats.length === 0 ? (
                   <tr>
-                    <td colSpan="3" className="border border-gray-300 px-4 py-8 text-center text-gray-500">
+                    <td colSpan={participationFee > 0 ? "4" : "3"} className="border border-gray-300 px-4 py-8 text-center text-gray-500">
                       参加者がいません
                     </td>
                   </tr>
@@ -103,6 +118,11 @@ const StatsView = ({ state, selectedTournamentId }) => {
                       <td className="border border-gray-300 px-4 py-2 text-center font-bold text-blue-900">
                         {stat.total}名
                       </td>
+                      {participationFee > 0 && (
+                        <td className="border border-gray-300 px-4 py-2 text-center font-bold text-green-900">
+                          {(participationFee * stat.total).toLocaleString()}円
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}

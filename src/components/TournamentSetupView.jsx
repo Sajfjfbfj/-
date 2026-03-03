@@ -15,7 +15,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
   const [geocodeStatus, setGeocodeStatus] = useState('');
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [formData, setFormData] = useState({
-    name: '', datetime: '', location: '', venueAddress: '', venueLat: '', venueLng: '', organizer: '', coOrganizer: '', administrator: '', purpose: '', schedule: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '',
+    name: '', datetime: '', location: '', venueAddress: '', venueLat: '', venueLng: '', organizer: '', coOrganizer: '', administrator: '', purpose: '', schedule: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '', participationFee: '',
     attachments: [],
     divisions: [
       { id: 'lower', label: '級位~三段以下の部' },
@@ -266,6 +266,11 @@ const TournamentSetupView = ({ state, dispatch }) => {
 
       const { attachments, ...dataWithoutAttachments } = formData;
       
+      // 参加費を数値に変換
+      if (dataWithoutAttachments.participationFee) {
+        dataWithoutAttachments.participationFee = Number(dataWithoutAttachments.participationFee);
+      }
+      
       const response = await fetch(`${API_URL}/tournaments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -423,6 +428,11 @@ const TournamentSetupView = ({ state, dispatch }) => {
               <input type="text" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="大会名 *" className="input" style={{ fontSize: '1rem', padding: '0.875rem 1rem' }} />
               <input type="datetime-local" value={formData.datetime} onChange={(e) => handleInputChange('datetime', e.target.value)} className="input" style={{ fontSize: '1rem', padding: '0.875rem 1rem' }} />
               <input type="text" value={formData.location} onChange={(e) => handleInputChange('location', e.target.value)} placeholder="開催場所 *" className="input" style={{ fontSize: '1rem', padding: '0.875rem 1rem' }} />
+              <div>
+                <input type="number" value={formData.participationFee || ''} onChange={(e) => handleInputChange('participationFee', e.target.value)} placeholder="参加費（円）" className="input" style={{ fontSize: '1rem', padding: '0.875rem 1rem' }} min="0" step="100" />
+                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: '#6b7280' }}>※数字だけ入れてください（例：1000）</p>
+                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: '#dc2626' }}>※参加費なしの場合は入力しないでください</p>
+              </div>
             </div>
           </div>
           <input type="text" value={formData.venueAddress} onChange={(e) => handleInputChange('venueAddress', e.target.value)} placeholder="会場住所（プログラム表には表示されません）" className="input" />

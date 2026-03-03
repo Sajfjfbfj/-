@@ -11,7 +11,56 @@ const ApplicantTournamentDetailView = ({ state }) => {
   const [allApplicants, setAllApplicants] = useState([]);
   const [selectedTournamentId, setSelectedTournamentId] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loginStep, setLoginStep] = useState('password_setup');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
   const archersPerPage = 36;
+
+  useEffect(() => {
+    try {
+      const storedPassword = localStorage.getItem('applicantPassword');
+      if (storedPassword) {
+        setLoginStep('password_login');
+      } else {
+        setLoginStep('password_setup');
+      }
+    } catch {}
+  }, []);
+
+  const handleSetupPassword = () => {
+    if (!password || password.length < 4) {
+      setLoginError('パスワードは4文字以上で設定してください');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setLoginError('パスワードが一致しません');
+      return;
+    }
+    try {
+      localStorage.setItem('applicantPassword', password);
+      setIsLoggedIn(true);
+      setLoginError('');
+    } catch {
+      setLoginError('パスワードの保存に失敗しました');
+    }
+  };
+
+  const handleLogin = () => {
+    try {
+      const storedPassword = localStorage.getItem('applicantPassword');
+      if (loginPassword === storedPassword) {
+        setIsLoggedIn(true);
+        setLoginError('');
+      } else {
+        setLoginError('パスワードが違います');
+      }
+    } catch {
+      setLoginError('ログインに失敗しました');
+    }
+  };
 
   const appliedUsers = useMemo(() => {
     try {
@@ -58,6 +107,8 @@ const ApplicantTournamentDetailView = ({ state }) => {
     return (state?.registeredTournaments || []).find(t => t.id === selectedTournamentId) || null;
   }, [state, selectedTournamentId]);
 
+  const tplData = tournamentTemplate?.data || {};
+
   const appliedTournamentOptions = useMemo(() => {
     const templates = state?.registeredTournaments || [];
     return appliedTournamentIds
@@ -68,14 +119,12 @@ const ApplicantTournamentDetailView = ({ state }) => {
       });
   }, [appliedTournamentIds, state]);
 
-  const rankOrder = useMemo(() => (
-    [
-      '無指定',
-      '五級', '四級', '三級', '弐級', '壱級',
-      '初段', '弐段', '参段', '四段', '五段',
-      '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'
-    ]
-  ), []);
+  const rankOrder = [
+    '無指定',
+    '五級', '四級', '三級', '弐級', '壱級',
+    '初段', '弐段', '参段', '四段', '五段',
+    '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'
+  ];
 
   const normalizeRank = (rank) => {
     if (!rank) return '';
@@ -192,7 +241,56 @@ const ApplicantTournamentDetailView = ({ state }) => {
     return () => {
       mounted = false;
     };
-  }, [selectedTournamentId, rankOrder]);
+  }, [selectedTournamentId]);
+
+  if (!isLoggedIn) {
+    return (
+      <div className="view-container">
+        <div className="login-container">
+          <div className="login-box">
+            <h2 className="login-title">🔒 出場大会詳細</h2>
+            {loginStep === 'password_setup' ? (
+              <>
+                <p className="hint">初回設定：パスワードを設定してください</p>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="パスワード（4文字以上）"
+                  className="input"
+                  onKeyPress={(e) => e.key === 'Enter' && handleSetupPassword()}
+                />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="パスワード（再入力）"
+                  className="input"
+                  onKeyPress={(e) => e.key === 'Enter' && handleSetupPassword()}
+                />
+                {loginError && <p className="error-message">{loginError}</p>}
+                <button onClick={handleSetupPassword} className="btn-primary">設定</button>
+              </>
+            ) : (
+              <>
+                <p className="hint">パスワードを入力してください</p>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="パスワード"
+                  className="input"
+                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                />
+                {loginError && <p className="error-message">{loginError}</p>}
+                <button onClick={handleLogin} className="btn-primary">ログイン</button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (appliedTournamentIds.length === 0) {
     return (
@@ -209,8 +307,6 @@ const ApplicantTournamentDetailView = ({ state }) => {
       </div>
     );
   }
-
-  const tplData = tournamentTemplate?.data || {};
 
   const totalPages = Math.max(1, Math.ceil(allApplicants.length / archersPerPage));
   const indexOfFirst = (currentPage - 1) * archersPerPage;

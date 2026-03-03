@@ -66,6 +66,7 @@ export const normalizeTournamentFormData = (data, defaultDivisions, attachments)
     applicableRules: d.applicableRules || '',
     applicationMethod: d.applicationMethod || '',
     remarks: d.remarks || '',
+    participationFee: d.participationFee || '',
     enableGenderSeparation: d.enableGenderSeparation || false,
     divisions: processedDivisions,
     attachments: attachments || [],

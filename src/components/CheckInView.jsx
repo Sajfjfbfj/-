@@ -10,6 +10,7 @@ const CheckInView = ({ state, dispatch }) => {
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [checkIns, setCheckIns] = useState([]);
+  const [notCheckedIns, setNotCheckedIns] = useState([]);
   const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
   const [showQRModal, setShowQRModal] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
@@ -111,7 +112,9 @@ const CheckInView = ({ state, dispatch }) => {
       
       if (result.success) {
         const checkedIn = result.data.filter(a => a.isCheckedIn);
+        const notCheckedIn = result.data.filter(a => !a.isCheckedIn);
         setCheckIns(checkedIn);
+        setNotCheckedIns(notCheckedIn);
         
         const savedDeviceId = localStorage.getItem('kyudo_tournament_device_id');
         
@@ -323,6 +326,17 @@ const CheckInView = ({ state, dispatch }) => {
   };
 
   const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+  
+  const isTournamentDay = () => {
+    if (!selectedTournament?.data?.datetime) return false;
+    try {
+      const tournamentDate = new Date(selectedTournament.data.datetime);
+      const today = new Date();
+      return tournamentDate.toDateString() === today.toDateString();
+    } catch {
+      return false;
+    }
+  };
   
   const formatTournamentDate = (tournament) => {
     if (!tournament?.data) return '日時未設定';
@@ -553,6 +567,50 @@ const CheckInView = ({ state, dispatch }) => {
               )}
             </div>
 
+            {isTournamentDay() && (
+              <>
+                <div className="sport-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '2px solid #e5e7eb' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>⚠️</span>
+                  <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#1f2937' }}>未受付一覧</h3>
+                </div>
+              </div>
+              <div className="table-responsive" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+                  <thead style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', borderBottom: '2px solid #fbbf24' }}>
+                    <tr>
+                      <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>ID</th>
+                      <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>氏名</th>
+                      <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>所属</th>
+                      <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>段位</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {notCheckedIns.length > 0 ? (
+                      notCheckedIns.map(archer => (
+                        <tr key={archer.archerId} style={{ borderBottom: '1px solid #fef3c7' }}>
+                          <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#92400e', whiteSpace: 'nowrap' }}>{archer.archerId}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', fontWeight: 600, color: '#78350f', whiteSpace: 'nowrap' }}>{archer.name}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#92400e' }}>{archer.affiliation}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#92400e', whiteSpace: 'nowrap' }}>{archer.rank}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="4" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '2rem', opacity: 0.3 }}>✅</span>
+                            <p style={{ margin: 0, color: '#9ca3af', fontSize: '0.9375rem' }}>全員受付済みです</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             <div className="sport-card" ref={checkinListRef}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '2px solid #e5e7eb' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -745,6 +803,8 @@ const CheckInView = ({ state, dispatch }) => {
                 </div>
               )}
             </div>
+              </>
+            )}
           </>
         )}
       </div>
