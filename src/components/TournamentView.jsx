@@ -3,6 +3,7 @@ import { LogOut, RotateCcw, Copy, Check, Filter, X, Maximize2, ChevronLeft, Chev
 import { applicantsApi, rankingApi, API_URL } from '../utils/api';
 import { judgeNearFarCompetition, calculateRanksWithTies } from '../utils/competition';
 import { getStoredAttachments, getLocalDateKey } from '../utils/tournament';
+import { groupByTeam, generateTeamStandOrder, fetchTeamOrder, saveTeamOrder } from '../utils/teamCompetition';
 import ProgramView from './ProgramView';
 import QualifiersView from '../QualifiersView';
 
@@ -118,42 +119,70 @@ const TournamentView = ({ state, stands, checkInCount }) => {
 
         const enableGenderSeparation = tournament?.data?.enableGenderSeparation || false;
         const femaleFirst = enableGenderSeparation && (tournament?.data?.femaleFirst || false);
+        const competitionType = tournament?.data?.competitionType || 'individual';
+        const isTeamCompetition = competitionType === 'team';
 
-        const sortedArchers = [...checkedIn].sort((a, b) => {
-          // 男女分けが有効な場合、femaleFirst設定に従って並べる
-          if (enableGenderSeparation) {
-            const aGender = a.gender || "male";
-            const bGender = b.gender || "male";
-            if (aGender !== bGender) {
-              return femaleFirst
-                ? (aGender === "female" ? -1 : 1)
-                : (aGender === "male" ? -1 : 1);
+        let archersWithOrder;
+        
+        if (isTeamCompetition) {
+          // 団体戦：チームごとにグループ化してランダム配置
+          const teams = groupByTeam(checkedIn);
+          
+          // 保存されたチーム順序を取得
+          const savedOrder = await fetchTeamOrder(selectedTournamentId);
+          const teamsWithOrder = generateTeamStandOrder(teams, savedOrder);
+          
+          // 保存された順序がない場合のみ保存
+          if (!savedOrder || savedOrder.length === 0) {
+            const teamOrder = teamsWithOrder.map(t => t.teamKey);
+            await saveTeamOrder(selectedTournamentId, teamOrder);
+          }
+          
+          // チームメンバーを平坦化
+          archersWithOrder = [];
+          teamsWithOrder.forEach(team => {
+            team.members.forEach(member => {
+              archersWithOrder.push(member);
+            });
+          });
+        } else {
+          // 個人戦：既存のロジック
+          const sortedArchers = [...checkedIn].sort((a, b) => {
+            // 男女分けが有効な場合、femaleFirst設定に従って並べる
+            if (enableGenderSeparation) {
+              const aGender = a.gender || "male";
+              const bGender = b.gender || "male";
+              if (aGender !== bGender) {
+                return femaleFirst
+                  ? (aGender === "female" ? -1 : 1)
+                  : (aGender === "male" ? -1 : 1);
+              }
             }
-          }
 
-          const aRank = normalizeRank(a.rank);
-          const bRank = normalizeRank(b.rank);
-          const aIndex = rankOrder.indexOf(aRank);
-          const bIndex = rankOrder.indexOf(bRank);
+            const aRank = normalizeRank(a.rank);
+            const bRank = normalizeRank(b.rank);
+            const aIndex = rankOrder.indexOf(aRank);
+            const bIndex = rankOrder.indexOf(bRank);
 
-          // 段位の順序：5級（低い）→範士9段（高い）の順に並べる
-          if (aIndex !== bIndex) {
-            if (aIndex === -1 && bIndex === -1) return 0;
-            if (aIndex === -1) return 1;
-            if (bIndex === -1) return -1;
-            return aIndex - bIndex;
-          }
+            // 段位の順序：5級（低い）→範士9段（高い）の順に並べる
+            if (aIndex !== bIndex) {
+              if (aIndex === -1 && bIndex === -1) return 0;
+              if (aIndex === -1) return 1;
+              if (bIndex === -1) return -1;
+              return aIndex - bIndex;
+            }
 
-          // 同じ段位内では習得日が若い順（習得日が早い順）
-          const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
-          const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
-          return aDate.getTime() - bDate.getTime();
-        });
+            // 同じ段位内では習得日が若い順（習得日が早い順）
+            const aDate = a.rankAcquiredDate ? new Date(a.rankAcquiredDate) : new Date(0);
+            const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate) : new Date(0);
+            return aDate.getTime() - bDate.getTime();
+          });
 
-        const archersWithOrder = sortedArchers.map((archer, index) => ({
-          ...archer,
-          standOrder: index + 1
-        }));
+          archersWithOrder = sortedArchers.map((archer, index) => ({
+            ...archer,
+            standOrder: index + 1
+          }));
+        }
 
         setArchers(archersWithOrder);
       }
@@ -343,6 +372,8 @@ const TournamentView = ({ state, stands, checkInCount }) => {
 
   // 部門設定
   const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+  const competitionType = selectedTournament?.data?.competitionType || 'individual';
+  const isTeamCompetition = competitionType === 'team';
   const localDefaultDivisions = [
     { id: 'lower', label: '級位~三段以下の部' },
     { id: 'middle', label: '四・五段の部' },
@@ -351,15 +382,31 @@ const TournamentView = ({ state, stands, checkInCount }) => {
   const divisions = (selectedTournament && selectedTournament.data && selectedTournament.data.divisions) ? selectedTournament.data.divisions : localDefaultDivisions;
   const enableGenderSeparation = selectedTournament?.data?.enableGenderSeparation || false;
 
-  const printProgram = () => {
+  const printProgram = async () => {
     if (!selectedTournamentId) { alert('大会を選択してください'); return; }
     // get selected tournament data
     const tpl = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     const tplData = tpl?.data || {};
     const perPage = programArchersPerPage;
-    const pages = Math.max(1, Math.ceil(archers.length / perPage));
     const title = tplData?.name || selectedTournamentId;
     const attachments = getStoredAttachments(selectedTournamentId);
+    
+    // 団体戦の場合はチームランダム並び替え
+    let printArchers = [...archers];
+    if (tplData?.competitionType === 'team') {
+      const teams = groupByTeam(archers);
+      // 保存された順序を取得
+      const savedOrder = await fetchTeamOrder(selectedTournamentId);
+      const shuffledTeams = generateTeamStandOrder(teams, savedOrder);
+      printArchers = [];
+      shuffledTeams.forEach(team => {
+        team.members.forEach(member => {
+          printArchers.push(member);
+        });
+      });
+    }
+    
+    const pages = Math.max(1, Math.ceil(printArchers.length / perPage));
 
     const styles = `
       body{font-family: Arial, Helvetica, sans-serif; padding:20px; color:#111}
@@ -425,9 +472,9 @@ const TournamentView = ({ state, stands, checkInCount }) => {
       html += `<table><thead><tr><th>#</th><th>氏名</th><th>所属</th><th>段位</th><th>性別</th><th>1立ち目</th><th>2立ち目</th></tr></thead><tbody>`;
 
       const start = p * perPage;
-      const end = Math.min(start + perPage, archers.length);
+      const end = Math.min(start + perPage, printArchers.length);
       for (let i = start; i < end; i++) {
-        const a = archers[i];
+        const a = printArchers[i];
         html += `<tr><td style="width:60px">${a.standOrder || i+1}</td><td>${a.name || ''}</td><td>${a.affiliation || ''}</td><td>${a.rank || ''}</td><td>${a.gender === 'female' ? '女' : '男'}</td>`;
         // 1立ち目 placeholders
         html += `<td style="white-space:nowrap">`;
@@ -980,7 +1027,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                   
                   <div 
                     className="card" 
-                    style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white', textAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
+                    style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white', textAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s', display: isTeamCompetition ? 'none' : 'block' }}
                     onClick={() => setView('qualifiers')}
                     onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
                     onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
@@ -1012,7 +1059,7 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem', display: isTeamCompetition ? 'none' : 'grid' }}>
                   <div className="card" style={{ padding: '1rem', textAlign: 'center', borderLeft: '4px solid #3b82f6' }}>
                     <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600, marginBottom: '0.5rem' }}>📏 通過ルール</div>
                     <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1f2937' }}>

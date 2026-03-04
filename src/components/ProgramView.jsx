@@ -7,6 +7,7 @@ import { getStoredAttachments } from '../utils/tournament';
 import { API_URL } from '../utils/api';
 import { ensureJapaneseFont } from '../utils/jspdfJapaneseFont';
 import { autoSelectTournamentByGeolocationAndDate } from '../utils/tournamentSelection';
+import { groupByTeam, calculateTeamHitCount, generateTeamStandOrder, fetchTeamOrder, saveTeamOrder } from '../utils/teamCompetition';
 
 const ProgramView = ({ state }) => {
 
@@ -94,8 +95,62 @@ const ProgramView = ({ state }) => {
           ?? false;
         const femaleFirstLocal = enableGenderSeparationLocal && (tournament?.data?.femaleFirst ?? false);
 
-        const sortedAll = [...applicants]
-          .sort((a, b) => {
+        // 団体戦の場合はチームごとにグループ化してランダム配置
+        let sortedAll;
+        if (tournament?.data?.competitionType === 'team') {
+          // チームごとにグループ化
+          const teamGroups = {};
+          applicants.forEach(archer => {
+            if (archer.isTeamMember && archer.teamName) {
+              const teamKey = `${archer.affiliation}_${archer.teamName}`;
+              if (!teamGroups[teamKey]) {
+                teamGroups[teamKey] = [];
+              }
+              teamGroups[teamKey].push(archer);
+            }
+          });
+          
+          // 各チーム内でメンバーを登録順にソート
+          Object.values(teamGroups).forEach(team => {
+            team.sort((a, b) => new Date(a.appliedAt) - new Date(b.appliedAt));
+          });
+          
+          // 保存されたチーム順序を取得
+          const savedOrder = await fetchTeamOrder(selectedTournamentId);
+          
+          // チームをランダムにシャッフル（保存された順序があればそれを使用）
+          const teamKeys = Object.keys(teamGroups);
+          let orderedTeamKeys;
+          
+          if (savedOrder && Array.isArray(savedOrder) && savedOrder.length > 0) {
+            // 保存された順序を使用
+            orderedTeamKeys = savedOrder.filter(key => teamKeys.includes(key));
+            // 新しいチームがあれば末尾に追加
+            const newTeams = teamKeys.filter(key => !savedOrder.includes(key));
+            if (newTeams.length > 0) {
+              orderedTeamKeys = [...orderedTeamKeys, ...newTeams];
+              // 新しいチームが追加された場合のみ保存
+              await saveTeamOrder(selectedTournamentId, orderedTeamKeys);
+            }
+          } else {
+            // 新規にランダム配置
+            orderedTeamKeys = [...teamKeys];
+            for (let i = orderedTeamKeys.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [orderedTeamKeys[i], orderedTeamKeys[j]] = [orderedTeamKeys[j], orderedTeamKeys[i]];
+            }
+            // 順序を保存
+            await saveTeamOrder(selectedTournamentId, orderedTeamKeys);
+          }
+          
+          // シャッフルされた順序でチームメンバーを配列に追加
+          sortedAll = [];
+          orderedTeamKeys.forEach(teamKey => {
+            sortedAll.push(...teamGroups[teamKey]);
+          });
+        } else {
+          // 個人戦の場合は従来のソート
+          sortedAll = [...applicants].sort((a, b) => {
             if (enableGenderSeparationLocal) {
               const adiv = getDivisionIdLocal(a);
               const bdiv = getDivisionIdLocal(b);
@@ -130,8 +185,11 @@ const ProgramView = ({ state }) => {
             if (ad !== bd) return bd - ad;
 
             return String(a.name || '').localeCompare(String(b.name || ''), 'ja');
-          })
-          .map((s, idx) => ({ ...s, standOrder: idx + 1 }));
+          });
+        }
+        
+        // standOrderを付与
+        sortedAll = sortedAll.map((s, idx) => ({ ...s, standOrder: idx + 1 }));
 
         const sortedCheckedIn = sortedAll
           .filter(a => a.isCheckedIn)
@@ -259,6 +317,7 @@ const ProgramView = ({ state }) => {
   const tournaments = state.registeredTournaments || [];
   const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
   const attachments = useMemo(() => getStoredAttachments(selectedTournamentId), [selectedTournamentId]);
+  const isTeamCompetition = tournament?.data?.competitionType === 'team';
 
   // ---- 共通定義 ----
   const rankOrder = ['無指定','五級','四級','三級','弐級','壱級','初段','弐段','参段','四段','五段','錬士五段','錬士六段','教士七段','教士八段','範士八段','範士九段'];
@@ -1780,7 +1839,7 @@ const ProgramView = ({ state }) => {
 
             <div className="card">
               <div className="flex items-center justify-between">
-                <h2 className="card-title">立ち順表</h2>
+                <h2 className="card-title">{isTeamCompetition ? 'チーム順表' : '立ち順表'}</h2>
                 <div className="flex items-center gap-2">
                   <button
                     className={`btn ${programTableMode === 'checked_in' ? 'btn-active' : ''}`}

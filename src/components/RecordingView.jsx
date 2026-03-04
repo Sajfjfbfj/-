@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { API_URL } from '../utils/api';
+import { groupByTeam, calculateTeamHitCount } from '../utils/teamCompetition';
 
 const RecordingView = ({ state, dispatch, stands }) => {
   const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
@@ -107,6 +108,8 @@ const RecordingView = ({ state, dispatch, stands }) => {
   };
 
   const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+  const competitionType = selectedTournament?.data?.competitionType || 'individual';
+  const isTeamCompetition = competitionType === 'team';
   const localDefaultDivisions = [
     { id: 'lower', label: '級位~三段以下の部' },
     { id: 'middle', label: '四・五段の部' },
@@ -419,7 +422,28 @@ const RecordingView = ({ state, dispatch, stands }) => {
         
         {selectedTournamentId && (
           <>
-            <div className="card">
+            {isTeamCompetition && (
+              <div className="card">
+                <div style={{ padding: '1rem', background: '#f0f9ff', borderRadius: '0.5rem', border: '1px solid #bfdbfe' }}>
+                  <p style={{ margin: 0, fontSize: '0.875rem', color: '#1e40af', fontWeight: 500 }}>👥 団体戦モード | 全チーム: {groupByTeam(archers).length}チーム | 全選手: {archers.length}人</p>
+                </div>
+                <div style={{ marginTop: '1rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>チーム別表示</h3>
+                  {groupByTeam(archers).map(team => (
+                    <div key={team.teamKey} style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <span style={{ fontWeight: 600 }}>{team.teamName} ({team.affiliation})</span>
+                        <span style={{ fontSize: '0.875rem', color: '#10b981', fontWeight: 600 }}>合計: {calculateTeamHitCount(team.members, tournament)}本</span>
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                        {team.members.map(m => m.name).join(', ')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="card" style={{ display: isTeamCompetition ? 'none' : 'block' }}>
               <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.9375rem', fontWeight: 600, color:'#1f2937' }}>🎯 部門を選択</label>
               <div className="button-group">
                 {divisions.map(div => (

@@ -7,6 +7,7 @@ import {
   getRankOrder
 } from '../utils/competition';
 import { getDivisionForArcher } from '../utils/tournament';
+import { groupByTeam, calculateTeamHitCount } from '../utils/teamCompetition';
 
 const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   const [archers, setArchers] = useState([]);
@@ -66,6 +67,7 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
 
   const tournaments = state.registeredTournaments || [];
   const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
+  const isTeamCompetition = tournament?.data?.competitionType === 'team';
 
   // 部門設定
   const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
@@ -362,12 +364,10 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
 
   // 結果取得を実行
   useEffect(() => {
-    if (selectedTournamentId) {
-      // fetchShichumaResults();  // fetchShootOffResultsで一括取得するためコメントアウト
-      // fetchEnkinResults();      // fetchShootOffResultsで一括取得するためコメントアウト
-      fetchShootOffResults();     // 射詰・遠近の両方を一括取得
+    if (selectedTournamentId && !isTeamCompetition) {
+      fetchShootOffResults();
     }
-  }, [selectedTournamentId]);
+  }, [selectedTournamentId, isTeamCompetition]);
 
   // デバッグ情報
   useEffect(() => {
@@ -2673,7 +2673,7 @@ const categorizedGroups = useMemo(() => {
       <div className="view-header">
         {/* ... */}
         <div className="flex items-center gap-2">
-          <h1>順位決定戦</h1>
+          <h1>{isTeamCompetition ? 'チーム順位決定戦' : '順位決定戦'}</h1>
           {isSyncing && (
             <span className="text-sm text-blue-600 flex items-center gap-1">
               <RefreshCw size={14} className="animate-spin" />
@@ -2691,6 +2691,10 @@ const categorizedGroups = useMemo(() => {
       <div className="view-content">
         {!selectedTournamentId ? (
           <div className="card">大会を選択してください</div>
+        ) : isTeamCompetition ? (
+          <div className="card">
+            <p className="text-gray-500 text-center py-4">チーム競技では順位決定戦は利用できません</p>
+          </div>
         ) : isLoading ? (
           <div className="card">読み込み中...</div>
         ) : (

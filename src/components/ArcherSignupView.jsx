@@ -29,6 +29,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
     ]
   }]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrCodeQueue, setQrCodeQueue] = useState([]);
   const [currentQRIndex, setCurrentQRIndex] = useState(0);
@@ -237,6 +238,7 @@ const ArcherSignupView = ({ state, dispatch }) => {
     setShowQRModal(false);
     setQrCodeQueue([]);
     setCurrentQRIndex(0);
+    fetchMyApplications();
   };
 
   const handleShareQR = async () => {
@@ -262,11 +264,15 @@ ID: ${qrCodeData.id}`;
   };
 
   const handleApply = async () => {
+    if (isSubmitting) return;
+    
     const tournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
     if (!tournament) {
       alert('大会が見つかりません');
       return;
     }
+    
+    setIsSubmitting(true);
 
     const isTeamCompetition = tournament.data.competitionType === 'team';
 
@@ -291,8 +297,11 @@ ID: ${qrCodeData.id}`;
         const allQRData = [];
         
         for (const team of teams) {
-          for (const member of team.members) {
-            const archerId = `${selectedTournamentId}_${Date.now().toString(36).toUpperCase()}_${Math.random().toString(36).substr(2, 4)}`;
+          for (let memberIndex = 0; memberIndex < team.members.length; memberIndex++) {
+            const member = team.members[memberIndex];
+            await new Promise(resolve => setTimeout(resolve, 10));
+            const timestamp = Date.now();
+            const archerId = `${selectedTournamentId}_${timestamp.toString(36).toUpperCase()}`;
             const applicantData = {
               name: member.name,
               affiliation: team.affiliation,
@@ -301,7 +310,7 @@ ID: ${qrCodeData.id}`;
               teamName: team.teamName,
               isTeamMember: true,
               archerId: archerId,
-              appliedAt: new Date().toISOString(),
+              appliedAt: new Date(timestamp + memberIndex).toISOString(),
               deviceId: deviceId
             };
 
@@ -333,6 +342,8 @@ ID: ${qrCodeData.id}`;
           }
         }
 
+        localStorage.setItem('kyudo_tournament_device_id', deviceId);
+        await fetchMyApplications();
         showMultipleQRCodes(allQRData);
 
         setTeams([{
@@ -346,7 +357,6 @@ ID: ${qrCodeData.id}`;
           ]
         }]);
         localStorage.setItem('kyudo_tournament_device_id', deviceId);
-        await fetchMyApplications();
       } else {
         const archerId = `${selectedTournamentId}_${Date.now().toString(36).toUpperCase()}`;
         const divisionForApplicant = getDivisionForArcher({
@@ -416,6 +426,8 @@ ID: ${qrCodeData.id}`;
     } catch (error) {
       console.error('申し込みエラー:', error);
       alert(`申し込み処理中にエラーが発生しました: ${error.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -585,7 +597,14 @@ ID: ${qrCodeData.id}`;
                 >
                   + チーム追加
                 </button>
-                <button onClick={handleApply} className="btn-primary" style={{ width: '100%', padding: '1rem', fontSize: '1.125rem', fontWeight: 700 }}>すべてのチームを申し込む</button>
+                <button 
+                  onClick={handleApply} 
+                  className="btn-primary" 
+                  style={{ width: '100%', padding: '1rem', fontSize: '1.125rem', fontWeight: 700 }}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? '申し込み中...' : 'すべてのチームを申し込む'}
+                </button>
               </>
             );
           } else {
@@ -619,7 +638,14 @@ ID: ${qrCodeData.id}`;
                       />
                     </div>
                   )}
-                  <button onClick={handleApply} className="btn-primary" style={{ marginTop: '0.5rem', width: '100%', padding: '1rem', fontSize: '1.125rem', fontWeight: 700 }}>申し込む</button>
+                  <button 
+                    onClick={handleApply} 
+                    className="btn-primary" 
+                    style={{ marginTop: '0.5rem', width: '100%', padding: '1rem', fontSize: '1.125rem', fontWeight: 700 }}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? '申し込み中...' : '申し込む'}
+                  </button>
                 </div>
               </div>
             );
@@ -751,6 +777,15 @@ ID: ${qrCodeData.id}`;
                   >
                     📤 他端末と共有
                   </button>
+                  
+                  <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f0fdf4', border: '2px solid #86efac', borderRadius: '0.75rem' }}>
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: '#166534', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      📸 スクリーンショットで共有も可能
+                    </p>
+                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8125rem', color: '#15803d', lineHeight: '1.4' }}>
+                      この画面をスクリーンショットして他の端末に送れば、その画像からも受付できます
+                    </p>
+                  </div>
                   
                   <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f0f9ff', border: '2px solid #bfdbfe', borderRadius: '0.75rem' }}>
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#1e40af' }}>

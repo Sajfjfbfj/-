@@ -809,6 +809,50 @@ app.delete('/api/ranking/enkin/:tournamentId/:archerId', async (req, res) => {
   }
 });
 
+// 19. チーム順序を保存
+app.post('/api/team-order/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+    const { teamOrder } = req.body;
+
+    if (!tournamentId || !teamOrder) {
+      return res.status(400).json({ success: false, message: 'Missing parameters' });
+    }
+
+    await db.collection('team_orders').updateOne(
+      { tournamentId },
+      { $set: { tournamentId, teamOrder, createdAt: new Date() } },
+      { upsert: true }
+    );
+
+    console.log(`✅ Team order saved: ${tournamentId}`);
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('❌ POST /api/team-order error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 20. チーム順序を取得
+app.get('/api/team-order/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const result = await db.collection('team_orders').findOne({ tournamentId });
+
+    if (!result) {
+      return res.status(404).json({ success: false, message: 'No team order found' });
+    }
+
+    res.status(200).json({ success: true, data: result.teamOrder });
+  } catch (error) {
+    console.error('❌ GET /api/team-order error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 本番環境用に静的ファイルを提供
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static('dist'));

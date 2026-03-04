@@ -22,6 +22,8 @@ const CheckInView = ({ state, dispatch }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [myApplicantData, setMyApplicantData] = useState(null);
   const [showManualInput, setShowManualInput] = useState(true);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [successName, setSuccessName] = useState('');
   const checkinListRef = React.useRef(null);
   const isProcessingRef = React.useRef(false);
 
@@ -76,8 +78,15 @@ const CheckInView = ({ state, dispatch }) => {
       const result = await response.json();
       
       if (result.success) {
-        const checkedIn = result.data.filter(a => a.isCheckedIn);
-        const notCheckedIn = result.data.filter(a => !a.isCheckedIn);
+        const sortByTeam = (a, b) => {
+          if (a.affiliation !== b.affiliation) return a.affiliation.localeCompare(b.affiliation);
+          const aTeam = a.teamName || '';
+          const bTeam = b.teamName || '';
+          if (aTeam !== bTeam) return aTeam.localeCompare(bTeam);
+          return new Date(a.appliedAt) - new Date(b.appliedAt);
+        };
+        const checkedIn = result.data.filter(a => a.isCheckedIn).sort(sortByTeam);
+        const notCheckedIn = result.data.filter(a => !a.isCheckedIn).sort(sortByTeam);
         setCheckIns(checkedIn);
         setNotCheckedIns(notCheckedIn);
         
@@ -109,12 +118,12 @@ const CheckInView = ({ state, dispatch }) => {
   };
 
   useEffect(() => {
-    if (!autoRefresh || !selectedTournamentId || showQRScanner) return;
+    if (!autoRefresh || !selectedTournamentId || showQRScanner || showQRModal) return;
     const interval = setInterval(() => {
       fetchTournamentData(true);
     }, 2000); 
     return () => clearInterval(interval);
-  }, [autoRefresh, selectedTournamentId, showQRScanner]);
+  }, [autoRefresh, selectedTournamentId, showQRScanner, showQRModal]);
 
   useEffect(() => {
     if (selectedTournamentId) {
@@ -138,6 +147,8 @@ const CheckInView = ({ state, dispatch }) => {
       tournamentName: tournament?.data?.name || '不明な大会',
       affiliation: applicant.affiliation,
       rank: applicant.rank,
+      gender: applicant.gender,
+      teamName: applicant.teamName,
       registrationDate: applicant.appliedAt
     });
   };
@@ -156,6 +167,8 @@ const CheckInView = ({ state, dispatch }) => {
       tournamentName: tournament?.data?.name || '不明な大会',
       affiliation: myApplicantData.affiliation,
       rank: myApplicantData.rank,
+      gender: myApplicantData.gender,
+      teamName: myApplicantData.teamName,
       registrationDate: myApplicantData.appliedAt
     });
     setShowQRModal(true);
@@ -171,6 +184,8 @@ const CheckInView = ({ state, dispatch }) => {
       tournamentName: tournament?.data?.name || '',
       affiliation: archer.affiliation,
       rank: archer.rank,
+      gender: archer.gender,
+      teamName: archer.teamName,
       registrationDate: archer.appliedAt,
       isCheckedIn: archer.isCheckedIn
     });
@@ -266,20 +281,21 @@ const CheckInView = ({ state, dispatch }) => {
       const checkInResult = await checkInResponse.json();
       
       if (checkInResult.success) {
-        const successMessage = checkInResult.data.isCheckedIn 
-          ? `? ${checkInResult.data.name}さんは既に受付済みです`
-          : `? ${checkInResult.data.name}さんの受付が完了しました`;
+        const isAlreadyCheckedIn = checkInResult.data.isCheckedIn;
+        const successMessage = isAlreadyCheckedIn
+          ? `✅ ${checkInResult.data.name}さんは既に受付済みです`
+          : `✅ ${checkInResult.data.name}さんの受付が完了しました`;
+        
+        if (!isAlreadyCheckedIn) {
+          setSuccessName(checkInResult.data.name);
+          setShowSuccessPopup(true);
+          setTimeout(() => setShowSuccessPopup(false), 3000);
+        }
         
         setMessage(successMessage);
         setScannedQR('');
         setAutoRefresh(true);
         await fetchTournamentData(true);
-        
-        setTimeout(() => {
-          if (checkinListRef.current) {
-            checkinListRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }, 300);
       } else {
         setMessage(`? ${checkInResult.message || '受付に失敗しました'}`);
       }
@@ -548,6 +564,7 @@ const CheckInView = ({ state, dispatch }) => {
                       <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>ID</th>
                       <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>氏名</th>
                       <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>所属</th>
+                      <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>チーム名</th>
                       <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#92400e', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>段位</th>
                     </tr>
                   </thead>
@@ -558,12 +575,13 @@ const CheckInView = ({ state, dispatch }) => {
                           <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#92400e', whiteSpace: 'nowrap' }}>{archer.archerId}</td>
                           <td style={{ padding: '0.75rem 0.5rem', fontWeight: 600, color: '#78350f', whiteSpace: 'nowrap' }}>{archer.name}</td>
                           <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#92400e' }}>{archer.affiliation}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#92400e', whiteSpace: 'nowrap' }}>{archer.teamName || '-'}</td>
                           <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#92400e', whiteSpace: 'nowrap' }}>{archer.rank}</td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="4" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+                        <td colSpan="5" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
                             <span style={{ fontSize: '2rem', opacity: 0.3 }}>✅</span>
                             <p style={{ margin: 0, color: '#9ca3af', fontSize: '0.9375rem' }}>全員受付済みです</p>
@@ -605,6 +623,7 @@ const CheckInView = ({ state, dispatch }) => {
                       <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>ID</th>
                       <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>氏名</th>
                       <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>所属</th>
+                      <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>チーム名</th>
                       <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>段位</th>
                       <th style={{ padding: '0.875rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>操作</th>
                     </tr>
@@ -616,6 +635,7 @@ const CheckInView = ({ state, dispatch }) => {
                           <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#6b7280', whiteSpace: 'nowrap' }}>{archer.archerId}</td>
                           <td style={{ padding: '0.75rem 0.5rem', fontWeight: 600, color: '#1f2937', whiteSpace: 'nowrap' }}>{archer.name}</td>
                           <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#6b7280' }}>{archer.affiliation}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#6b7280', whiteSpace: 'nowrap' }}>{archer.teamName || '-'}</td>
                           <td style={{ padding: '0.75rem 0.5rem', fontSize: '0.8125rem', color: '#6b7280', whiteSpace: 'nowrap' }}>{archer.rank}</td>
                           <td style={{ padding: '0.75rem 0.5rem' }}>
                             <button 
@@ -646,7 +666,7 @@ const CheckInView = ({ state, dispatch }) => {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="5" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+                        <td colSpan="6" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
                             <span style={{ fontSize: '2rem', opacity: 0.3 }}>📋</span>
                             <p style={{ margin: 0, color: '#9ca3af', fontSize: '0.9375rem' }}>受付データがありません</p>
@@ -666,6 +686,7 @@ const CheckInView = ({ state, dispatch }) => {
                 if (e.target.className === 'qr-modal-overlay') {
                   setShowQRModal(false);
                   setAutoRefresh(false);
+                  fetchTournamentData(true);
                 }
               }}>
                 <div className="qr-modal-container">
@@ -679,6 +700,7 @@ const CheckInView = ({ state, dispatch }) => {
                         onClick={() => {
                           setShowQRModal(false);
                           setAutoRefresh(false);
+                          fetchTournamentData(true);
                         }}
                         style={{
                           background: 'rgba(255, 255, 255, 0.2)',
@@ -726,6 +748,7 @@ const CheckInView = ({ state, dispatch }) => {
                     <div className="qr-info-box">
                       <p className="qr-name">👤 {currentQRCodeData.name} 様</p>
                       <p className="qr-details">🏛️ {currentQRCodeData.affiliation}</p>
+                      {currentQRCodeData.teamName && <p className="qr-details">👥 {currentQRCodeData.teamName}</p>}
                       <p className="qr-details">🎯 {currentQRCodeData.rank}</p>
                       
                       <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f0f9ff', border: '2px solid #bfdbfe', borderRadius: '0.75rem' }}>
@@ -745,14 +768,14 @@ const CheckInView = ({ state, dispatch }) => {
                               
                               if (response.ok) {
                                 setCurrentQRCodeData(prev => ({ ...prev, gender: newGender }));
-                                setMessage('✅ 性別情報を更新しました');
-                                setTimeout(() => setMessage(''), 3000);
+                                alert('✅ 性別情報を更新しました');
+                                await fetchTournamentData(true);
                               } else {
-                                setMessage('❌ 更新に失敗しました');
+                                alert('❌ 更新に失敗しました');
                               }
                             } catch (error) {
                               console.error('性別情報更新エラー:', error);
-                              setMessage('❌ 更新中にエラーが発生しました');
+                              alert('❌ 更新中にエラーが発生しました');
                             }
                           }}
                           className="input"
@@ -773,6 +796,44 @@ const CheckInView = ({ state, dispatch }) => {
           </>
         )}
       </div>
+      
+      {showSuccessPopup && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+          color: 'white',
+          padding: '2rem 3rem',
+          borderRadius: '1rem',
+          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+          zIndex: 10000,
+          textAlign: 'center',
+          minWidth: '300px',
+          animation: 'fadeIn 0.3s ease-in-out'
+        }}>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✅</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+            {successName}さん
+          </div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>
+            受付完了しました
+          </div>
+        </div>
+      )}
+      
+      {showSuccessPopup && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          zIndex: 9999
+        }} onClick={() => setShowSuccessPopup(false)} />
+      )}
     </div>
   );
 };
