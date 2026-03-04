@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import QRCodeScanner from './QRCodeScanner';
 import { applicantsApi, API_URL } from '../utils/api';
 import { judgeNearFarCompetition, calculateRanksWithTies } from '../utils/competition';
+import { autoSelectTournamentByGeolocationAndDate } from '../utils/tournamentSelection';
 
 const CheckInView = ({ state, dispatch }) => {
   const [scannedQR, setScannedQR] = useState('');
@@ -32,16 +33,7 @@ const CheckInView = ({ state, dispatch }) => {
     }
   }, [selectedTournamentId]);
 
-  const distanceKm = (lat1, lng1, lat2, lng2) => {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLng/2) * Math.sin(dLng/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  };
+
   
   const filteredTournaments = state.registeredTournaments.filter(tournament => {
     if (locationFilter === '') return true;
@@ -51,45 +43,18 @@ const CheckInView = ({ state, dispatch }) => {
     return loc.includes(q) || addr.includes(q);
   });
 
-  const autoSelectTournamentByGeolocation = async () => {
-    if (!navigator.geolocation) {
-      setGeoStatus('? この端末は位置情報に対応していません');
-      return;
-    }
-    setGeoStatus('?? 位置情報を取得中...');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        try {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const candidates = (state.registeredTournaments || [])
-            .map(t => {
-              const tLat = Number(t?.data?.venueLat);
-              const tLng = Number(t?.data?.venueLng);
-              if (!Number.isFinite(tLat) || !Number.isFinite(tLng)) return null;
-              return { t, dist: distanceKm(lat, lng, tLat, tLng) };
-            })
-            .filter(Boolean)
-            .sort((a, b) => a.dist - b.dist);
-
-          if (candidates.length === 0) {
-            setGeoStatus('?? 会場の緯度/経度が登録されている大会がありません');
-            return;
-          }
-
-          const nearest = candidates[0];
-          setSelectedTournamentId(nearest.t.id);
-          setGeoStatus(`? 近い大会を自動選択しました（約${nearest.dist.toFixed(1)}km）`);
-        } catch (e) {
-          console.error(e);
-          setGeoStatus('? 位置情報から大会の自動選択に失敗しました');
+  const autoSelectTournamentByGeolocation = () => {
+    autoSelectTournamentByGeolocationAndDate(
+      state.registeredTournaments,
+      (message, tournamentId) => {
+        setGeoStatus(message);
+        if (tournamentId) {
+          setSelectedTournamentId(tournamentId);
         }
       },
-      (err) => {
-        const msg = err?.message ? `? 位置情報の取得に失敗しました: ${err.message}` : '? 位置情報の取得に失敗しました';
-        setGeoStatus(msg);
-      },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
+      (errorMessage) => {
+        setGeoStatus(errorMessage);
+      }
     );
   };
 
@@ -406,7 +371,7 @@ const CheckInView = ({ state, dispatch }) => {
               className="input w-full mb-2"
             />
             <button onClick={autoSelectTournamentByGeolocation} className="btn-secondary" style={{ width: '100%', marginBottom: '0.5rem' }}>
-              ?? 現在地から大会を自動選択
+              📍 現在地＋日付から大会を自動選択
             </button>
             {geoStatus && (
               <p className="text-sm text-gray-600" style={{ marginBottom: '0.5rem' }}>{geoStatus}</p>
@@ -692,118 +657,118 @@ const CheckInView = ({ state, dispatch }) => {
                   </tbody>
                 </table>
               </div>
-              
-              {showQRModal && currentQRCodeData && (
-                <div className="qr-modal-overlay" onClick={(e) => {
-                  if (e.target.className === 'qr-modal-overlay') {
-                    setShowQRModal(false);
-                    setAutoRefresh(false);
-                  }
-                }}>
-                  <div className="qr-modal-container">
-                    <div className="qr-modal-header">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <h2>✅ {currentQRCodeData.type}登録完了</h2>
-                          <p className="qr-tournament-name">🏹 {currentQRCodeData.tournamentName}</p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            setShowQRModal(false);
-                            setAutoRefresh(false);
-                          }}
-                          style={{
-                            background: 'rgba(255, 255, 255, 0.2)',
-                            border: 'none',
-                            color: 'white',
-                            fontSize: '1.5rem',
-                            width: '2.5rem',
-                            height: '2.5rem',
-                            borderRadius: '50%',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'background 0.2s'
-                          }}
-                          onMouseEnter={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.3)'}
-                          onMouseLeave={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
-                        >
-                          ×
-                        </button>
+            </div>
+              </>
+            )}
+
+            {showQRModal && currentQRCodeData && (
+              <div className="qr-modal-overlay" onClick={(e) => {
+                if (e.target.className === 'qr-modal-overlay') {
+                  setShowQRModal(false);
+                  setAutoRefresh(false);
+                }
+              }}>
+                <div className="qr-modal-container">
+                  <div className="qr-modal-header">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <h2>✅ {currentQRCodeData.type}登録完了</h2>
+                        <p className="qr-tournament-name">🏹 {currentQRCodeData.tournamentName}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowQRModal(false);
+                          setAutoRefresh(false);
+                        }}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.2)',
+                          border: 'none',
+                          color: 'white',
+                          fontSize: '1.5rem',
+                          width: '2.5rem',
+                          height: '2.5rem',
+                          borderRadius: '50%',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'background 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.3)'}
+                        onMouseLeave={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.2)'}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="qr-modal-body">
+                    <div className="qr-code-wrapper">
+                      <QRCodeSVG 
+                        value={JSON.stringify({
+                          id: currentQRCodeData.id,
+                          name: currentQRCodeData.name,
+                          type: currentQRCodeData.type,
+                          tournament: currentQRCodeData.tournamentName,
+                          affiliation: currentQRCodeData.affiliation,
+                          rank: currentQRCodeData.rank,
+                          timestamp: currentQRCodeData.registrationDate
+                        })}
+                        size={280}
+                        level="H"
+                        includeMargin={true}
+                      />
+                      <div style={{ marginTop: '1rem', fontSize: '0.875rem', fontWeight: 600, color: '#6b7280', wordBreak: 'break-all' }}>
+                        🆔 {currentQRCodeData.id}
                       </div>
                     </div>
                     
-                    <div className="qr-modal-body">
-                      <div className="qr-code-wrapper">
-                        <QRCodeSVG 
-                          value={JSON.stringify({
-                            id: currentQRCodeData.id,
-                            name: currentQRCodeData.name,
-                            type: currentQRCodeData.type,
-                            tournament: currentQRCodeData.tournamentName,
-                            affiliation: currentQRCodeData.affiliation,
-                            rank: currentQRCodeData.rank,
-                            timestamp: currentQRCodeData.registrationDate
-                          })}
-                          size={280}
-                          level="H"
-                          includeMargin={true}
-                        />
-                        <div style={{ marginTop: '1rem', fontSize: '0.875rem', fontWeight: 600, color: '#6b7280', wordBreak: 'break-all' }}>
-                          🆔 {currentQRCodeData.id}
-                        </div>
-                      </div>
+                    <div className="qr-info-box">
+                      <p className="qr-name">👤 {currentQRCodeData.name} 様</p>
+                      <p className="qr-details">🏛️ {currentQRCodeData.affiliation}</p>
+                      <p className="qr-details">🎯 {currentQRCodeData.rank}</p>
                       
-                      <div className="qr-info-box">
-                        <p className="qr-name">👤 {currentQRCodeData.name} 様</p>
-                        <p className="qr-details">🏛️ {currentQRCodeData.affiliation}</p>
-                        <p className="qr-details">🎯 {currentQRCodeData.rank}</p>
-                        
-                        <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f0f9ff', border: '2px solid #bfdbfe', borderRadius: '0.75rem' }}>
-                          <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#1e40af' }}>
-                            ⚧ 性別情報の設定・更新
-                          </label>
-                          <select 
-                            value={currentQRCodeData.gender || 'male'} 
-                            onChange={async (e) => {
-                              const newGender = e.target.value;
-                              try {
-                                const response = await fetch(`${API_URL}/applicants/${currentQRCodeData.id}/gender`, {
-                                  method: 'PATCH',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ gender: newGender })
-                                });
-                                
-                                if (response.ok) {
-                                  setCurrentQRCodeData(prev => ({ ...prev, gender: newGender }));
-                                  setMessage('✅ 性別情報を更新しました');
-                                  setTimeout(() => setMessage(''), 3000);
-                                } else {
-                                  setMessage('❌ 更新に失敗しました');
-                                }
-                              } catch (error) {
-                                console.error('性別情報更新エラー:', error);
-                                setMessage('❌ 更新中にエラーが発生しました');
+                      <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f0f9ff', border: '2px solid #bfdbfe', borderRadius: '0.75rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600, color: '#1e40af' }}>
+                          ⚧ 性別情報の設定・更新
+                        </label>
+                        <select 
+                          value={currentQRCodeData.gender || 'male'} 
+                          onChange={async (e) => {
+                            const newGender = e.target.value;
+                            try {
+                              const response = await fetch(`${API_URL}/applicants/${currentQRCodeData.id}/gender`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ gender: newGender })
+                              });
+                              
+                              if (response.ok) {
+                                setCurrentQRCodeData(prev => ({ ...prev, gender: newGender }));
+                                setMessage('✅ 性別情報を更新しました');
+                                setTimeout(() => setMessage(''), 3000);
+                              } else {
+                                setMessage('❌ 更新に失敗しました');
                               }
-                            }}
-                            className="input"
-                            style={{ width: '100%', marginBottom: '0.5rem', backgroundColor: 'white' }}
-                          >
-                            <option value="male">👨 男</option>
-                            <option value="female">👩 女</option>
-                          </select>
-                          <p style={{ fontSize: '0.8125rem', color: '#6b7280', margin: 0 }}>
-                            現在の設定: {currentQRCodeData.gender === 'female' ? '👩 女' : '👨 男'}
-                          </p>
-                        </div>
+                            } catch (error) {
+                              console.error('性別情報更新エラー:', error);
+                              setMessage('❌ 更新中にエラーが発生しました');
+                            }
+                          }}
+                          className="input"
+                          style={{ width: '100%', marginBottom: '0.5rem', backgroundColor: 'white' }}
+                        >
+                          <option value="male">👨 男</option>
+                          <option value="female">👩 女</option>
+                        </select>
+                        <p style={{ fontSize: '0.8125rem', color: '#6b7280', margin: 0 }}>
+                          現在の設定: {currentQRCodeData.gender === 'female' ? '👩 女' : '👨 男'}
+                        </p>
                       </div>
                     </div>
                   </div>
                 </div>
-              )}
-            </div>
-              </>
+              </div>
             )}
           </>
         )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock } from 'lucide-react';
-import { getLocalDateKey, distanceKm } from '../utils/tournament';
+import { getLocalDateKey } from '../utils/tournament';
+import { autoSelectTournamentByGeolocationAndDate } from '../utils/tournamentSelection';
 
 const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAdminLoginStep, selectedTournamentId, setSelectedTournamentId, state, onLogin }) => {
   const [inputValue, setInputValue] = useState('');
@@ -26,45 +27,18 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
   }, [adminLoginStep, onLogin, setSelectedTournamentId]);
 
   const autoSelectTournamentByGeolocation = () => {
-    if (!navigator.geolocation) {
-      setGeoStatus('? この端末は位置情報に対応していません');
-      return;
-    }
-    setGeoStatus('?? 位置情報を取得中...');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        try {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const candidates = (state.registeredTournaments || [])
-            .map(t => {
-              const tLat = Number(t?.data?.venueLat);
-              const tLng = Number(t?.data?.venueLng);
-              if (!Number.isFinite(tLat) || !Number.isFinite(tLng)) return null;
-              return { t, dist: distanceKm(lat, lng, tLat, tLng) };
-            })
-            .filter(Boolean)
-            .sort((a, b) => a.dist - b.dist);
-
-          if (candidates.length === 0) {
-            setGeoStatus('?? 会場の緯度/経度が登録されている大会がありません');
-            return;
-          }
-
-          const nearest = candidates[0];
-          setInputValue(nearest.t.id);
+    autoSelectTournamentByGeolocationAndDate(
+      state.registeredTournaments,
+      (message, tournamentId) => {
+        setGeoStatus(message);
+        if (tournamentId) {
+          setInputValue(tournamentId);
           setError('');
-          setGeoStatus(`? 近い大会を自動選択しました（約${nearest.dist.toFixed(1)}km）`);
-        } catch (e) {
-          console.error(e);
-          setGeoStatus('? 位置情報から大会の自動選択に失敗しました');
         }
       },
-      (err) => {
-        const msg = err?.message ? `? 位置情報の取得に失敗しました: ${err.message}` : '? 位置情報の取得に失敗しました';
-        setGeoStatus(msg);
-      },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
+      (errorMessage) => {
+        setGeoStatus(errorMessage);
+      }
     );
   };
 
@@ -148,7 +122,7 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
             </div>
             <p className="hint">本日の大会を自動選択あるいは手動選択してください</p>
             <button onClick={autoSelectTournamentByGeolocation} className="btn-secondary" style={{ width: '100%', marginBottom: '0.5rem' }}>
-              ?? 現在地から大会を自動選択
+              📍 現在地＋日付から大会を自動選択
             </button>
             {geoStatus && <p className="text-sm text-gray-600" style={{ marginBottom: '0.5rem' }}>{geoStatus}</p>}
             <select value={inputValue} onChange={(e) => setInputValue(e.target.value)} className="input">

@@ -15,6 +15,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
   const [geocodeStatus, setGeocodeStatus] = useState('');
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [formData, setFormData] = useState({
+    competitionType: 'individual',
     name: '', datetime: '', location: '', venueAddress: '', venueLat: '', venueLng: '', organizer: '', coOrganizer: '', administrator: '', purpose: '', schedule: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '', participationFee: '',
     attachments: [],
     divisions: [
@@ -425,6 +426,33 @@ const TournamentSetupView = ({ state, dispatch }) => {
               <span>📝</span>基本情報
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div>
+                <p className="label">大会種別 *</p>
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="competitionType"
+                      value="individual"
+                      checked={formData.competitionType === 'individual'}
+                      onChange={(e) => handleInputChange('competitionType', e.target.value)}
+                      style={{ width: '1.25rem', height: '1.25rem' }}
+                    />
+                    <span style={{ fontSize: '1rem', fontWeight: 600 }}>個人戦</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="competitionType"
+                      value="team"
+                      checked={formData.competitionType === 'team'}
+                      onChange={(e) => handleInputChange('competitionType', e.target.value)}
+                      style={{ width: '1.25rem', height: '1.25rem' }}
+                    />
+                    <span style={{ fontSize: '1rem', fontWeight: 600 }}>団体戦</span>
+                  </label>
+                </div>
+              </div>
               <input type="text" value={formData.name} onChange={(e) => handleInputChange('name', e.target.value)} placeholder="大会名 *" className="input" style={{ fontSize: '1rem', padding: '0.875rem 1rem' }} />
               <input type="datetime-local" value={formData.datetime} onChange={(e) => handleInputChange('datetime', e.target.value)} className="input" style={{ fontSize: '1rem', padding: '0.875rem 1rem' }} />
               <input type="text" value={formData.location} onChange={(e) => handleInputChange('location', e.target.value)} placeholder="開催場所 *" className="input" style={{ fontSize: '1rem', padding: '0.875rem 1rem' }} />
@@ -492,41 +520,43 @@ const TournamentSetupView = ({ state, dispatch }) => {
             </div>
           </div>
             
-            <div style={{ marginTop: '0.75rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <input
-                  type="checkbox"
-                  checked={formData.enableGenderSeparation || false}
-                  onChange={(e) => handleInputChange('enableGenderSeparation', e.target.checked)}
-                  style={{ width: '1rem', height: '1rem' }}
-                />
-                <span className="label">全部門男女を分ける</span>
-              </label>
-              {formData.enableGenderSeparation && (
-                <>
-                  <p className="text-sm text-gray-600" style={{ marginTop: '0.25rem', marginBottom: '0.5rem' }}>
-                    有効にすると、すべての部門で男女の順位を別々に表示します
-                  </p>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '1.5rem' }}>
+            {formData.competitionType === 'individual' && (
+              <>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                     <input
                       type="checkbox"
-                      checked={formData.femaleFirst || false}
-                      onChange={(e) => handleInputChange('femaleFirst', e.target.checked)}
+                      checked={formData.enableGenderSeparation || false}
+                      onChange={(e) => handleInputChange('enableGenderSeparation', e.target.checked)}
                       style={{ width: '1rem', height: '1rem' }}
                     />
-                    <span className="label">女子を先にプログラム表・立ち順に載せる</span>
+                    <span className="label">全部門男女を分ける</span>
                   </label>
-                  {formData.femaleFirst && (
-                    <p className="text-sm text-gray-500" style={{ marginTop: '0.25rem', marginLeft: '1.5rem' }}>
-                      有効にすると、各部門内で女子が男子より先に並びます
-                    </p>
+                  {formData.enableGenderSeparation && (
+                    <>
+                      <p className="text-sm text-gray-600" style={{ marginTop: '0.25rem', marginBottom: '0.5rem' }}>
+                        有効にすると、すべての部門で男女の順位を別々に表示します
+                      </p>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '1.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={formData.femaleFirst || false}
+                          onChange={(e) => handleInputChange('femaleFirst', e.target.checked)}
+                          style={{ width: '1rem', height: '1rem' }}
+                        />
+                        <span className="label">女子を先にプログラム表・立ち順に載せる</span>
+                      </label>
+                      {formData.femaleFirst && (
+                        <p className="text-sm text-gray-500" style={{ marginTop: '0.25rem', marginLeft: '1.5rem' }}>
+                          有効にすると、各部門内で女子が男子より先に並びます
+                        </p>
+                      )}
+                    </>
                   )}
-                </>
-              )}
-            </div>
-            
-            <div style={{ marginTop: '0.75rem' }}>
-              <p className="label">部門設定</p>
+                </div>
+                
+                <div style={{ marginTop: '0.75rem' }}>
+                  <p className="label">部門設定</p>
               {formData.divisions && (() => {
                 const rankOptions = ['無指定', '五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
                 return (
@@ -580,7 +610,9 @@ const TournamentSetupView = ({ state, dispatch }) => {
                   </>
                 );
               })()}
-            </div>
+                </div>
+              </>
+            )}
         </div>
 
         <button onClick={handleSaveTournament} className="btn-primary">{isEditing ? '大会情報を更新' : '大会登録を保存'}</button>

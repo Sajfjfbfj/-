@@ -135,6 +135,52 @@ async function connectToDatabase() {
   }
 }
 
+// --- 個人情報自動削除機能 ---
+
+// 大会終了後1週間経過した選手データを削除
+async function deleteExpiredApplicantData() {
+  try {
+    const db = await connectToDatabase();
+    const tournaments = await db.collection('tournaments').find({}).toArray();
+    
+    const now = new Date();
+    const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+    
+    for (const tournament of tournaments) {
+      if (!tournament.data?.date) continue;
+      
+      const tournamentDate = new Date(tournament.data.date);
+      const timeSinceEnd = now - tournamentDate;
+      
+      if (timeSinceEnd > oneWeekMs) {
+        // 選手データを削除
+        const applicantsResult = await db.collection('applicants').deleteMany({ 
+          tournamentId: tournament.id 
+        });
+        
+        // 射詰競射結果を削除
+        const shichumaResult = await db.collection('shichuma_results').deleteMany({ 
+          tournamentId: tournament.id 
+        });
+        
+        // 遠近競射結果を削除
+        const enkinResult = await db.collection('enkin_results').deleteMany({ 
+          tournamentId: tournament.id 
+        });
+        
+        if (applicantsResult.deletedCount > 0 || shichumaResult.deletedCount > 0 || enkinResult.deletedCount > 0) {
+          console.log(`🗑️ 期限切れデータ削除: ${tournament.data.name} (${tournament.data.date})`);
+          console.log(`  - 選手: ${applicantsResult.deletedCount}件`);
+          console.log(`  - 射詰: ${shichumaResult.deletedCount}件`);
+          console.log(`  - 遠近: ${enkinResult.deletedCount}件`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('❌ 期限切れデータ削除エラー:', error.message);
+  }
+}
+
 // --- API エンドポイント ---
 
 // ヘルスチェック - シンプル版
@@ -787,7 +833,13 @@ app.listen(PORT, () => {
   
   // 初期DB接続は非同期で試行(失敗してもサーバーは起動)
   connectToDatabase()
-    .then(() => console.log('✅ Initial DB connection successful\n'))
+    .then(() => {
+      console.log('✅ Initial DB connection successful\n');
+      // 起動時に期限切れデータをチェック
+      deleteExpiredApplicantData();
+      // 24時間ごとに定期チェック
+      setInterval(deleteExpiredApplicantData, 24 * 60 * 60 * 1000);
+    })
     .catch(err => console.log('⚠️ Initial DB connection failed (will retry on API calls):', err.message));
 });
 

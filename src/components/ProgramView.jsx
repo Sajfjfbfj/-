@@ -6,6 +6,7 @@ import * as XLSX from 'xlsx';
 import { getStoredAttachments } from '../utils/tournament';
 import { API_URL } from '../utils/api';
 import { ensureJapaneseFont } from '../utils/jspdfJapaneseFont';
+import { autoSelectTournamentByGeolocationAndDate } from '../utils/tournamentSelection';
 
 const ProgramView = ({ state }) => {
 
@@ -13,6 +14,7 @@ const ProgramView = ({ state }) => {
   const [archers, setArchers] = useState([]);
   const [allApplicants, setAllApplicants] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [geoStatus, setGeoStatus] = useState('');
   const [finalResults, setFinalResults] = useState(null);
   const [isLoadingFinalResults, setIsLoadingFinalResults] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
