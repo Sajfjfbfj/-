@@ -109,15 +109,15 @@ export const generateTeamStandOrder = (teams, savedOrder = null) => {
 };
 
 /**
- * チーム順序をAPIから取得
+ * チーム順序をlocalStorageから取得
  */
 export const fetchTeamOrder = async (tournamentId) => {
   try {
-    const response = await fetch(`/api/team-order/${tournamentId}`);
-    if (response.ok) {
-      const result = await response.json();
-      console.log('✅ チーム順序取得:', tournamentId, result.data);
-      return result.success ? result.data : null;
+    const stored = localStorage.getItem(`teamOrder_${tournamentId}`);
+    if (stored) {
+      const data = JSON.parse(stored);
+      console.log('✅ チーム順序取得:', tournamentId, data);
+      return data;
     }
     console.log('⚠️ チーム順序なし:', tournamentId);
     return null;
@@ -127,19 +127,14 @@ export const fetchTeamOrder = async (tournamentId) => {
 };
 
 /**
- * チーム順序をAPIに保存
+ * チーム順序をlocalStorageに保存
  */
 export const saveTeamOrder = async (tournamentId, teamOrder) => {
   try {
     console.log('💾 チーム順序保存:', tournamentId, teamOrder);
-    const response = await fetch(`/api/team-order/${tournamentId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ teamOrder })
-    });
-    const success = response.ok;
-    console.log(success ? '✅ 保存成功' : '❌ 保存失敗');
-    return success;
+    localStorage.setItem(`teamOrder_${tournamentId}`, JSON.stringify(teamOrder));
+    console.log('✅ 保存成功');
+    return true;
   } catch (error) {
     console.error('❌ 保存エラー:', error);
     return false;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { API_URL } from '../utils/api';
-import { groupByTeam, calculateTeamHitCount } from '../utils/teamCompetition';
+import { groupByTeam, calculateTeamHitCount, generateTeamStandOrder, fetchTeamOrder, saveTeamOrder } from '../utils/teamCompetition';
 
 const RecordingView = ({ state, dispatch, stands }) => {
   const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
@@ -139,7 +139,28 @@ const RecordingView = ({ state, dispatch, stands }) => {
             .replace('一級', '壱級');
         };
 
-        const sortedArchers = [...checkedIn].sort((a, b) => {
+        let sortedArchers;
+        
+        if (isTeamCompetition) {
+          // 団体戦：保存されたチーム順序を使用
+          const teams = groupByTeam(checkedIn);
+          const savedOrder = await fetchTeamOrder(selectedTournamentId);
+          const teamsWithOrder = generateTeamStandOrder(teams, savedOrder);
+          
+          if (!savedOrder) {
+            const teamOrder = teamsWithOrder.map(t => t.teamKey);
+            await saveTeamOrder(selectedTournamentId, teamOrder);
+          }
+          
+          sortedArchers = [];
+          teamsWithOrder.forEach(team => {
+            team.members.forEach(member => {
+              sortedArchers.push(member);
+            });
+          });
+        } else {
+          // 個人戦：既存のソートロジック
+          sortedArchers = [...checkedIn].sort((a, b) => {
           // 部門ごとの男女分け設定を確認
           const aDivId = getDivisionIdForArcher(a, divisions);
           const bDivId = getDivisionIdForArcher(b, divisions);
@@ -173,6 +194,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
           const bDate = b.rankAcquiredDate ? new Date(b.rankAcquiredDate).getTime() : Number.NEGATIVE_INFINITY;
           return bDate - aDate;
         });
+        }
 
         const totalNeeded = tournament.arrowsRound1 + tournament.arrowsRound2;
         const defaultResults = {};

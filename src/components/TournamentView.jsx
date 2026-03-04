@@ -117,9 +117,10 @@ const TournamentView = ({ state, stands, checkInCount }) => {
             .replace('一級', '壱級');
         };
 
-        const enableGenderSeparation = tournament?.data?.enableGenderSeparation || false;
-        const femaleFirst = enableGenderSeparation && (tournament?.data?.femaleFirst || false);
-        const competitionType = tournament?.data?.competitionType || 'individual';
+        const tpl = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+        const enableGenderSeparation = tpl?.data?.enableGenderSeparation || false;
+        const femaleFirst = enableGenderSeparation && (tpl?.data?.femaleFirst || false);
+        const competitionType = tpl?.data?.competitionType || 'individual';
         const isTeamCompetition = competitionType === 'team';
 
         let archersWithOrder;
@@ -130,10 +131,12 @@ const TournamentView = ({ state, stands, checkInCount }) => {
           
           // 保存されたチーム順序を取得
           const savedOrder = await fetchTeamOrder(selectedTournamentId);
+          
+          // 保存された順序がある場合は必ずそれを使用
           const teamsWithOrder = generateTeamStandOrder(teams, savedOrder);
           
-          // 保存された順序がない場合のみ保存
-          if (!savedOrder || savedOrder.length === 0) {
+          // 保存された順序がない場合のみ新規保存
+          if (!savedOrder) {
             const teamOrder = teamsWithOrder.map(t => t.teamKey);
             await saveTeamOrder(selectedTournamentId, teamOrder);
           }
