@@ -14,10 +14,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "NODE_ENV=production node server.js",
-    "railway:build": "npm ci --omit=dev && npm run build",
-    "heroku-postbuild": "npm install && npm run build",
-    "vercel-build": "npm run build"
+    "start": "node server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
