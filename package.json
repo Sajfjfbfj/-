@@ -12,10 +12,10 @@
     "dev:client": "vite",
     "server": "node server.js",
     "build": "vite build",
-    "postinstall": "npx rimraf node_modules/.cache || true",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "NODE_ENV=production node server.js",
+    "railway:build": "npm ci --omit=dev && npm run build",
     "heroku-postbuild": "npm install && npm run build",
     "vercel-build": "npm run build"
   },

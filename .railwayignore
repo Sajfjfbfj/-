@@ -1,0 +1,31 @@
+# 開発環境のみで使用するファイル
+node_modules/
+.git/
+.vscode/
+.windsurf/
+.amazonq/
+
+# ビルド済みファイル（本番環境で再ビルドするため）
+dist/
+
+# ログファイル
+*.log
+npm-debug.log*
+
+# 環境設定ファイル（Railway側で設定するため）
+.env.local
+.env.development
+
+# テストファイル
+*.test.js
+*.spec.js
+
+# ドキュメント
+README.md
+docs/
+
+# その他不要なファイル
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
