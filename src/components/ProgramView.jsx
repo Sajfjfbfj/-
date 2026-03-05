@@ -122,7 +122,7 @@ const ProgramView = ({ state }) => {
           const teamKeys = Object.keys(teamGroups);
           let orderedTeamKeys;
           
-          if (savedOrder && Array.isArray(savedOrder) && savedOrder.length > 0) {
+          if (savedOrder && Array.isArray(savedOrder) && savedOrder.length > 0 && savedOrder.some(key => teamKeys.includes(key))) {
             // 保存された順序を使用
             orderedTeamKeys = savedOrder.filter(key => teamKeys.includes(key));
             // 新しいチームがあれば末尾に追加
@@ -133,7 +133,7 @@ const ProgramView = ({ state }) => {
               await saveTeamOrder(selectedTournamentId, orderedTeamKeys);
             }
           } else {
-            // 新規にランダム配置
+            // 新規にランダム配置（初回のみ）
             orderedTeamKeys = [...teamKeys];
             for (let i = orderedTeamKeys.length - 1; i > 0; i--) {
               const j = Math.floor(Math.random() * (i + 1));

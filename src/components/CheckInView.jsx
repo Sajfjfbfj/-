@@ -548,9 +548,7 @@ const CheckInView = ({ state, dispatch }) => {
               )}
             </div>
 
-            {isTournamentDay() && (
-              <>
-                <div className="sport-card">
+            <div className="sport-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '2px solid #e5e7eb' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span style={{ fontSize: '1.25rem' }}>⚠️</span>
@@ -678,8 +676,6 @@ const CheckInView = ({ state, dispatch }) => {
                 </table>
               </div>
             </div>
-              </>
-            )}
 
             {showQRModal && currentQRCodeData && (
               <div className="qr-modal-overlay" onClick={(e) => {

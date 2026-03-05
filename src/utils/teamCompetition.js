@@ -1,4 +1,5 @@
 // 団体戦用のユーティリティ関数
+import { API_URL } from './api';
 
 /**
  * チームごとにグループ化（重複除外）
@@ -77,12 +78,29 @@ export const shuffleTeams = (teams) => {
 
 /**
  * チームの立ち順を生成（ランダム配置）
- * 保存された順序があればそれを使用、なければ新規生成
+ * 保存された順序があり、チーム数が同じであればそれを使用、なければ新規生成
  */
-export const generateTeamStandOrder = (teams, savedOrder = null) => {
+export const generateTeamStandOrder = (teams, savedOrderData = null) => {
   let orderedTeams;
   
-  if (savedOrder && Array.isArray(savedOrder) && savedOrder.length > 0) {
+  // savedOrderDataがオブジェクト形式か配列形式かを判定
+  let savedOrder = null;
+  let savedTeamCount = 0;
+  
+  if (savedOrderData) {
+    if (Array.isArray(savedOrderData)) {
+      // 古い形式（配列のみ）
+      savedOrder = savedOrderData;
+      savedTeamCount = savedOrderData.length;
+    } else if (savedOrderData.order && Array.isArray(savedOrderData.order)) {
+      // 新しい形式（オブジェクト）
+      savedOrder = savedOrderData.order;
+      savedTeamCount = savedOrderData.teamCount || savedOrderData.order.length;
+    }
+  }
+  
+  // チーム数が変わった場合は新規生成
+  if (savedOrder && savedTeamCount === teams.length) {
     // 保存された順序を使用
     const teamMap = new Map(teams.map(t => [t.teamKey, t]));
     orderedTeams = savedOrder
@@ -93,9 +111,12 @@ export const generateTeamStandOrder = (teams, savedOrder = null) => {
     const savedKeys = new Set(savedOrder);
     const newTeams = teams.filter(t => !savedKeys.has(t.teamKey));
     orderedTeams = [...orderedTeams, ...newTeams];
+    
+    console.log('✅ 保存されたチーム順序を使用 (チーム数: ' + teams.length + ')');
   } else {
     // 新規にランダム配置
     orderedTeams = shuffleTeams(teams);
+    console.log('🎲 新規ランダム配置 (チーム数: ' + teams.length + ', 保存済み: ' + savedTeamCount + ')');
   }
   
   let order = 1;
@@ -109,34 +130,54 @@ export const generateTeamStandOrder = (teams, savedOrder = null) => {
 };
 
 /**
- * チーム順序をlocalStorageから取得
+ * チーム順序をサーバーから取得
  */
 export const fetchTeamOrder = async (tournamentId) => {
   try {
-    const stored = localStorage.getItem(`teamOrder_${tournamentId}`);
-    if (stored) {
-      const data = JSON.parse(stored);
-      console.log('✅ チーム順序取得:', tournamentId, data);
-      return data;
+    const response = await fetch(`${getApiUrl()}/team-order/${tournamentId}`);
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success && result.data) {
+        console.log('✅ チーム順序取得:', tournamentId, result.data);
+        return result.data;
+      }
     }
     console.log('⚠️ チーム順序なし:', tournamentId);
     return null;
   } catch (error) {
+    console.error('❌ チーム順序取得エラー:', error);
     return null;
   }
 };
 
 /**
- * チーム順序をlocalStorageに保存
+ * チーム順序をサーバーに保存（チーム数も保存）
  */
 export const saveTeamOrder = async (tournamentId, teamOrder) => {
   try {
     console.log('💾 チーム順序保存:', tournamentId, teamOrder);
-    localStorage.setItem(`teamOrder_${tournamentId}`, JSON.stringify(teamOrder));
-    console.log('✅ 保存成功');
-    return true;
+    const data = {
+      order: teamOrder,
+      teamCount: teamOrder.length,
+      savedAt: new Date().toISOString()
+    };
+    const response = await fetch(`${getApiUrl()}/team-order/${tournamentId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (response.ok) {
+      console.log('✅ 保存成功');
+      return true;
+    }
+    console.error('❌ 保存失敗');
+    return false;
   } catch (error) {
     console.error('❌ 保存エラー:', error);
     return false;
   }
+};
+
+const getApiUrl = () => {
+  return API_URL;
 };

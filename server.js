@@ -814,19 +814,19 @@ app.post('/api/team-order/:tournamentId', async (req, res) => {
   try {
     const db = await connectToDatabase();
     const { tournamentId } = req.params;
-    const { teamOrder } = req.body;
+    const data = req.body;
 
-    if (!tournamentId || !teamOrder) {
+    if (!tournamentId || !data) {
       return res.status(400).json({ success: false, message: 'Missing parameters' });
     }
 
     await db.collection('team_orders').updateOne(
       { tournamentId },
-      { $set: { tournamentId, teamOrder, createdAt: new Date() } },
+      { $set: { tournamentId, ...data, updatedAt: new Date() } },
       { upsert: true }
     );
 
-    console.log(`✅ Team order saved: ${tournamentId}`);
+    console.log(`✅ Team order saved: ${tournamentId}, teams: ${data.teamCount || data.order?.length || 0}`);
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('❌ POST /api/team-order error:', error);
@@ -846,7 +846,14 @@ app.get('/api/team-order/:tournamentId', async (req, res) => {
       return res.status(404).json({ success: false, message: 'No team order found' });
     }
 
-    res.status(200).json({ success: true, data: result.teamOrder });
+    // orderとteamCountを返す
+    const data = {
+      order: result.order,
+      teamCount: result.teamCount,
+      savedAt: result.savedAt || result.updatedAt
+    };
+
+    res.status(200).json({ success: true, data });
   } catch (error) {
     console.error('❌ GET /api/team-order error:', error);
     res.status(500).json({ success: false, message: error.message });

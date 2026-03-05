@@ -829,13 +829,16 @@ ID: ${qrCodeData.id}`;
           </div>
         )}
 
-        {myApplications.length > 0 && (
+        {selectedTournamentId && (
           <div className="sport-card">
             <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.125rem', fontWeight: 700, color: '#1f2937', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span>📋</span>この端末からの申し込み一覧
             </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {myApplications.map(app => (
+            {myApplications.length === 0 ? (
+              <p style={{ textAlign: 'center', color: '#6b7280', padding: '2rem 0' }}>この端末からの申し込みはまだありません</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {myApplications.map(app => (
                 <div key={app.archerId} style={{ padding: '1rem', border: '2px solid #e5e7eb', borderRadius: '0.75rem', background: '#f9fafb' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
@@ -876,8 +879,9 @@ ID: ${qrCodeData.id}`;
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
