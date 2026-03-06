@@ -403,7 +403,7 @@ const CheckInView = ({ state, dispatch }) => {
               ) : (
                 filteredTournaments.map(tournament => (
                   <option key={tournament.id} value={tournament.id}>
-                    {tournament.data.name} ({tournament.data.location}{tournament.data.venueAddress ? ` / ${tournament.data.venueAddress}` : ''})
+                    {tournament.data.name} ({tournament.data.location}{tournament.data.venueAddress ? ` / ${tournament.data.venueAddress}` : ''}) - {tournament.data?.competitionType === 'team' ? '団体戦' : '個人戦'}
                   </option>
                 ))
               )}

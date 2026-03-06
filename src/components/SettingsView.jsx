@@ -117,7 +117,7 @@ const SettingsView = ({ state, dispatch, selectedTournamentId, setSelectedTourna
           </div>
 
           <div style={{ marginBottom: '2rem' }}>
-            <p style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.75rem', color: '#374151' }}>🥇 団体戦：決勝進出は何位まで（8位のみ同率含む）</p>
+            <p style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.75rem', color: '#374151' }}>🥇 団体戦：決勝進出は何位まで</p>
             <input
               type="number"
               min="1"
@@ -130,7 +130,6 @@ const SettingsView = ({ state, dispatch, selectedTournamentId, setSelectedTourna
               className="input"
               style={{ fontSize: '1rem', padding: '0.875rem' }}
             />
-            <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.5rem' }}>※ 設定した順位のみ同率を含みます（例：8位が3チーム同率の場合、全て決勝進出）</p>
           </div>
         </div>
 

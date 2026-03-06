@@ -154,7 +154,7 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
             <select value={inputValue} onChange={(e) => setInputValue(e.target.value)} className="input">
               <option value="">-- 大会を選択 --</option>
               {state.registeredTournaments.map(t => (
-                <option key={t.id} value={t.id}>{t.data.name} ({t.id})</option>
+                <option key={t.id} value={t.id}>{t.data.name} ({t.id}) - {t.data?.competitionType === 'team' ? '団体戦' : '個人戦'}</option>
               ))}
             </select>
             {error && <p className="error-text">{error}</p>}

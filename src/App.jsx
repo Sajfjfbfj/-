@@ -16,7 +16,6 @@ import SettingsView from './components/SettingsView';
 import TournamentSetupView from './components/TournamentSetupView';
 import TournamentView from './components/TournamentView';
 import ApplicantTournamentDetailView from './components/ApplicantTournamentDetailView';
-import TeamFinalsView from './components/TeamFinalsView';
 
 // Other Imports
 import { tournamentsApi } from './utils/api';
@@ -129,7 +128,6 @@ const KyudoTournamentSystem = () => {
             <button onClick={() => setMainView('tournament-setup')} className={`nav-tab ${mainView === 'tournament-setup' ? 'nav-tab-active' : ''}`}>大会登録</button>
             <button onClick={() => setMainView('archer-signup')} className={`nav-tab ${mainView === 'archer-signup' ? 'nav-tab-active' : ''}`}>選手申し込み</button>
             <button onClick={() => setMainView('applicant-tournament-detail')} className={`nav-tab ${mainView === 'applicant-tournament-detail' ? 'nav-tab-active' : ''}`}>出場大会詳細</button>
-            <button onClick={() => setMainView('team-finals')} className={`nav-tab ${mainView === 'team-finals' ? 'nav-tab-active' : ''}`}>団体戦決勝</button>
           </div>
 
           {mainView === 'tournament' && <TournamentView state={tournamentState} stands={dynamicStands} checkInCount={checkInCount} />}
@@ -148,7 +146,6 @@ const KyudoTournamentSystem = () => {
           {mainView === 'tournament-setup' && <TournamentSetupView state={tournamentState} dispatch={dispatch} />}
           {mainView === 'archer-signup' && <ArcherSignupView state={tournamentState} dispatch={dispatch} />}
           {mainView === 'applicant-tournament-detail' && <ApplicantTournamentDetailView state={tournamentState} />}
-          {mainView === 'team-finals' && <TeamFinalsView state={tournamentState} selectedTournamentId={selectedTournamentId} />}
         </>
       )}
     </div>

@@ -5,9 +5,6 @@ import { groupByTeam, calculateTeamHitCount } from '../utils/teamCompetition';
 const TeamFinalsView = ({ state, selectedTournamentId }) => {
   const [archers, setArchers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [shootOffScores, setShootOffScores] = useState({});
-  const [isShootOffActive, setIsShootOffActive] = useState(false);
-  const [tiedTeams, setTiedTeams] = useState([]);
 
   const tournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
   const teamFinalsLimit = tournament?.data?.teamFinalsLimit || 8;
@@ -60,55 +57,35 @@ const TeamFinalsView = ({ state, selectedTournamentId }) => {
   const getFinalists = () => {
     const rankings = getTeamRankings();
     const finalists = [];
-    const cutoffTeams = [];
-    
-    for (let i = 0; i < rankings.length; i++) {
-      const team = rankings[i];
-      
-      if (team.rank < teamFinalsLimit) {
+    let borderlineTeams = [];
+
+    if (rankings.length === 0) {
+      return { finalists };
+    }
+
+    const limitIndex = teamFinalsLimit - 1;
+    const limitHits = rankings[limitIndex]?.totalHits;
+    if (limitHits === undefined) {
+      return { finalists: [...rankings] };
+    }
+
+    rankings.forEach(team => {
+      if (team.totalHits > limitHits) {
         finalists.push(team);
-      } else if (team.rank === teamFinalsLimit) {
-        cutoffTeams.push(team);
-      } else {
-        break;
+      } else if (team.totalHits === limitHits) {
+        borderlineTeams.push(team);
       }
-    }
-    
-    if (cutoffTeams.length > 1) {
-      const withShootOff = cutoffTeams.map(team => ({
-        ...team,
-        shootOffScore: shootOffScores[team.teamKey] || 0,
-        finalScore: team.totalHits + (shootOffScores[team.teamKey] || 0)
-      }));
-      
-      withShootOff.sort((a, b) => b.finalScore - a.finalScore);
-      
-      const spotsLeft = teamFinalsLimit - finalists.length;
-      finalists.push(...withShootOff.slice(0, spotsLeft));
-      
-      return { finalists, needsShootOff: cutoffTeams.length > 1, tiedTeams: cutoffTeams };
-    }
-    
-    finalists.push(...cutoffTeams);
-    return { finalists, needsShootOff: false, tiedTeams: [] };
+    });
+
+    // In participant view we simply include all borderline teams in the finalist list
+    finalists.push(...borderlineTeams);
+    return { finalists };
   };
 
-  const handleShootOffScore = (teamKey, score) => {
-    setShootOffScores(prev => ({ ...prev, [teamKey]: parseInt(score) || 0 }));
-  };
-
-  const startShootOff = () => {
-    const result = getFinalists();
-    if (result.needsShootOff) {
-      setTiedTeams(result.tiedTeams);
-      setIsShootOffActive(true);
-    }
-  };
 
   const rankings = getTeamRankings();
   const finalistsResult = getFinalists();
   const finalists = finalistsResult.finalists || [];
-  const needsShootOff = finalistsResult.needsShootOff || false;
 
   return (
     <div className="view-container">
@@ -123,71 +100,12 @@ const TeamFinalsView = ({ state, selectedTournamentId }) => {
             <div className="card">
               <h2 className="card-title">決勝進出ルール</h2>
               <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-                • 上位{teamFinalsLimit}位までが決勝進出
+                • 上位{teamFinalsLimit}位までが決勝進出（8位と同じ的中数のチームは全て進出とみなし、ボーダーラインの対象になります）
               </p>
               <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                • {teamFinalsLimit}位で同率の場合、1人1射の競射を行い、その的中合計を基に上位{teamFinalsLimit}位を決定
+                • ボーダーラインに該当するチームが複数ある場合は、該当全チームで1人1射の競射を行い、その的中合計を基に進出チームを決定
               </p>
             </div>
-
-            {needsShootOff && !isShootOffActive && (
-              <div className="card" style={{ background: '#fef3c7', border: '2px solid #f59e0b' }}>
-                <h2 className="card-title" style={{ color: '#92400e' }}>⚠️ {teamFinalsLimit}位同率 - 競射が必要です</h2>
-                <p style={{ fontSize: '0.875rem', color: '#78350f', marginBottom: '1rem' }}>
-                  {teamFinalsLimit}位に{tiedTeams.length}チームが同率です。1人1射の競射を行ってください。
-                </p>
-                <button onClick={startShootOff} className="btn-primary">
-                  競射を開始
-                </button>
-              </div>
-            )}
-
-            {isShootOffActive && (
-              <div className="card" style={{ background: '#dbeafe', border: '2px solid #3b82f6' }}>
-                <h2 className="card-title" style={{ color: '#1e40af' }}>🎯 {teamFinalsLimit}位決定競射（1人1射）</h2>
-                <p style={{ fontSize: '0.875rem', color: '#1e3a8a', marginBottom: '1rem' }}>
-                  各チームメンバー全員が1射ずつ行い、その的中合計を入力してください
-                </p>
-                <div className="space-y-4">
-                  {tiedTeams.map(team => (
-                    <div key={team.teamKey} style={{ padding: '1rem', background: 'white', borderRadius: '0.5rem', border: '1px solid #cbd5e1' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <div>
-                          <span style={{ fontWeight: 600 }}>{team.teamName}</span>
-                          <span style={{ fontSize: '0.875rem', color: '#6b7280', marginLeft: '0.5rem' }}>({team.affiliation})</span>
-                        </div>
-                        <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>元の的中: {team.totalHits}本</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <label style={{ fontSize: '0.875rem', fontWeight: 500 }}>競射的中数:</label>
-                        <input
-                          type="number"
-                          min="0"
-                          max={team.members.length}
-                          value={shootOffScores[team.teamKey] || ''}
-                          onChange={(e) => handleShootOffScore(team.teamKey, e.target.value)}
-                          className="input"
-                          style={{ width: '100px' }}
-                          placeholder="0"
-                        />
-                        <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>/ {team.members.length}本</span>
-                        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#10b981', marginLeft: 'auto' }}>
-                          合計: {team.totalHits + (shootOffScores[team.teamKey] || 0)}本
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <button 
-                  onClick={() => setIsShootOffActive(false)} 
-                  className="btn-primary" 
-                  style={{ marginTop: '1rem' }}
-                  disabled={tiedTeams.some(t => !shootOffScores[t.teamKey])}
-                >
-                  競射結果を確定
-                </button>
-              </div>
-            )}
 
             <div className="card">
               <h2 className="card-title text-green-700">✅ 決勝進出チーム（{finalists.length}チーム）</h2>

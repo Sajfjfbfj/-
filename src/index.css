@@ -138,6 +138,11 @@ html {
   color: #b91c1c;
 }
 
+.btn-success {
+  background-color: #10b981;
+  color: white;
+}
+
 /* Input Fields */
 .input, input, select, textarea {
   width: 100%;

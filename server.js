@@ -894,4 +894,55 @@ app.listen(PORT, () => {
     .catch(err => console.log('⚠️ Initial DB connection failed (will retry on API calls):', err.message));
 });
 
+// 15. チーム競射のトーナメント進出決定戦結果保存
+app.post('/api/team/shootoff', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId, shootOffData } = req.body;
+
+    if (!tournamentId || !shootOffData) {
+      return res.status(400).json({ success: false, message: 'Missing tournamentId or shootOffData' });
+    }
+
+    const dataToSave = {
+      tournamentId,
+      ...shootOffData,
+      updatedAt: new Date()
+    };
+
+    await db.collection('team_shootoff_results').updateOne(
+      { tournamentId },
+      { $set: dataToSave },
+      { upsert: true }
+    );
+
+    console.log(`✅ Team Shootoff Results Saved: ${tournamentId}`);
+    res.status(200).json({ success: true, data: dataToSave });
+
+  } catch (error) {
+    console.error('❌ POST /api/team/shootoff error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 16. チーム競射のトーナメント進出決定戦結果取得
+app.get('/api/team/shootoff/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const result = await db.collection('team_shootoff_results').findOne({ tournamentId });
+
+    if (!result) {
+      return res.status(200).json({ success: true, data: null });
+    }
+
+    res.status(200).json({ success: true, data: result });
+
+  } catch (error) {
+    console.error('❌ GET /api/team/shootoff error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 export default app;

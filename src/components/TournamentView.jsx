@@ -5,10 +5,11 @@ import { judgeNearFarCompetition, calculateRanksWithTies } from '../utils/compet
 import { getStoredAttachments, getLocalDateKey } from '../utils/tournament';
 import { groupByTeam, generateTeamStandOrder, fetchTeamOrder, saveTeamOrder } from '../utils/teamCompetition';
 import ProgramView from './ProgramView';
+import TeamFinalsView from './TeamFinalsView';
 import QualifiersView from '../QualifiersView';
 
 const TournamentView = ({ state, stands, checkInCount }) => {
-  const [view, setView] = useState('standings'); // 'standings', 'qualifiers', or 'shichuma'
+  const [view, setView] = useState('standings'); // 'standings', 'qualifiers', 'shichuma', 'finalTournament', 'program'
   const [selectedTournamentId, setSelectedTournamentId] = useState(() => {
     return localStorage.getItem('selectedTournamentId') || '';
   });
@@ -964,6 +965,24 @@ const TournamentView = ({ state, stands, checkInCount }) => {
     );
   }
 
+  if (view === 'finalTournament') {
+    return (
+      <div className="view-container">
+        <div className="view-header">
+          <button 
+            onClick={() => setView('standings')}
+            className="flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4"
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" /> 立ち順表に戻る
+          </button>
+        </div>
+        <div className="view-content">
+          <TeamFinalsView state={state} selectedTournamentId={selectedTournamentId} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       {!isArcherVerified ? (
@@ -1052,13 +1071,24 @@ const TournamentView = ({ state, stands, checkInCount }) => {
                   
                   <div 
                     className="card" 
-                    style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', color: 'white', textAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
+                    style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', color: 'white', textAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s', display: isTeamCompetition ? 'none' : 'block' }}
                     onClick={() => setView('shichuma')}
                     onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
                     onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                   >
                     <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>🏆 競射結果</div>
                     <div style={{ fontSize: '1.25rem', fontWeight: 600, marginTop: '0.5rem' }}>結果表示</div>
+                  </div>
+                  
+                  <div 
+                    className="card" 
+                    style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', color: 'white', textAlign: 'center', cursor: 'pointer', transition: 'transform 0.2s', display: isTeamCompetition ? 'block' : 'none' }}
+                    onClick={() => setView('finalTournament')}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                  >
+                    <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.5rem' }}>🎯 決勝トーナメント</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 600, marginTop: '0.5rem' }}>進出決定</div>
                   </div>
                 </div>
 

@@ -116,30 +116,50 @@ const ProgramView = ({ state }) => {
           });
           
           // 保存されたチーム順序を取得
-          const savedOrder = await fetchTeamOrder(selectedTournamentId);
+          const savedOrderData = await fetchTeamOrder(selectedTournamentId);
           
           // チームをランダムにシャッフル（保存された順序があればそれを使用）
           const teamKeys = Object.keys(teamGroups);
           let orderedTeamKeys;
           
-          if (savedOrder && Array.isArray(savedOrder) && savedOrder.length > 0 && savedOrder.some(key => teamKeys.includes(key))) {
+          // savedOrderDataがオブジェクト形式か配列形式かを判定
+          let savedOrder = null;
+          let savedTeamCount = 0;
+          
+          if (savedOrderData) {
+            if (Array.isArray(savedOrderData)) {
+              // 古い形式（配列のみ）
+              savedOrder = savedOrderData;
+              savedTeamCount = savedOrderData.length;
+            } else if (savedOrderData.order && Array.isArray(savedOrderData.order)) {
+              // 新しい形式（オブジェクト）
+              savedOrder = savedOrderData.order;
+              savedTeamCount = savedOrderData.teamCount || savedOrderData.order.length;
+            }
+          }
+          
+          // チーム数が変わった場合は新規生成
+          if (savedOrder && savedTeamCount === teamKeys.length) {
             // 保存された順序を使用
             orderedTeamKeys = savedOrder.filter(key => teamKeys.includes(key));
-            // 新しいチームがあれば末尾に追加
-            const newTeams = teamKeys.filter(key => !savedOrder.includes(key));
-            if (newTeams.length > 0) {
-              orderedTeamKeys = [...orderedTeamKeys, ...newTeams];
-              // 新しいチームが追加された場合のみ保存
-              await saveTeamOrder(selectedTournamentId, orderedTeamKeys);
-            }
+            // 保存された順序にないチームがあれば末尾に追加
+            const savedKeys = new Set(savedOrder);
+            const newTeams = teamKeys.filter(key => !savedKeys.has(key));
+            orderedTeamKeys = [...orderedTeamKeys, ...newTeams];
+            
+            console.log('✅ 保存されたチーム順序を使用 (チーム数: ' + teamKeys.length + ')');
           } else {
-            // 新規にランダム配置（初回のみ）
+            // 新規にランダム配置
             orderedTeamKeys = [...teamKeys];
             for (let i = orderedTeamKeys.length - 1; i > 0; i--) {
               const j = Math.floor(Math.random() * (i + 1));
               [orderedTeamKeys[i], orderedTeamKeys[j]] = [orderedTeamKeys[j], orderedTeamKeys[i]];
             }
-            // 順序を保存
+            console.log('🎲 新規ランダム配置 (チーム数: ' + teamKeys.length + ', 保存済み: ' + savedTeamCount + ')');
+          }
+          
+          // 保存された順序がない場合またはチーム数が変わった場合のみ新規保存
+          if (!savedOrderData || savedTeamCount !== teamKeys.length) {
             await saveTeamOrder(selectedTournamentId, orderedTeamKeys);
           }
           
