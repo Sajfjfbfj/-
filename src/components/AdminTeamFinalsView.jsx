@@ -23,14 +23,15 @@ const AdminTeamFinalsView = ({ state, selectedTournamentId }) => {
       const response = await fetch(`${API_URL}/team/shootoff/${selectedTournamentId}`);
       if (response.ok) {
         const result = await response.json();
-        if (result.data && result.data.shootOffData) {
-          const data = result.data.shootOffData;
+        if (result.data) {
+          const data = result.data;
           setShootOffRound(data.shootOffRound || 1);
           setShootOffResults(data.shootOffResults || {});
           setShootOffScores(data.shootOffScores || {});
           setDeterminedTeams(data.determinedTeams || []);
           setTiedTeams(data.tiedTeams || []);
           setIsShootOffActive(data.isShootOffActive || false);
+          console.log('競射結果を読み込みました:', data);
         }
       }
     } catch (error) {
@@ -51,6 +52,8 @@ const AdminTeamFinalsView = ({ state, selectedTournamentId }) => {
         tiedTeams,
         isShootOffActive
       };
+
+      console.log('競射結果を保存します:', shootOffData);
 
       const response = await fetch(`${API_URL}/team/shootoff`, {
         method: 'POST',
@@ -283,6 +286,11 @@ const AdminTeamFinalsView = ({ state, selectedTournamentId }) => {
       // 全ての枠が埋まったら終了
       setIsShootOffActive(false);
     }
+    
+    // 状態更新後にサーバーに保存
+    setTimeout(() => {
+      saveShootOffResults();
+    }, 100);
   };
 
   const rankings = getTeamRankings();
@@ -313,7 +321,7 @@ const AdminTeamFinalsView = ({ state, selectedTournamentId }) => {
               </p>
             </div>
 
-            {needsShootOff && !isShootOffActive && (
+            {needsShootOff && !isShootOffActive && confirmedFinalists.length + determinedTeams.length < teamFinalsLimit && (
               <div className="card" style={{ background: '#fef3c7', border: '2px solid #f59e0b' }}>
                 <h2 className="card-title" style={{ color: '#d97706' }}>⚠️ トーナメント進出決定戦が必要です</h2>
                 <p style={{ fontSize: '0.875rem', color: '#92400e', marginBottom: '0.5rem' }}>
@@ -435,9 +443,6 @@ const AdminTeamFinalsView = ({ state, selectedTournamentId }) => {
                       <tr className="bg-green-100">
                         <th className="border border-green-300 px-4 py-2">チーム名</th>
                         <th className="border border-green-300 px-4 py-2">所属</th>
-                        <th className="border border-green-300 px-4 py-2">予選的中</th>
-                        <th className="border border-green-300 px-4 py-2">競射的中</th>
-                        <th className="border border-green-300 px-4 py-2">合計的中</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -445,9 +450,6 @@ const AdminTeamFinalsView = ({ state, selectedTournamentId }) => {
                         <tr key={team.teamKey} className="hover:bg-green-50">
                           <td className="border border-green-300 px-4 py-2 font-semibold">{team.teamName}</td>
                           <td className="border border-green-300 px-4 py-2">{team.affiliation}</td>
-                          <td className="border border-green-300 px-4 py-2 text-center font-bold">{team.totalHits}本</td>
-                          <td className="border border-green-300 px-4 py-2 text-center font-bold text-blue-700">{team.shootOffScore}本</td>
-                          <td className="border border-green-300 px-4 py-2 text-center font-bold text-green-700">{team.finalScore}本</td>
                         </tr>
                       ))}
                     </tbody>
@@ -458,7 +460,16 @@ const AdminTeamFinalsView = ({ state, selectedTournamentId }) => {
 
             {(confirmedFinalists.length > 0 || determinedTeams.length > 0) && (
               <div className="card">
-                <h2 className="card-title text-green-700">✅ 決勝進出確定チーム（{confirmedFinalists.length + determinedTeams.length}チーム）</h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h2 className="card-title text-green-700">✅ 決勝進出確定チーム（{confirmedFinalists.length + determinedTeams.length}チーム）</h2>
+                  <button 
+                    onClick={() => window.print()} 
+                    className="btn-primary"
+                    style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}
+                  >
+                    🖨️ 印刷
+                  </button>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse border border-green-300">
                     <thead>
@@ -466,8 +477,6 @@ const AdminTeamFinalsView = ({ state, selectedTournamentId }) => {
                         <th className="border border-green-300 px-4 py-2">チーム名</th>
                         <th className="border border-green-300 px-4 py-2">所属</th>
                         <th className="border border-green-300 px-4 py-2">予選的中</th>
-                        <th className="border border-green-300 px-4 py-2">競射的中</th>
-                        <th className="border border-green-300 px-4 py-2">合計的中</th>
                         <th className="border border-green-300 px-4 py-2">メンバー</th>
                       </tr>
                     </thead>
@@ -477,8 +486,6 @@ const AdminTeamFinalsView = ({ state, selectedTournamentId }) => {
                           <td className="border border-green-300 px-4 py-2 font-semibold">{team.teamName}</td>
                           <td className="border border-green-300 px-4 py-2">{team.affiliation}</td>
                           <td className="border border-green-300 px-4 py-2 text-center font-bold">{team.totalHits}本</td>
-                          <td className="border border-green-300 px-4 py-2 text-center font-bold text-blue-700">{team.shootOffScore || 0}本</td>
-                          <td className="border border-green-300 px-4 py-2 text-center font-bold text-green-700">{team.finalScore}本</td>
                           <td className="border border-green-300 px-4 py-2 text-sm">{team.members.map(m => m.name).join(', ')}</td>
                         </tr>
                       ))}
@@ -502,7 +509,16 @@ const AdminTeamFinalsView = ({ state, selectedTournamentId }) => {
             {/* 競射が完了して全枠が確定した場合は、ボーダーラインチームを表示しない */}
             {borderlineTeams.length > 0 && confirmedFinalists.length + determinedTeams.length < teamFinalsLimit && (
               <div className="card">
-                <h2 className="card-title text-orange-700">🎯 決勝トーナメント進出戦一覧（{borderlineTeams.length}チーム）</h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h2 className="card-title text-orange-700">🎯 決勝トーナメント進出戦一覧（{borderlineTeams.length}チーム）</h2>
+                  <button 
+                    onClick={() => window.print()} 
+                    className="btn-primary"
+                    style={{ fontSize: '0.875rem', padding: '0.5rem 1rem' }}
+                  >
+                    🖨️ 印刷
+                  </button>
+                </div>
                 <p style={{ fontSize: '0.875rem', color: '#92400e', marginBottom: '1rem' }}>
                   {finalistsResult.borderRank}位で同率のため、1人1射の競射を実施
                 </p>

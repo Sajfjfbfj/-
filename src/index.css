@@ -802,3 +802,120 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 }
+
+/* 印刷用スタイル */
+@media print {
+  /* 印刷時は不要な要素を非表示 */
+  button,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-success,
+  nav,
+  header,
+  footer,
+  .card-title button,
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+  
+  /* 印刷用のレイアウト */
+  body {
+    font-size: 12pt;
+    line-height: 1.2;
+    color: black;
+    background: white;
+  }
+  
+  /* カードのスタイル調整 */
+  .card {
+    border: 2px solid #000 !important;
+    margin-bottom: 1rem !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  
+  /* 表のスタイル調整 */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 10pt;
+  }
+  
+  th, td {
+    border: 1px solid #000 !important;
+    padding: 4pt !important;
+    text-align: left !important;
+    vertical-align: top !important;
+  }
+  
+  th {
+    background-color: #f0f0f0 !important;
+    font-weight: bold !important;
+  }
+  
+  /* 緑色の表 */
+  .border-green-300 {
+    border-color: #000 !important;
+  }
+  
+  .bg-green-100 {
+    background-color: #f0f0f0 !important;
+  }
+  
+  /* オレンジ色の表 */
+  .border-orange-300 {
+    border-color: #000 !important;
+  }
+  
+  .bg-orange-100 {
+    background-color: #f0f0f0 !important;
+  }
+  
+  /* テキストカラーの調整 */
+  .text-green-700,
+  .text-orange-700,
+  .text-blue-700 {
+    color: black !important;
+  }
+  
+  /* ホバー効果を無効化 */
+  .hover\:bg-green-50:hover,
+  .hover\:bg-orange-50:hover {
+    background-color: transparent !important;
+  }
+  
+  /* ページ改行の制御 */
+  .card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  
+  table {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+  
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  
+  /* タイトルの調整 */
+  .card-title {
+    font-size: 14pt !important;
+    font-weight: bold !important;
+    margin-bottom: 0.5rem !important;
+    color: black !important;
+  }
+  
+  /* 完了メッセージの調整 */
+  div[style*="background: #d1fae5"] {
+    background: #f0f0f0 !important;
+    border: 2px solid #000 !important;
+    padding: 0.5rem !important;
+    text-align: center !important;
+  }
+}

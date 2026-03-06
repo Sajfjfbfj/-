@@ -7,6 +7,7 @@ import ProgramView from './ProgramView';
 import RankingView from './RankingView';
 import StatsView from './StatsView';
 import AdminTeamFinalsView from './AdminTeamFinalsView';
+import TeamTournamentView from './TeamTournamentView';
 
 const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedTournamentId, setSelectedTournamentId, onLogout }) => {
   // 選択された大会の競技タイプを取得
@@ -20,6 +21,7 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedT
         <button onClick={() => setAdminView('recording')} className={`btn ${adminView === 'recording' ? 'btn-active' : ''}`}>記録入力</button>
         {!isTeamCompetition && <button onClick={() => setAdminView('ranking')} className={`btn ${adminView === 'ranking' ? 'btn-active' : ''}`}>順位決定戦</button>}
         {isTeamCompetition && <button onClick={() => setAdminView('team-finals')} className={`btn ${adminView === 'team-finals' ? 'btn-active' : ''}`}>決勝</button>}
+        {isTeamCompetition && <button onClick={() => setAdminView('team-tournament')} className={`btn ${adminView === 'team-tournament' ? 'btn-active' : ''}`}>トーナメント</button>}
         <button onClick={() => setAdminView('awards')} className={`btn ${adminView === 'awards' ? 'btn-active' : ''}`}>表彰</button>
         <button onClick={() => setAdminView('program')} className={`btn ${adminView === 'program' ? 'btn-active' : ''}`}>プログラム</button>
         <button onClick={() => setAdminView('stats')} className={`btn ${adminView === 'stats' ? 'btn-active' : ''}`}>支部別集計</button>
@@ -87,7 +89,14 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedT
       </div>
     );
   }
+  if (adminView === 'team-tournament') {
+    return (
+      <div>
+        {renderHeader()}
+        <TeamTournamentView state={state} selectedTournamentId={selectedTournamentId} />
+      </div>
+    );
+  }
 };
-
 
 export default AdminView;
