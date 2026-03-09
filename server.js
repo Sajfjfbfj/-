@@ -945,4 +945,52 @@ app.get('/api/team/shootoff/:tournamentId', async (req, res) => {
   }
 });
 
+// 21. 団体戦トーナメント状態を保存
+app.post('/api/team-tournament-state/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+    const state = req.body;
+
+    if (!tournamentId) {
+      return res.status(400).json({ success: false, message: 'Missing tournamentId' });
+    }
+
+    await db.collection('team_tournament_state').updateOne(
+      { tournamentId },
+      { $set: { tournamentId, ...state, updatedAt: new Date() } },
+      { upsert: true }
+    );
+
+    console.log(`✅ Team Tournament State Saved: ${tournamentId}`);
+    res.status(200).json({ success: true });
+
+  } catch (error) {
+    console.error('❌ POST /api/team-tournament-state error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 22. 団体戦トーナメント状態を取得
+app.get('/api/team-tournament-state/:tournamentId', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { tournamentId } = req.params;
+
+    const result = await db.collection('team_tournament_state').findOne({ tournamentId });
+
+    if (!result) {
+      return res.status(200).json({ success: true, data: null });
+    }
+
+    // _idとtournamentIdとupdatedAtは除いて返す
+    const { _id, tournamentId: _tid, updatedAt, ...state } = result;
+    res.status(200).json({ success: true, data: state });
+
+  } catch (error) {
+    console.error('❌ GET /api/team-tournament-state error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 export default app;
