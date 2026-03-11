@@ -794,7 +794,92 @@ const TeamTournamentView = ({ state, selectedTournamentId }) => {
               </div>
             </div>
 
-            {/* チーム選択モーダル */}
+            {/* 順位表 */}
+            {(() => {
+              const totalRounds = tournamentRounds.length;
+              if (totalRounds < 2) return null;
+
+              const finalRound = totalRounds;           // 決勝
+              const semiRound  = totalRounds - 1;       // 準決勝
+
+              // 決勝の勝者・敗者
+              const finalMatchKey = `${finalRound}-1`;
+              const finalMatch    = selectedTeams[finalMatchKey] || {};
+              const first         = getFinalWinnerTeam(finalRound, 1);
+              const second        = first && finalMatch.team1 && finalMatch.team2
+                ? (first.teamKey === finalMatch.team1.teamKey ? finalMatch.team2 : finalMatch.team1)
+                : null;
+
+              // 準決勝の敗者 × 2（準決勝の試合数分）
+              const semiRoundData   = tournamentRounds.find(r => r.roundNumber === semiRound);
+              const thirdPlaceTeams = semiRoundData
+                ? semiRoundData.matches.map(m => {
+                    const mk     = `${semiRound}-${m.matchNumber}`;
+                    const sm     = selectedTeams[mk] || {};
+                    const winner = getFinalWinnerTeam(semiRound, m.matchNumber);
+                    if (!winner || !sm.team1 || !sm.team2) return null;
+                    return winner.teamKey === sm.team1.teamKey ? sm.team2 : sm.team1;
+                  }).filter(Boolean)
+                : [];
+
+              const allDetermined = first && second && thirdPlaceTeams.length >= 2;
+
+              return (
+                <div className="card mt-6">
+                  <h2 className="card-title">🏅 最終順位</h2>
+                  {!allDetermined ? (
+                    <p className="text-center text-gray-400 py-4">全試合が終了すると順位が表示されます</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse border border-gray-300">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="border border-gray-300 px-4 py-2 w-20 text-center">順位</th>
+                            <th className="border border-gray-300 px-4 py-2 text-center">チーム名</th>
+                            <th className="border border-gray-300 px-4 py-2 text-center">所属</th>
+                            <th className="border border-gray-300 px-4 py-2 text-center">メンバー</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {/* 1位 */}
+                          <tr className="bg-yellow-50 hover:bg-yellow-100">
+                            <td className="border border-gray-300 px-4 py-3 text-center">
+                              <span className="text-2xl">🥇</span>
+                              <div className="text-xs font-bold text-yellow-700">1位</div>
+                            </td>
+                            <td className="border border-gray-300 px-4 py-3 font-bold text-lg text-yellow-800">{first.teamName}</td>
+                            <td className="border border-gray-300 px-4 py-3 text-center text-gray-600">{first.affiliation}</td>
+                            <td className="border border-gray-300 px-4 py-3 text-sm text-gray-600">{first.members?.map(m => m.name).join(', ')}</td>
+                          </tr>
+                          {/* 2位 */}
+                          <tr className="bg-gray-50 hover:bg-gray-100">
+                            <td className="border border-gray-300 px-4 py-3 text-center">
+                              <span className="text-2xl">🥈</span>
+                              <div className="text-xs font-bold text-gray-500">2位</div>
+                            </td>
+                            <td className="border border-gray-300 px-4 py-3 font-bold text-gray-700">{second.teamName}</td>
+                            <td className="border border-gray-300 px-4 py-3 text-center text-gray-600">{second.affiliation}</td>
+                            <td className="border border-gray-300 px-4 py-3 text-sm text-gray-600">{second.members?.map(m => m.name).join(', ')}</td>
+                          </tr>
+                          {/* 3位（2チーム） */}
+                          {thirdPlaceTeams.map((team, idx) => (
+                            <tr key={team.teamKey} className="bg-orange-50 hover:bg-orange-100">
+                              <td className="border border-gray-300 px-4 py-3 text-center">
+                                {idx === 0 && <span className="text-2xl">🥉</span>}
+                                <div className="text-xs font-bold text-orange-600">3位</div>
+                              </td>
+                              <td className="border border-gray-300 px-4 py-3 font-bold text-orange-700">{team.teamName}</td>
+                              <td className="border border-gray-300 px-4 py-3 text-center text-gray-600">{team.affiliation}</td>
+                              <td className="border border-gray-300 px-4 py-3 text-sm text-gray-600">{team.members?.map(m => m.name).join(', ')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             {showModal && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                 <div className="bg-white rounded-lg p-6 max-w-4xl max-h-[80vh] overflow-y-auto w-full mx-4">

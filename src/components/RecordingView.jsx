@@ -278,10 +278,14 @@ const RecordingView = ({ state, dispatch, stands }) => {
   });
 
   const archersPerPage = tournament.archersPerStand || 12;
-  const totalPages = Math.ceil(divisionArchers.length / archersPerPage);
+  
+  // 団体戦の場合はすべての選手を表示、個人戦の場合は部門でフィルター
+  const displayArchers = isTeamCompetition ? archers : divisionArchers;
+  
+  const totalPages = Math.ceil(displayArchers.length / archersPerPage);
   const startIndex = (currentPage - 1) * archersPerPage;
   const endIndex = startIndex + archersPerPage;
-  const paginatedArchers = divisionArchers.slice(startIndex, endIndex);
+  const paginatedArchers = displayArchers.slice(startIndex, endIndex);
 
   const getArchersForStand = (standNumber) => {
     const archersPerStand = tournament.archersPerStand;
@@ -404,7 +408,8 @@ const RecordingView = ({ state, dispatch, stands }) => {
   };
 
   const calculateRanks = () => {
-    const hitCounts = divisionArchers.map(archer => ({
+    const rankingArchers = isTeamCompetition ? archers : divisionArchers;
+    const hitCounts = rankingArchers.map(archer => ({
       archerId: archer.archerId,
       hitCount: getHitCount(archer, selectedStand, 1) + getHitCount(archer, selectedStand, 2)
     }));
