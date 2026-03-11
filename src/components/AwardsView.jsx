@@ -5,6 +5,7 @@ import {
   getRankOrder 
 } from '../utils/competition';
 import { getDivisionForArcher } from '../utils/tournament';
+import { groupByTeam, calculateTeamHitCount } from '../utils/teamCompetition';
 
 const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTournamentId }) => {
   const [archers, setArchers] = useState([]);
@@ -28,8 +29,16 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
       return null;
     }
   });
+  const [selectedTeams, setSelectedTeams] = useState({});
+  const [matchScores, setMatchScores] = useState({});
+  const [shootOffStarted, setShootOffStarted] = useState({});
+  const [shootOffRounds, setShootOffRounds] = useState({});
+  const [shootOffScores, setShootOffScores] = useState({});
+  const [shootOffIndividualShots, setShootOffIndividualShots] = useState({});
   const tournaments = state.registeredTournaments || [];
   const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
+  const competitionType = tournament?.data?.competitionType || 'individual';
+  const isTeamCompetition = competitionType === 'team';
 
   const rankOrder = useMemo(() => getRankOrder(), []);
 
@@ -124,6 +133,32 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
     return () => clearInterval(interval);
   }, [selectedTournamentId, fetchShootoffResults]);
 
+  // DBからトーナメント状態をロード（団体戦用）
+  const loadTournamentState = useCallback(async () => {
+    if (!selectedTournamentId || !isTeamCompetition) return;
+    try {
+      const response = await fetch(`${API_URL}/team-tournament-state/${selectedTournamentId}`);
+      const result = await response.json();
+      if (result.success && result.data) {
+        const d = result.data;
+        if (d.selectedTeams) setSelectedTeams(d.selectedTeams);
+        if (d.matchScores) setMatchScores(d.matchScores);
+        if (d.shootOffScores) setShootOffScores(d.shootOffScores);
+        if (d.shootOffStarted) setShootOffStarted(d.shootOffStarted);
+        if (d.shootOffRounds) setShootOffRounds(d.shootOffRounds);
+        if (d.shootOffIndividualShots) setShootOffIndividualShots(d.shootOffIndividualShots);
+      }
+    } catch (error) {
+      console.error('トーナメント状態ロードエラー:', error);
+    }
+  }, [selectedTournamentId, isTeamCompetition]);
+
+  useEffect(() => {
+    if (isTeamCompetition) {
+      loadTournamentState();
+    }
+  }, [selectedTournamentId, isTeamCompetition, loadTournamentState]);
+
   const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
   const localDefaultDivisions = [
     { id: 'lower', label: '級位~三段以下の部' },
@@ -137,6 +172,147 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
   const awardRankLimit = tournament?.data?.awardRankLimit || 3;
   const enableGenderSeparation = selectedTournament?.data?.enableGenderSeparation || false;
   const femaleFirst = enableGenderSeparation && (selectedTournament?.data?.femaleFirst ?? false);
+
+  // 団体戦向けの最終順位表を生成
+  const getTeamFinalRankings = useMemo(() => {
+    if (!isTeamCompetition || Object.keys(selectedTeams).length === 0) return null;
+
+    // トーナメント完全性を確認（最大ラウンド数を取得）
+    const roundNumbers = new Set();
+    Object.keys(selectedTeams).forEach(key => {
+      const round = parseInt(key.split('-')[0]);
+      roundNumbers.add(round);
+    });
+    
+    if (roundNumbers.size === 0) return null;
+    
+    const totalRounds = Math.max(...roundNumbers);
+    if (totalRounds < 2) return null;
+
+    const finalRound = totalRounds;           // 決勝
+    const semiRound = totalRounds - 1;        // 準決勝
+
+    // 決勝の勝者・敗者を取得するヘルパー関数
+    const getFinalWinnerTeam = (round, matchNum) => {
+      const matchKey = `${round}-${matchNum}`;
+      const scores = matchScores[matchKey];
+      
+      if (!scores) return null;
+      
+      const teams = Object.keys(scores);
+      if (teams.length !== 2) return null;
+      
+      const team1Score = scores[teams[0]];
+      const team2Score = scores[teams[1]];
+      
+      // 12射終了後の的中数で比較
+      if (team1Score.totalShots >= 12 && team2Score.totalShots >= 12) {
+        if (team1Score.hits > team2Score.hits) {
+          return teams[0];
+        } else if (team2Score.hits > team1Score.hits) {
+          return teams[1];
+        } else {
+          // 同中の場合は競射へ
+          return 'shootoff';
+        }
+      }
+      
+      return null;
+    };
+
+    // 競射込みの最終勝者チームを返す
+    const determineShootOffWinner = (team1Key, team2Key, explicitMatchKey) => {
+      const matchKey = explicitMatchKey;
+      const matchShootOffScores = shootOffScores[matchKey] || {};
+      const score1 = matchShootOffScores[team1Key];
+      const score2 = matchShootOffScores[team2Key];
+
+      if (!score1 || !score2) return null;
+
+      const selectedMatch = selectedTeams[matchKey] || {};
+      const memberCount = selectedMatch.team1?.members?.length || 3;
+      const shootOffRound = shootOffRounds[matchKey] || 1;
+
+      // 両チームの全メンバーが射撃完了しているか（totalShotsでラウンドごとの完了数を確認）
+      const team1RoundShots = score1.totalShots || 0;
+      const team2RoundShots = score2.totalShots || 0;
+      // 現ラウンドまでの累計射数がmemberCount * shootOffRound以上なら完了
+      if (team1RoundShots < memberCount * shootOffRound || team2RoundShots < memberCount * shootOffRound) {
+        return null;
+      }
+
+      const team1RoundHits = score1.rounds?.[shootOffRound] || 0;
+      const team2RoundHits = score2.rounds?.[shootOffRound] || 0;
+
+      if (team1RoundHits > team2RoundHits) {
+        return team1Key;
+      } else if (team2RoundHits > team1RoundHits) {
+        return team2Key;
+      } else {
+        return 'next-round';
+      }
+    };
+
+    const getWinnerTeamObj = (winnerKey) => {
+      // selectedTeamsのすべての試合から該当するチームを探す
+      for (const [, match] of Object.entries(selectedTeams)) {
+        if (match.team1?.teamKey === winnerKey) return match.team1;
+        if (match.team2?.teamKey === winnerKey) return match.team2;
+      }
+      return null;
+    };
+
+    // 決勝の勝者・敗者
+    const finalMatchKey = `${finalRound}-1`;
+    const finalMatch = selectedTeams[finalMatchKey] || {};
+    
+    const winner = getFinalWinnerTeam(finalRound, 1);
+    let first = null;
+    let second = null;
+
+    if (winner && winner !== 'shootoff') {
+      first = getWinnerTeamObj(winner);
+      second = first && finalMatch.team1 && finalMatch.team2
+        ? (first.teamKey === finalMatch.team1.teamKey ? finalMatch.team2 : finalMatch.team1)
+        : null;
+    } else if (winner === 'shootoff' || shootOffStarted[finalMatchKey]) {
+      const shootOffWinner = determineShootOffWinner(finalMatch.team1?.teamKey, finalMatch.team2?.teamKey, finalMatchKey);
+      if (shootOffWinner && shootOffWinner !== 'next-round') {
+        first = shootOffWinner === finalMatch.team1?.teamKey ? finalMatch.team1 : finalMatch.team2;
+        second = shootOffWinner === finalMatch.team1?.teamKey ? finalMatch.team2 : finalMatch.team1;
+      }
+    }
+
+    // 準決勝の敗者 × 2（準決勝の試合数分）
+    const thirdPlaceTeams = [];
+    for (const [key, match] of Object.entries(selectedTeams)) {
+      const round = parseInt(key.split('-')[0]);
+      if (round === semiRound && match.team1 && match.team2) {
+        const matchNum = parseInt(key.split('-')[1]);
+        const winner = getFinalWinnerTeam(semiRound, matchNum);
+        if (winner && winner !== 'shootoff') {
+          const loser = winner === match.team1.teamKey ? match.team2 : match.team1;
+          thirdPlaceTeams.push(loser);
+        } else if ((winner === 'shootoff' || shootOffStarted[key]) && match.team1 && match.team2) {
+          const shootOffWinner = determineShootOffWinner(match.team1.teamKey, match.team2.teamKey, key);
+          if (shootOffWinner && shootOffWinner !== 'next-round') {
+            const loser = shootOffWinner === match.team1.teamKey ? match.team2 : match.team1;
+            thirdPlaceTeams.push(loser);
+          }
+        }
+      }
+    }
+
+    const allDetermined = first && second && thirdPlaceTeams.length >= 2;
+
+    if (!allDetermined) return null;
+
+    return {
+      first,
+      second,
+      thirdPlaceTeams: thirdPlaceTeams.slice(0, 2)
+    };
+  }, [selectedTeams, matchScores, shootOffScores, shootOffStarted, shootOffRounds]);
 
   const divisionRankings = useMemo(() => {
     // RankingViewのgetMergedFinalResultsと同じロジックで統合結果を構築
@@ -314,6 +490,33 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
     return result;
   }, [archers, divisions, enableGenderSeparation, femaleFirst, getTotalHitCountAllStands, shichumaFinalResults, enkinFinalResults, awardRankLimit]);
 
+  // 団体戦向けのチーム順位表
+  const teamRankings = useMemo(() => {
+    if (!isTeamCompetition) return [];
+    
+    const teams = groupByTeam(archers);
+    const teamScores = teams.map(team => ({
+      ...team,
+      totalHits: calculateTeamHitCount(team.members, tournament?.data || {})
+    }));
+
+    teamScores.sort((a, b) => b.totalHits - a.totalHits);
+
+    const rankings = [];
+    let currentRank = 1;
+    let prevScore = null;
+
+    teamScores.forEach((team, index) => {
+      if (prevScore !== null && team.totalHits !== prevScore) {
+        currentRank = index + 1;
+      }
+      rankings.push({ ...team, rank: currentRank });
+      prevScore = team.totalHits;
+    });
+
+    return rankings;
+  }, [archers, tournament?.data]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -324,7 +527,67 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
 
   return (
     <div className="space-y-6">
-      {/* 最終順位表（RankingViewと同じ形式） */}
+      {/* 団体戦向け最終順位表 */}
+      {isTeamCompetition ? (
+        <>
+          {getTeamFinalRankings && (
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-2xl font-bold mb-4">🏆 最終順位</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse border border-gray-300">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="border border-gray-300 px-4 py-2 w-20 text-center">順位</th>
+                      <th className="border border-gray-300 px-4 py-2 text-center">チーム名</th>
+                      <th className="border border-gray-300 px-4 py-2 text-center">所属</th>
+                      <th className="border border-gray-300 px-4 py-2 text-center">メンバー</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* 1位 */}
+                    {getTeamFinalRankings.first && (
+                      <tr className="bg-yellow-50 hover:bg-yellow-100">
+                        <td className="border border-gray-300 px-4 py-3 text-center">
+                          <span className="text-2xl">🥇</span>
+                          <div className="text-xs font-bold text-yellow-700">1位</div>
+                        </td>
+                        <td className="border border-gray-300 px-4 py-3 font-bold text-lg text-yellow-800">{getTeamFinalRankings.first.teamName}</td>
+                        <td className="border border-gray-300 px-4 py-3 text-center text-gray-600">{getTeamFinalRankings.first.affiliation}</td>
+                        <td className="border border-gray-300 px-4 py-3 text-sm text-gray-600">{getTeamFinalRankings.first.members?.map(m => m.name).join(', ')}</td>
+                      </tr>
+                    )}
+                    {/* 2位 */}
+                    {getTeamFinalRankings.second && (
+                      <tr className="bg-gray-50 hover:bg-gray-100">
+                        <td className="border border-gray-300 px-4 py-3 text-center">
+                          <span className="text-2xl">🥈</span>
+                          <div className="text-xs font-bold text-gray-500">2位</div>
+                        </td>
+                        <td className="border border-gray-300 px-4 py-3 font-bold text-gray-700">{getTeamFinalRankings.second.teamName}</td>
+                        <td className="border border-gray-300 px-4 py-3 text-center text-gray-600">{getTeamFinalRankings.second.affiliation}</td>
+                        <td className="border border-gray-300 px-4 py-3 text-sm text-gray-600">{getTeamFinalRankings.second.members?.map(m => m.name).join(', ')}</td>
+                      </tr>
+                    )}
+                    {/* 3位（2チーム） */}
+                    {getTeamFinalRankings.thirdPlaceTeams.map((team, idx) => (
+                      <tr key={team.teamKey} className="bg-orange-50 hover:bg-orange-100">
+                        <td className="border border-gray-300 px-4 py-3 text-center">
+                          {idx === 0 && <span className="text-2xl">🥉</span>}
+                          <div className="text-xs font-bold text-orange-600">3位</div>
+                        </td>
+                        <td className="border border-gray-300 px-4 py-3 font-bold text-orange-700">{team.teamName}</td>
+                        <td className="border border-gray-300 px-4 py-3 text-center text-gray-600">{team.affiliation}</td>
+                        <td className="border border-gray-300 px-4 py-3 text-sm text-gray-600">{team.members?.map(m => m.name).join(', ')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        /* 個人戦向け最終順位表 */
       <div className="bg-white rounded-lg shadow-md p-6">
         <h2 className="text-2xl font-bold mb-4">🏆 最終順位表</h2>
         <p className="text-sm text-gray-600 mb-4">表彰範囲：{awardRankLimit}位まで</p>
@@ -405,6 +668,7 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };
