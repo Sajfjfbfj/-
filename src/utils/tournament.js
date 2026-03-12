@@ -54,6 +54,8 @@ export const normalizeTournamentFormData = (data, defaultDivisions, attachments)
     organizer: d.organizer || '',
     coOrganizer: d.coOrganizer || '',
     administrator: d.administrator || '',
+    organizerChairmanTitle: d.organizerChairmanTitle || '',
+    organizerChairmanName: d.organizerChairmanName || '',
     purpose: d.purpose || '',
     schedule: d.schedule || '',
     event: d.event || '',

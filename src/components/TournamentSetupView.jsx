@@ -16,7 +16,7 @@ const TournamentSetupView = ({ state, dispatch }) => {
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [formData, setFormData] = useState({
     competitionType: 'individual',
-    name: '', datetime: '', location: '', venueAddress: '', venueLat: '', venueLng: '', organizer: '', coOrganizer: '', administrator: '', purpose: '', schedule: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '', participationFee: '',
+    name: '', datetime: '', location: '', venueAddress: '', venueLat: '', venueLng: '', organizer: '', coOrganizer: '', administrator: '', organizerChairmanTitle: '', organizerChairmanName: '', purpose: '', schedule: '', event: '', type: '', category: '', description: '', competitionMethod: '', award: '', qualifications: '', applicableRules: '', applicationMethod: '', remarks: '', participationFee: '',
     attachments: [],
     divisions: [
       { id: 'lower', label: '級位~三段以下の部' },
@@ -24,6 +24,22 @@ const TournamentSetupView = ({ state, dispatch }) => {
       { id: 'title', label: '称号者の部' }
     ]
   });
+
+  // localStorageからフォームデータを復元
+  useEffect(() => {
+    const savedDraft = localStorage.getItem('tournamentFormDraft');
+    if (savedDraft) {
+      try {
+        const parsedData = JSON.parse(savedDraft);
+        setFormData(prev => ({
+          ...prev,
+          ...parsedData
+        }));
+      } catch (error) {
+        console.error('フォームデータの復元に失敗しました:', error);
+      }
+    }
+  }, []);
 
   const filteredTournaments = state.registeredTournaments.filter(tournament => 
     locationFilter === '' || 
@@ -42,6 +58,16 @@ const TournamentSetupView = ({ state, dispatch }) => {
       ...prev, 
       [field]: value 
     }));
+    
+    // フォーム入力内容をlocalStorageに自動保存
+    try {
+      localStorage.setItem('tournamentFormDraft', JSON.stringify({
+        ...formData,
+        [field]: value
+      }));
+    } catch (error) {
+      console.error('フォームデータの保存に失敗しました:', error);
+    }
     
     // 全部門男女を分けるがチェックされた場合、全ての部門の男女分けを同期
     if (field === 'enableGenderSeparation') {
@@ -254,9 +280,10 @@ const TournamentSetupView = ({ state, dispatch }) => {
       return { ...prev, divisions: ds };
     });
   };
+
   const handleSaveTournament = async () => {
-    if (!formData.name || !formData.datetime || !formData.location || !formData.purpose || !formData.organizer || !formData.coOrganizer || !formData.administrator || !formData.event || !formData.type || !formData.category || !formData.description || !formData.competitionMethod || !formData.award || !formData.qualifications || !formData.applicableRules || !formData.applicationMethod || !formData.remarks) { 
-      alert('大会名、目的、主催、後援、主管、期日、会場、種目、種類、種別、内容、競技方法、表彰、参加資格、適用規則、申込方法、その他必要事項は必須です'); 
+    if (!formData.name || !formData.datetime || !formData.location || !formData.purpose || !formData.organizer || !formData.coOrganizer || !formData.administrator || !formData.organizerChairmanTitle || !formData.organizerChairmanName || !formData.event || !formData.type || !formData.category || !formData.description || !formData.competitionMethod || !formData.award || !formData.qualifications || !formData.applicableRules || !formData.applicationMethod || !formData.remarks) { 
+      alert('大会名、目的、主催、後援、主管、会長役職、会長氏名、期日、会場、種目、種類、種別、内容、競技方法、表彰、参加資格、適用規則、申込方法、その他必要事項は必須です'); 
       return; 
     }
     
@@ -294,6 +321,10 @@ const TournamentSetupView = ({ state, dispatch }) => {
         setIsEditing(true);
         dispatch({ type: 'SAVE_TOURNAMENT_TEMPLATE', payload: { id: newId, data: dataWithoutAttachments } });
         dispatch({ type: 'UPDATE_TOURNAMENT_INFO', payload: { id: newId, name: dataWithoutAttachments.name } });
+        
+        // 保存成功時にlocalStorageの下書きをクリア
+        localStorage.removeItem('tournamentFormDraft');
+        
         alert(isEditing ? '大会情報を更新しました' : '大会を登録しました');
       } else {
         throw new Error(result.message || '保存に失敗しました');
@@ -303,15 +334,17 @@ const TournamentSetupView = ({ state, dispatch }) => {
       alert(`大会の保存に失敗しました: ${error.message}`);
     }
   };
-  
+
   const handleResetForm = () => {
     setFormData(normalizeTournamentFormData({}, defaultDivisions, []));
     setTournamentId(null);
     setIsEditing(false);
     setCopied(false);
     setGeocodeStatus('');
+    // 新規フォーム作成時にlocalStorageの下書きをクリア
+    localStorage.removeItem('tournamentFormDraft');
   };
-  
+
   const handleDeleteTemplate = async (id) => {
     if (window.confirm('この大会情報を削除してもよろしいですか?')) {
       try {
@@ -480,6 +513,10 @@ const TournamentSetupView = ({ state, dispatch }) => {
           <input type="text" value={formData.organizer} onChange={(e) => handleInputChange('organizer', e.target.value)} placeholder="主催 *" className="input" />
           <input type="text" value={formData.coOrganizer} onChange={(e) => handleInputChange('coOrganizer', e.target.value)} placeholder="後援 *" className="input" />
           <input type="text" value={formData.administrator} onChange={(e) => handleInputChange('administrator', e.target.value)} placeholder="主管 *" className="input" />
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <input type="text" value={formData.organizerChairmanTitle || ''} onChange={(e) => handleInputChange('organizerChairmanTitle', e.target.value)} placeholder="会長役職（例：会長、実行委員長） *" className="input" style={{ flex: 1 }} />
+            <input type="text" value={formData.organizerChairmanName || ''} onChange={(e) => handleInputChange('organizerChairmanName', e.target.value)} placeholder="会長氏名（例：山田太郎） *" className="input" style={{ flex: 1 }} />
+          </div>
           <div style={{ marginTop: '0.5rem' }}>
             <p className="label">添付資料（PDF/Excel/Word等・複数可）</p>
             <input
