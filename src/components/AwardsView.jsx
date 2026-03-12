@@ -36,6 +36,22 @@ const AwardsView = ({ state, dispatch, selectedTournamentId, setSelectedTourname
   const [shootOffScores, setShootOffScores] = useState({});
   const [shootOffIndividualShots, setShootOffIndividualShots] = useState({});
   const [previewHtml, setPreviewHtml] = useState(null);
+  const [showPrintSettings, setShowPrintSettings] = useState(false);
+  const [printSettings, setPrintSettings] = useState({
+    paperSize: 'B4',
+    orientation: 'landscape',
+    marginType: 'default',
+    customMargin: {
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0
+    },
+    quality: 'high',
+    colorMode: 'color',
+    doubleSided: false,
+    copies: 1
+  });
   const tournaments = state.registeredTournaments || [];
   const tournament = tournaments.find(t => t.id === selectedTournamentId) || null;
   const competitionType = tournament?.data?.competitionType || 'individual';
