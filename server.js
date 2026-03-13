@@ -137,22 +137,45 @@ async function connectToDatabase() {
 
 // --- 個人情報自動削除機能 ---
 
-// 大会終了後1週間経過した選手データを削除
+// 大会終了後2週間経過した選手データを削除
 async function deleteExpiredApplicantData() {
   try {
+    console.log('🔍 期限切れデータチェック開始...');
     const db = await connectToDatabase();
     const tournaments = await db.collection('tournaments').find({}).toArray();
     
     const now = new Date();
-    const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
-    
+    const twoWeeksMs = 14 * 24 * 60 * 60 * 1000; // 2週間 = 14日
+
+    console.log(`📅 現在時刻: ${now.toISOString()}`);
+    console.log(`📊 チェック対象大会数: ${tournaments.length}`);
+
     for (const tournament of tournaments) {
-      if (!tournament.data?.date) continue;
-      
-      const tournamentDate = new Date(tournament.data.date);
-      const timeSinceEnd = now - tournamentDate;
-      
-      if (timeSinceEnd > oneWeekMs) {
+      // フォームは datetime-local で保存するため data.datetime を参照する
+      // 古いデータとの互換性のため data.date も fallback として見る
+      const rawDate = tournament.data?.datetime || tournament.data?.date;
+      if (!rawDate) {
+        console.log(`⚠️ 大会 ${tournament.id}: 日付情報なし`);
+        continue;
+      }
+
+      // datetime-local は "2026-01-10T09:00" 形式。new Date() でそのまま解析できる
+      const tournamentEndTime = new Date(rawDate);
+      if (isNaN(tournamentEndTime.getTime())) {
+        console.log(`⚠️ 大会 ${tournament.id}: 日付が無効な形式 (${rawDate})`);
+        continue;
+      }
+
+      const timeSinceEnd = now - tournamentEndTime;
+      const daysSinceEnd = Math.floor(timeSinceEnd / (24 * 60 * 60 * 1000));
+
+      console.log(`🏹 大会: ${tournament.data.name} (${rawDate})`);
+      console.log(`   終了時刻: ${tournamentEndTime.toISOString()}`);
+      console.log(`   経過日数: ${daysSinceEnd}日`);
+
+      if (timeSinceEnd > twoWeeksMs) {
+        console.log(`   🗑️ 削除対象: 2週間経過済み`);
+        
         // 選手データを削除
         const applicantsResult = await db.collection('applicants').deleteMany({ 
           tournamentId: tournament.id 
@@ -169,13 +192,20 @@ async function deleteExpiredApplicantData() {
         });
         
         if (applicantsResult.deletedCount > 0 || shichumaResult.deletedCount > 0 || enkinResult.deletedCount > 0) {
-          console.log(`🗑️ 期限切れデータ削除: ${tournament.data.name} (${tournament.data.date})`);
-          console.log(`  - 選手: ${applicantsResult.deletedCount}件`);
-          console.log(`  - 射詰: ${shichumaResult.deletedCount}件`);
-          console.log(`  - 遠近: ${enkinResult.deletedCount}件`);
+          console.log(`   ✅ 削除完了:`);
+          console.log(`     - 選手: ${applicantsResult.deletedCount}件`);
+          console.log(`     - 射詰: ${shichumaResult.deletedCount}件`);
+          console.log(`     - 遠近: ${enkinResult.deletedCount}件`);
+        } else {
+          console.log(`   ℹ️ 削除対象データなし`);
         }
+      } else {
+        console.log(`   ℹ️ まだ削除対象外 (残り${14 - daysSinceEnd}日)`);
       }
+      console.log(''); // 空行
     }
+    
+    console.log('✅ 期限切れデータチェック完了');
   } catch (error) {
     console.error('❌ 期限切れデータ削除エラー:', error.message);
   }
