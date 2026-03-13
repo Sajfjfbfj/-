@@ -217,7 +217,10 @@ const TournamentSetupView = ({ state, dispatch }) => {
   const handleLoadTemplateSafe = (template) => {
     const data = template.data || {};
     const storedAttachments = getStoredAttachments(template.id);
-    setFormData(normalizeTournamentFormData(data, defaultDivisions, storedAttachments));
+    setFormData({
+      ...normalizeTournamentFormData(data, defaultDivisions, storedAttachments),
+      competitionType: data.competitionType || 'individual'
+    });
     setTournamentId(template.id);
     setIsEditing(true);
   };

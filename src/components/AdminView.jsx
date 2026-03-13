@@ -61,7 +61,7 @@ const AdminView = ({ state, dispatch, adminView, setAdminView, stands, selectedT
     return (
       <div>
         {renderHeader()}
-        <ProgramView state={state} />
+        <ProgramView state={state} selectedTournamentId={selectedTournamentId} />
       </div>
     );
   }

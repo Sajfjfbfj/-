@@ -9,9 +9,17 @@ import { ensureJapaneseFont } from '../utils/jspdfJapaneseFont';
 import { autoSelectTournamentByGeolocationAndDate } from '../utils/tournamentSelection';
 import { groupByTeam, calculateTeamHitCount, generateTeamStandOrder, fetchTeamOrder, saveTeamOrder } from '../utils/teamCompetition';
 
-const ProgramView = ({ state }) => {
+const ProgramView = ({ state, selectedTournamentId: propTournamentId }) => {
 
-  const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
+  // propTournamentId が渡されたときはそれを優先、なければ localStorage から取得
+  const [selectedTournamentId, setSelectedTournamentId] = useState(() => propTournamentId || localStorage.getItem('selectedTournamentId') || '');
+
+  // prop が変わったら（大会切り替え後）ローカルstateを同期する
+  useEffect(() => {
+    if (propTournamentId) {
+      setSelectedTournamentId(propTournamentId);
+    }
+  }, [propTournamentId]);
   const [archers, setArchers] = useState([]);
   const [allApplicants, setAllApplicants] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -42,6 +50,8 @@ const ProgramView = ({ state }) => {
       const json = await resp.json();
       if (json.success) {
         const applicants = json.data || [];
+        // fetchArchers が古い closure を持つ可能性があるため、常に最新の大会データをここで取得する
+        const tournament = state.registeredTournaments.find(t => t.id === selectedTournamentId) || null;
         const rankOrderLocal = ['無指定','五級','四級','三級','弐級','壱級','初段','弐段','参段','四段','五段','錬士五段','錬士六段','教士七段','教士八段','範士八段','範士九段'];
         const normalize = (r) => {
           if (!r) return '無指定';

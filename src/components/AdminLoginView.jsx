@@ -12,19 +12,16 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
   useEffect(() => {
     if (adminLoginStep !== 'tournament_id') return;
     try {
-      const storedDate = localStorage.getItem('adminSelectedTournamentDate');
-      const storedTournamentId = localStorage.getItem('adminSelectedTournamentId');
+      const storedDate = localStorage.getItem('adminLoginTournamentDate');
+      const storedTournamentId = localStorage.getItem('adminLoginTournamentId');
       const today = getLocalDateKey();
       if (storedDate === today && storedTournamentId) {
-        setSelectedTournamentId(storedTournamentId);
-        setInputValue('');
-        setError('');
-        onLogin();
+        setInputValue(storedTournamentId);
       }
     } catch {
       // ignore
     }
-  }, [adminLoginStep, onLogin, setSelectedTournamentId]);
+  }, [adminLoginStep]);
 
   const autoSelectTournamentByGeolocation = () => {
     autoSelectTournamentByGeolocationAndDate(
@@ -77,8 +74,8 @@ const AdminLoginView = ({ adminPassword, setAdminPassword, adminLoginStep, setAd
     }
     setSelectedTournamentId(inputValue.trim());
     try {
-      localStorage.setItem('adminSelectedTournamentDate', getLocalDateKey());
-      localStorage.setItem('adminSelectedTournamentId', inputValue.trim());
+      localStorage.setItem('adminLoginTournamentDate', getLocalDateKey());
+      localStorage.setItem('adminLoginTournamentId', inputValue.trim());
     } catch {}
     setInputValue('');
     setError('');

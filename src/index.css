@@ -518,6 +518,12 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   gap: 1rem;
 }
 
+.archers-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
 .archer-record {
   background: white;
   border: 2px solid #e5e7eb;
@@ -525,6 +531,11 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   padding: 1.25rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   transition: all 0.2s;
+}
+
+.archer-record.compact {
+  padding: 0.75rem;
+  border-radius: 0.75rem;
 }
 
 .archer-record:hover {
@@ -536,6 +547,44 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   margin-bottom: 1rem;
   padding-bottom: 1rem;
   border-bottom: 2px solid #f3f4f6;
+}
+
+.archer-info.compact {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.archer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.archer-name {
+  margin: 0;
+  font-size: 0.9rem !important;
+  line-height: 1.2;
+}
+
+.archer-details {
+  font-size: 0.75rem !important;
+  color: #6b7280;
+  margin: 0.25rem 0 !important;
+  line-height: 1.2;
+}
+
+.archer-stats {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.stat-item {
+  font-size: 0.75rem !important;
+  font-weight: 600;
+  color: #374151;
 }
 
 .archer-info p {
@@ -557,6 +606,13 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   margin-bottom: 1rem;
 }
 
+.status.compact {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  margin-bottom: 0;
+  min-width: auto;
+}
+
 .status-complete {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
@@ -575,11 +631,21 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   margin-top: 1rem;
 }
 
+.arrows-grid.compact {
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
 .arrow-input {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0; /* Prevent overflow */
+}
+
+.arrow-input.compact {
+  gap: 0.25rem;
 }
 
 .arrow-input > p {
@@ -589,11 +655,23 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   margin: 0;
 }
 
+.arrow-label {
+  font-size: 0.75rem !important;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 0 !important;
+}
+
 .arrow-buttons {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
   width: 100%;
+  min-width: 0; /* Prevent overflow */
+}
+
+.arrow-buttons.compact {
+  gap: 0.25rem;
 }
 
 .arrow-result {
@@ -601,6 +679,11 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   flex-direction: column;
   gap: 0.375rem;
   width: 100%;
+  min-width: 0; /* Prevent overflow */
+}
+
+.arrow-result.compact {
+  gap: 0.25rem;
 }
 
 .btn-circle {
@@ -616,6 +699,12 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.btn-circle.compact {
+  min-height: 36px;
+  font-size: 1rem;
+  border-radius: 0.5rem;
 }
 
 .btn-circle:active:not(:disabled) {
@@ -670,6 +759,11 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   transition: all 0.2s;
 }
 
+.btn-fix.compact {
+  padding: 0.375rem;
+  font-size: 0.75rem;
+}
+
 .btn-fix:hover {
   background: #fee2e2;
   border-color: #ef4444;
@@ -683,6 +777,19 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   font-size: 1rem;
 }
 
+/* Team List Collapse Animation */
+.team-list-container {
+  transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+}
+
+.team-list-container.expanded {
+  opacity: 1;
+}
+
+.team-list-container.collapsed {
+  opacity: 0;
+}
+
 /* Animation for sync indicator */
 @keyframes spin {
   from { transform: rotate(0deg); }
@@ -693,24 +800,295 @@ h4 { font-size: clamp(1rem, 2.5vw, 1.25rem); }
   animation: spin 1s linear infinite;
 }
 
-/* Mobile Optimizations for Recording */
-@media (max-width: 640px) {
-  .archer-record {
-    padding: 1rem;
-  }
-  
-  .arrows-grid {
+/* ======================================
+   Mobile Optimizations for Recording
+   ====================================== */
+
+/* Tablet: 2列に落とす */
+@media (max-width: 768px) {
+  .archers-grid {
+    grid-template-columns: repeat(2, 1fr);
     gap: 0.75rem;
   }
-  
+}
+
+/* スマホ (≤640px): 2列コンパクト */
+@media (max-width: 640px) {
+  .view-content {
+    padding: 0.5rem;
+    gap: 0.75rem;
+  }
+
+  .card {
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+  }
+
+  /* 2列維持 - スマホでも選手カードを2枚並べる */
+  .archers-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .archer-record {
+    padding: 0.625rem;
+  }
+
+  .archer-record.compact {
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+  }
+
+  /* ヘッダーは横並びを維持して縦スペースを節約 */
+  .archer-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.25rem;
+    flex-wrap: nowrap;
+  }
+
+  .archer-name {
+    font-size: 0.8rem !important;
+    line-height: 1.3;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .archer-details {
+    font-size: 0.7rem !important;
+    line-height: 1.3;
+  }
+
+  .archer-stats {
+    gap: 0.25rem;
+    flex-wrap: wrap;
+  }
+
+  .stat-item {
+    font-size: 0.7rem !important;
+  }
+
+  /* ステータスバッジ：コンパクトに右端配置 */
+  .status.compact {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.65rem;
+    flex-shrink: 0;
+    margin-bottom: 0;
+  }
+
+  /* 矢のグリッド */
+  .arrows-grid {
+    gap: 0.375rem;
+  }
+
+  .arrows-grid.compact {
+    gap: 0.2rem;
+    margin-top: 0.375rem;
+  }
+
+  .arrow-label {
+    font-size: 0.65rem !important;
+  }
+
+  /* ◯×？ボタン：スマホでも最小44pxの縦高さを確保 */
   .btn-circle {
     min-height: 44px;
-    font-size: 1.125rem;
+    font-size: 1rem;
+    border-radius: 0.5rem;
   }
-  
+
+  .btn-circle.compact {
+    min-height: 40px;
+    font-size: 0.9rem;
+    border-radius: 0.375rem;
+  }
+
   .arrow-buttons,
   .arrow-result {
+    gap: 0.2rem;
+  }
+
+  .arrow-buttons.compact,
+  .arrow-result.compact {
+    gap: 0.15rem;
+  }
+
+  .btn-fix {
+    font-size: 0.75rem;
+    padding: 0.375rem;
+  }
+
+  .btn-fix.compact {
+    padding: 0.3rem;
+    font-size: 0.65rem;
+    min-height: 28px;
+  }
+
+  /* ボタングループ */
+  .button-group {
+    gap: 0.375rem;
+    flex-wrap: wrap;
+  }
+
+  .button-group .btn {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    min-height: 44px;
+  }
+
+  /* ラウンドセレクター */
+  .round-selector {
+    padding: 0.75rem;
+  }
+
+  /* 団体戦チームリスト */
+  .team-list-container {
+    max-height: 280px;
+    overflow-y: auto;
+  }
+}
+
+/* 小スマホ (≤480px): 2列 + さらにコンパクト */
+@media (max-width: 480px) {
+  .view-content {
+    padding: 0.375rem;
+    gap: 0.5rem;
+  }
+
+  .card {
+    padding: 0.5rem;
+  }
+
+  .archers-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.375rem;
+  }
+
+  .archer-record.compact {
+    padding: 0.4rem;
+  }
+
+  .archer-name {
+    font-size: 0.75rem !important;
+  }
+
+  .archer-details {
+    font-size: 0.65rem !important;
+  }
+
+  .stat-item {
+    font-size: 0.65rem !important;
+  }
+
+  .btn-circle.compact {
+    min-height: 38px;
+    font-size: 0.875rem;
+  }
+
+  .arrow-label {
+    font-size: 0.6rem !important;
+  }
+
+  .btn-fix.compact {
+    padding: 0.25rem;
+    font-size: 0.6rem;
+    min-height: 26px;
+  }
+
+  .button-group .btn {
+    padding: 0.5rem;
+    font-size: 0.8125rem;
+  }
+}
+
+/* 極小スマホ (≤360px): 1列に切り替え */
+@media (max-width: 360px) {
+  .archers-grid {
+    grid-template-columns: 1fr;
+    gap: 0.375rem;
+  }
+
+  .archer-record.compact {
+    padding: 0.5rem;
+  }
+
+  .archer-name {
+    font-size: 0.8rem !important;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+  }
+
+  .archer-details {
+    font-size: 0.7rem !important;
+  }
+
+  .stat-item {
+    font-size: 0.65rem !important;
+  }
+
+  .arrow-label {
+    font-size: 0.65rem !important;
+  }
+
+  .btn-circle.compact {
+    min-height: 42px;
+    font-size: 1rem;
+  }
+
+  /* 360px以下でも矢は2列に収める */
+  .arrows-grid.compact {
+    grid-template-columns: repeat(2, 1fr);
     gap: 0.25rem;
+  }
+
+  .btn-fix.compact {
+    font-size: 0.65rem;
+    padding: 0.375rem;
+    min-height: 28px;
+  }
+}
+
+/* Touch Optimization */
+.btn-circle,
+.btn-fix,
+.button-group .btn {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.btn-circle:active,
+.btn-fix:active,
+.button-group .btn:active {
+  transform: scale(0.95);
+  transition: transform 0.1s ease;
+}
+
+/* Prevent zoom on input focus */
+input, select, textarea, button {
+  font-size: 16px !important;
+}
+
+/* Better touch feedback */
+@media (hover: none) and (pointer: coarse) {
+  .btn-circle:hover,
+  .btn-fix:hover,
+  .button-group .btn:hover {
+    background: inherit;
+    color: inherit;
+  }
+  
+  .btn-circle:active:not(:disabled),
+  .btn-fix:active:not(:disabled),
+  .button-group .btn:active:not(:disabled) {
+    transform: scale(0.95);
   }
 }
 

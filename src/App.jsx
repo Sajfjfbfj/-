@@ -82,9 +82,12 @@ const KyudoTournamentSystem = () => {
     if (!selectedTournamentId) return;
     const tpl = tournamentState.registeredTournaments.find(t => t.id === selectedTournamentId);
     if (tpl && tpl.data) {
-      const allowedKeys = ['passRule', 'arrowsRound1', 'arrowsRound2', 'archersPerStand', 'name', 'date', 'id'];
-      const payload = {};
+      // tpl.id（トップレベル）を使う。tpl.data.id は存在しない場合があるため
+      const allowedKeys = ['passRule', 'arrowsRound1', 'arrowsRound2', 'archersPerStand', 'name', 'date', 'competitionType'];
+      const payload = { id: tpl.id }; // ← 常にトップレベルの id を使う
       allowedKeys.forEach(k => { if (typeof tpl.data[k] !== 'undefined') payload[k] = tpl.data[k]; });
+      // competitionType が未設定の大会（古いデータ）は必ず 'individual' に明示リセットする
+      if (typeof tpl.data['competitionType'] === 'undefined') payload.competitionType = 'individual';
       if (Object.keys(payload).length > 0) {
         dispatch({ type: 'UPDATE_TOURNAMENT_INFO', payload });
       }
@@ -164,6 +167,7 @@ const initialTournamentState = {
     arrowsRound2: 4,
     currentRound: 1,
     archersPerStand: 12,
+    competitionType: 'individual',
   },
   registeredTournaments: [],
   applicants: [],

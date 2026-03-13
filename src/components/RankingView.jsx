@@ -76,14 +76,16 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
     { id: 'middle', label: '四・五段の部' },
     { id: 'title', label: '称号者の部' }
   ];
-  const divisions = (selectedTournament && selectedTournament.data && selectedTournament.data.divisions) ? selectedTournament.data.divisions : localDefaultDivisions;
+  const divisions = (selectedTournament?.data?.divisions && selectedTournament.data.divisions.length > 0) 
+    ? selectedTournament.data.divisions 
+    : localDefaultDivisions;
 
   const enableGenderSeparation = selectedTournament?.data?.enableGenderSeparation || false;
 
   // 順位の正規化
   const normalizeRank = (rank) => {
     if (!rank) return '';
-    return rank
+    return String(rank).trim()
       .replace('二段', '弐段')
       .replace('三段', '参段')
       .replace('二級', '弐級')
@@ -96,8 +98,12 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
   const getDivisionIdForArcher = useCallback((archer, divisions) => {
     const rIdx = rankOrder.indexOf(normalizeRank(archer?.rank));
     for (const d of (divisions || [])) {
-      const minIdx = d?.minRank ? rankOrder.indexOf(normalizeRank(d.minRank)) : 0;
-      const maxIdx = d?.maxRank ? rankOrder.indexOf(normalizeRank(d.maxRank)) : 9999;
+      const rawMinIdx = d?.minRank ? rankOrder.indexOf(normalizeRank(d.minRank)) : 0;
+      const minIdx = rawMinIdx === -1 ? 0 : rawMinIdx;
+
+      const rawMaxIdx = d?.maxRank ? rankOrder.indexOf(normalizeRank(d.maxRank)) : 9999;
+      const maxIdx = rawMaxIdx === -1 ? 9999 : rawMaxIdx;
+
       if (rIdx >= minIdx && rIdx <= maxIdx) return d.id;
     }
     return 'unassigned';
@@ -738,15 +744,6 @@ const RankingView = ({ state, dispatch, selectedTournamentId }) => {
     
     return;
   }
-  
-  // 部分的順位決定のロジック（3人以上の場合）
-  if (totalCount >= 3 && eliminatedCount >= 2) {
-    if (remainingCount === 2) {
-      console.log('残り2人 - 新しい射詰ラウンドへ');
-      setCurrentShichumaRound(prev => prev + 1);
-      return;
-    }
-  }
 
   // まだ1位が決定していない場合
   if (undefeatedArchers.length >= 2) {
@@ -1211,6 +1208,19 @@ const categorizedGroups = useMemo(() => {
       if (a.rank !== '敗退' && b.rank === '敗退') return -1;
       if (a.rank === '敗退' && b.rank === '敗退') return 0;
       return a.rank - b.rank;
+    });
+  };
+
+  // 遠近競射で敗退/復活を切り替える
+  const toggleEnkinDefeated = (archerId) => {
+    setEnkinDefeated(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(archerId)) {
+        newSet.delete(archerId);
+      } else {
+        newSet.add(archerId);
+      }
+      return newSet;
     });
   };
 
@@ -2336,16 +2346,16 @@ const categorizedGroups = useMemo(() => {
     const resultsByDivision = {};
     divisions.forEach(div => {
       if (enableGenderSeparation) {
-        resultsByDivision[`${div.id}_male`] = { division: { ...div, id: `${div.id}_male`, label: `${div.label}（男）` }, results: [] };
-        resultsByDivision[`${div.id}_female`] = { division: { ...div, id: `${div.id}_female`, label: `${div.label}（女）` }, results: [] };
+        resultsByDivision[`${div.id}_male`] = { division: { ...div, id: `${div.id}_male`, label: `${div.label}　男子の部` }, results: [] };
+        resultsByDivision[`${div.id}_female`] = { division: { ...div, id: `${div.id}_female`, label: `${div.label}　女子の部` }, results: [] };
       } else {
         resultsByDivision[div.id] = { division: div, results: [] };
       }
     });
     if (!resultsByDivision.unassigned) {
       if (enableGenderSeparation) {
-        resultsByDivision['unassigned_male'] = { division: { id: 'unassigned_male', label: '未分類（男）' }, results: [] };
-        resultsByDivision['unassigned_female'] = { division: { id: 'unassigned_female', label: '未分類（女）' }, results: [] };
+        resultsByDivision['unassigned_male'] = { division: { id: 'unassigned_male', label: '未分類　男子の部' }, results: [] };
+        resultsByDivision['unassigned_female'] = { division: { id: 'unassigned_female', label: '未分類　女子の部' }, results: [] };
       } else {
         resultsByDivision.unassigned = { division: { id: 'unassigned', label: '未分類' }, results: [] };
       }
@@ -2359,7 +2369,7 @@ const categorizedGroups = useMemo(() => {
         const targetDivId = enableGenderSeparation ? `${divId}_${gender}` : divId;
         if (!resultsByDivision[targetDivId]) {
           if (enableGenderSeparation) {
-            resultsByDivision[targetDivId] = { division: { id: targetDivId, label: `${divId}（${gender === 'male' ? '男' : '女'}）` }, results: [] };
+            resultsByDivision[targetDivId] = { division: { id: targetDivId, label: `${divId}　${gender === 'male' ? '男子の部' : '女子の部'}` }, results: [] };
           } else {
             resultsByDivision[targetDivId] = { division: { id: targetDivId, label: targetDivId }, results: [] };
           }
@@ -2771,8 +2781,7 @@ const categorizedGroups = useMemo(() => {
                     const label = divisionData.division.label;
                     const hasGenderSep = divisionData.division.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation;
                     if (hasGenderSep && selectedGender !== 'all') {
-                      const genderLabel = selectedGender === 'male' ? '男子' : '女子';
-                      return `${label}（${genderLabel}）`;
+                      return `${label}　${selectedGender === 'male' ? '男子の部' : '女子の部'}`;
                     }
                     return label;
                   })()}</h2>
@@ -2784,24 +2793,37 @@ const categorizedGroups = useMemo(() => {
                       const label = divisionData.division.label;
                       const hasGenderSep = divisionData.division.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation;
                       if (hasGenderSep && selectedGender !== 'all') {
-                        const genderLabel = selectedGender === 'male' ? '男子' : '女子';
-                        return `${label}（${genderLabel}）射詰競射 対象（優勝決定）`;
+                        return `${label}　${selectedGender === 'male' ? '男子の部' : '女子の部'}　射詰競射 対象（優勝決定）`;
                       }
                       return `${label}射詰競射 対象（優勝決定）`;
                     })()}</h3>
                     <p className="text-sm text-gray-600 mb-3">
                       1位が同率のため、射詰競射を行います。
                     </p>
-                    {divisionData.izume.map(({ hitCount, group, rank }) => (
-                      <div key={`${divisionData.division.id}_${rank}_izume`} className="mb-4 bg-blue-50 p-3 rounded">
+                    {divisionData.izume.map(({ hitCount, group, rank }) => {
+                      const divisionId = divisionData.division.id;
+                      const isWinnerDecided = shichumaFinalResults?.results?.some(
+                        result => result.divisionId === divisionId && (result.isWinner || result.rank === 1)
+                      );
+                      return (
+                      <div key={`${divisionData.division.id}_${rank}_izume`} className={`mb-4 p-3 rounded ${isWinnerDecided ? 'bg-gray-100' : 'bg-blue-50'}`}>
                         <div className="flex justify-between items-center mb-2">
                           <span className="font-bold">{hitCount}本的中 - {group.length}名</span>
-                          <button 
-                            onClick={() => startShichumaShootOff(group)}
-                            className="btn-primary"
-                          >
-                            射詰競射を開始
-                          </button>
+                          {isWinnerDecided ? (
+                            <div className="text-sm text-green-700 font-semibold bg-green-100 px-3 py-1 rounded-full flex items-center gap-2">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                              <span>この順位は決定済みです</span>
+                            </div>
+                          ) : (
+                            <button 
+                              onClick={() => startShichumaShootOff(group)}
+                              className="btn-primary"
+                            >
+                              射詰競射を開始
+                            </button>
+                          )}
                         </div>
                         <div className="space-y-1 bg-white p-2 rounded border">
                           {group.map(archer => (
@@ -2812,7 +2834,7 @@ const categorizedGroups = useMemo(() => {
                           ))}
                         </div>
                       </div>
-                    ))}
+                    );})}
                   </div>
                 )}
 
@@ -2823,8 +2845,7 @@ const categorizedGroups = useMemo(() => {
                       const label = divisionData.division.label;
                       const hasGenderSep = divisionData.division.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation;
                       if (hasGenderSep && selectedGender !== 'all') {
-                        const genderLabel = selectedGender === 'male' ? '男子' : '女子';
-                        return `${label}（${genderLabel}）遠近競射 対象（順位決定）`;
+                        return `${label}　${selectedGender === 'male' ? '男子の部' : '女子の部'}　遠近競射 対象（順位決定）`;
                       }
                       return `${label}遠近競射 対象（順位決定）`;
                     })()}</h3>
@@ -2834,9 +2855,8 @@ const categorizedGroups = useMemo(() => {
                     {divisionData.enkin.map(({ hitCount, group, rank }) => {
                       const divisionId = divisionData.division.id;
                       const isSaved = savedEnkinRanksByDivision[divisionId]?.has(rank) || false;
-                      if (isSaved) return null;
                       return (
-                      <div key={`${divisionData.division.id}_${rank}_enkin`} className="mb-4 bg-orange-50 p-3 rounded">
+                      <div key={`${divisionData.division.id}_${rank}_enkin`} className={`mb-4 p-3 rounded ${isSaved ? 'bg-gray-100' : 'bg-orange-50'}`}>
                         <div className="flex justify-between items-center mb-2">
                           <span className="font-bold">
                             {(() => {
@@ -2864,12 +2884,21 @@ const categorizedGroups = useMemo(() => {
                               }
                             })()}
                           </span>
-                          <button 
-                            onClick={() => startEnkinShootOff(group, false, rank)}
-                            className="btn-primary bg-orange-600 hover:bg-orange-700"
-                          >
-                            遠近競射を開始
-                          </button>
+                          {isSaved ? (
+                            <div className="text-sm text-green-700 font-semibold bg-green-100 px-3 py-1 rounded-full flex items-center gap-2">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                              <span>この順位は決定済みです</span>
+                            </div>
+                          ) : (
+                            <button 
+                              onClick={() => startEnkinShootOff(group, false, rank)}
+                              className="btn-primary bg-orange-600 hover:bg-orange-700"
+                            >
+                              遠近競射を開始
+                            </button>
+                          )}
                         </div>
                         <div className="space-y-1 bg-white p-2 rounded border">
                           {group.map(archer => (
@@ -2946,9 +2975,9 @@ const categorizedGroups = useMemo(() => {
                     const divisionId = getDivisionIdForArcher(firstArcher, divisions);
                     const division = divisions.find(d => d.id === divisionId);
                     const gender = firstArcher.gender || 'male';
-                    const genderLabel = gender === 'female' ? '女子' : '男子';
+                    const genderLabel = gender === 'female' ? '女子の部' : '男子の部';
                     const divisionLabel = division?.label || divisionId;
-                    return enableGenderSeparation ? `${divisionLabel}${genderLabel}射詰競射中` : `${divisionLabel}射詰競射中`;
+                    return enableGenderSeparation ? `${divisionLabel}　${genderLabel}　射詰競射中` : `${divisionLabel}射詰競射中`;
                   }
                   return '射詰競射中';
                 })()}</h2>
@@ -3180,10 +3209,10 @@ const categorizedGroups = useMemo(() => {
                       const divisionId = getDivisionIdForArcher(firstArcher, divisions);
                       const division = divisions.find(d => d.id === divisionId);
                       const gender = firstArcher.gender || 'male';
-                      const genderLabel = gender === 'female' ? '女子' : '男子';
+                      const genderLabel = gender === 'female' ? '女子の部' : '男子の部';
                       const divisionLabel = division?.label || divisionId;
                       const baseTitle = getEnkinTitle();
-                      return enableGenderSeparation ? `${divisionLabel}${genderLabel}${baseTitle}中` : `${divisionLabel}${baseTitle}中`;
+                      return enableGenderSeparation ? `${divisionLabel}　${genderLabel}　${baseTitle}中` : `${divisionLabel}${baseTitle}中`;
                     }
                     return `${getEnkinTitle()}中`;
                   })()}</h2>

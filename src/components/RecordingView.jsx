@@ -1,18 +1,34 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { API_URL } from '../utils/api';
 import { groupByTeam, calculateTeamHitCount, generateTeamStandOrder, fetchTeamOrder, saveTeamOrder } from '../utils/teamCompetition';
 
 const RecordingView = ({ state, dispatch, stands }) => {
-  const [selectedTournamentId, setSelectedTournamentId] = useState(() => localStorage.getItem('selectedTournamentId') || '');
-  const [selectedDivision, setSelectedDivision] = useState(() => localStorage.getItem('recording_selectedDivision') || '');
-  const [selectedStand, setSelectedStand] = useState(() => parseInt(localStorage.getItem('recording_selectedStand')) || 1);
-  const [selectedRound, setSelectedRound] = useState(() => parseInt(localStorage.getItem('recording_selectedRound')) || 1); // 1: 1立ち目, 2: 2立ち目
-  const [selectedGender, setSelectedGender] = useState(() => localStorage.getItem('recording_selectedGender') || 'all'); // 'all' | 'male' | 'female'
+  // 初期化時に、前回の大会IDと異なる場合は設定をリセットするヘルパー関数
+  const getInitialSetting = (key, defaultValue) => {
+    const savedTournId = localStorage.getItem('recording_lastTournamentId');
+    // 親から渡された state.tournament.id を優先し、なければ localStorage を見る
+    const currentTournId = state.tournament?.id || localStorage.getItem('selectedTournamentId');
+    if (savedTournId !== currentTournId) {
+      return defaultValue;
+    }
+    const saved = localStorage.getItem(key);
+    return saved !== null ? saved : defaultValue;
+  };
+
+  const tournament = state.tournament;
+  // selectedTournamentId を useState ではなく、常に最新の tournament オブジェクトからIDを取得するように変更
+  const selectedTournamentId = tournament?.id || localStorage.getItem('selectedTournamentId') || '';
+
+  const [selectedDivision, setSelectedDivision] = useState(() => getInitialSetting('recording_selectedDivision', ''));
+  const [selectedStand, setSelectedStand] = useState(() => parseInt(getInitialSetting('recording_selectedStand', '1')) || 1);
+  const [selectedRound, setSelectedRound] = useState(() => parseInt(getInitialSetting('recording_selectedRound', '1')) || 1); // 1: 1立ち目, 2: 2立ち目
+  const [selectedGender, setSelectedGender] = useState(() => getInitialSetting('recording_selectedGender', 'all')); // 'all' | 'male' | 'female'
   const [currentPage, setCurrentPage] = useState(1);
   const [archers, setArchers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isTeamListCollapsed, setIsTeamListCollapsed] = useState(true);
 
   // 保存中のデータを管理するRef。バックグラウンド同期がpending中の変更を上書きしないようにする
   // キー: "archerId:standKey"  値: [...results]
@@ -23,17 +39,23 @@ const RecordingView = ({ state, dispatch, stands }) => {
     else localStorage.removeItem('selectedTournamentId');
   }, [selectedTournamentId]);
 
+  // 現在の大会IDを保存して、次回起動時の変更検知に使う
+  useEffect(() => {
+    if (selectedTournamentId) {
+      localStorage.setItem('recording_lastTournamentId', selectedTournamentId);
+    }
+  }, [selectedTournamentId]);
+
   useEffect(() => { localStorage.setItem('recording_selectedDivision', selectedDivision || ''); }, [selectedDivision]);
   useEffect(() => { localStorage.setItem('recording_selectedStand', selectedStand); }, [selectedStand]);
   useEffect(() => { localStorage.setItem('recording_selectedRound', selectedRound); }, [selectedRound]);
   useEffect(() => { localStorage.setItem('recording_selectedGender', selectedGender || 'all'); }, [selectedGender]);
 
-  const tournament = state.tournament;
   const rankOrder = ['無指定', '五級', '四級', '三級', '弐級', '壱級', '初段', '弐段', '参段', '四段', '五段', '錬士五段', '錬士六段', '教士七段', '教士八段', '範士八段', '範士九段'];
 
   const normalizeRank = (rank) => {
-    if (!rank) return '';
-    return rank
+    if (!rank) return '無指定';
+    return String(rank).trim()
       .replace('二段', '弐段')
       .replace('三段', '参段')
       .replace('二級', '弐級')
@@ -43,9 +65,15 @@ const RecordingView = ({ state, dispatch, stands }) => {
   const getDivisionIdsForArcher = (archer, divisions) => {
     const rIdx = rankOrder.indexOf(normalizeRank(archer?.rank));
     const matchingDivisions = [];
+    if (rIdx === -1) return ['unassigned']; // ランクが不明な場合は未割当
+
     for (const d of (divisions || [])) {
-      const minIdx = d?.minRank ? rankOrder.indexOf(normalizeRank(d.minRank)) : 0;
-      const maxIdx = d?.maxRank ? rankOrder.indexOf(normalizeRank(d.maxRank)) : rankOrder.length - 1;
+      const rawMinIdx = d?.minRank ? rankOrder.indexOf(normalizeRank(d.minRank)) : 0;
+      const minIdx = rawMinIdx === -1 ? 0 : rawMinIdx;
+
+      const rawMaxIdx = d?.maxRank ? rankOrder.indexOf(normalizeRank(d.maxRank)) : rankOrder.length - 1;
+      const maxIdx = rawMaxIdx === -1 ? rankOrder.length - 1 : rawMaxIdx;
+
       if (rIdx >= minIdx && rIdx <= maxIdx) {
         matchingDivisions.push(d.id);
       }
@@ -107,15 +135,19 @@ const RecordingView = ({ state, dispatch, stands }) => {
     return 'lower';
   };
 
+  // registeredTournamentsから大会データを取得する（flatなtournamentオブジェクトには.dataがないため常にこちらを使う）
   const selectedTournament = state.registeredTournaments.find(t => t.id === selectedTournamentId);
+  // tournament?.competitionType は前回ログインの大会の値が残る可能性があるためフォールバックに使わない
   const competitionType = selectedTournament?.data?.competitionType || 'individual';
   const isTeamCompetition = competitionType === 'team';
-  const localDefaultDivisions = [
-    { id: 'lower', label: '級位~三段以下の部' },
-    { id: 'middle', label: '四・五段の部' },
-    { id: 'title', label: '称号者の部' }
-  ];
-  const divisions = (selectedTournament && selectedTournament.data && selectedTournament.data.divisions) ? selectedTournament.data.divisions : localDefaultDivisions;
+  const localDefaultDivisions = useMemo(() => [
+    { id: 'lower', label: '級位~三段以下の部', maxRank: '参段' },
+    { id: 'middle', label: '四・五段の部', minRank: '四段', maxRank: '五段' },
+    { id: 'title', label: '称号者の部', minRank: '錬士五段' }
+  ], []);
+  const divisions = (selectedTournament?.data?.divisions && selectedTournament.data.divisions.length > 0) 
+    ? selectedTournament.data.divisions 
+    : localDefaultDivisions;
 
   const fetchAndSortArchers = async (background = false) => {
     if (!selectedTournamentId) return;
@@ -131,8 +163,8 @@ const RecordingView = ({ state, dispatch, stands }) => {
         const checkedIn = result.data.filter(a => a.isCheckedIn);
         
         const normalizeRankLocal = (rank) => {
-          if (!rank) return '';
-          return rank
+          if (!rank) return '無指定';
+          return String(rank).trim()
             .replace('二段', '弐段')
             .replace('三段', '参段')
             .replace('二級', '弐級')
@@ -166,8 +198,8 @@ const RecordingView = ({ state, dispatch, stands }) => {
           const bDivId = getDivisionIdForArcher(b, divisions);
           const aDivision = divisions.find(d => d.id === aDivId);
           const bDivision = divisions.find(d => d.id === bDivId);
-          const aGenderSeparation = aDivision?.enableGenderSeparation || tournament?.data?.enableGenderSeparation || false;
-          const bGenderSeparation = bDivision?.enableGenderSeparation || tournament?.data?.enableGenderSeparation || false;
+          const aGenderSeparation = aDivision?.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation || false;
+          const bGenderSeparation = bDivision?.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation || false;
           
           // 男女分けが有効な場合、男を先に配置
           if (aGenderSeparation || bGenderSeparation) {
@@ -238,9 +270,23 @@ const RecordingView = ({ state, dispatch, stands }) => {
 
   useEffect(() => {
     if (selectedTournamentId) {
+      // 大会が切り替わったら、前の大会の表示状態をリセットしてから取得する
+      setArchers([]);
+      setSelectedDivision(''); // 部門をクリア（データ取得後に自動で先頭の部門が選択されます）
+      setCurrentPage(1);
       fetchAndSortArchers();
     }
   }, [selectedTournamentId]);
+
+  // 部門設定が変更されたとき、選択中の部門が不正ならリセットする
+  useEffect(() => {
+    if (divisions.length > 0) {
+      const validIds = divisions.map(d => d.id);
+      if (!selectedDivision || !validIds.includes(selectedDivision)) {
+        setSelectedDivision(validIds[0]);
+      }
+    }
+  }, [divisions, selectedDivision]);
 
   // 部門設定が変更されたら選手を再割り当て
   useEffect(() => {
@@ -267,7 +313,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
     
     // 選択された部門の男女分け設定を確認
     const division = divisions.find(d => d.id === selectedDivision);
-    const divGenderSeparation = division?.enableGenderSeparation || tournament?.data?.enableGenderSeparation || false;
+    const divGenderSeparation = division?.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation || false;
     
     if (!divGenderSeparation) return true;
     if (selectedGender === 'all') return true;
@@ -452,14 +498,46 @@ const RecordingView = ({ state, dispatch, stands }) => {
             {isTeamCompetition && (
               <div className="card">
                 <div style={{ padding: '1rem', background: '#f0f9ff', borderRadius: '0.5rem', border: '1px solid #bfdbfe' }}>
-                  <p style={{ margin: 0, fontSize: '0.875rem', color: '#1e40af', fontWeight: 500 }}>👥 団体戦モード | 全チーム: {groupByTeam(archers).length}チーム | 全選手: {archers.length}人</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: '#1e40af', fontWeight: 500, flex: '1', minWidth: 0 }}>👥 団体戦モード | 全チーム: {groupByTeam(archers).length}チーム | 全選手: {archers.length}人</p>
+                    <button
+                      onClick={() => setIsTeamListCollapsed(!isTeamListCollapsed)}
+                      className="btn"
+                      style={{ 
+                        padding: '0.5rem', 
+                        minWidth: 'auto', 
+                        background: 'white', 
+                        border: '1px solid #bfdbfe',
+                        borderRadius: '0.5rem',
+                        color: '#1e40af',
+                        fontSize: '0.875rem'
+                      }}
+                    >
+                      {isTeamListCollapsed ? (
+                        <>
+                          <ChevronDown size={16} style={{ marginRight: '0.25rem' }} />
+                          チーム一覧
+                        </>
+                      ) : (
+                        <>
+                          <ChevronUp size={16} style={{ marginRight: '0.25rem' }} />
+                          非表示
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <div style={{ marginTop: '1rem' }}>
+                <div className={`team-list-container ${isTeamListCollapsed ? 'collapsed' : 'expanded'}`} style={{ 
+                  marginTop: '1rem',
+                  maxHeight: isTeamListCollapsed ? '0' : '500px',
+                  overflow: 'hidden',
+                  transition: 'max-height 0.3s ease-in-out'
+                }}>
                   <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>チーム別表示</h3>
                   {groupByTeam(archers).map(team => (
                     <div key={team.teamKey} style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <span style={{ fontWeight: 600 }}>{team.teamName} ({team.affiliation})</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        <span style={{ fontWeight: 600, flex: '1', minWidth: 0, wordBreak: 'break-word' }}>{team.teamName} ({team.affiliation})</span>
                         <span style={{ fontSize: '0.875rem', color: '#10b981', fontWeight: 600 }}>合計: {calculateTeamHitCount(team.members, tournament)}本</span>
                       </div>
                       <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
@@ -485,7 +563,7 @@ const RecordingView = ({ state, dispatch, stands }) => {
               </div>
               {(() => {
                 const division = divisions.find(d => d.id === selectedDivision);
-                const divGenderSeparation = division?.enableGenderSeparation || tournament?.data?.enableGenderSeparation || false;
+                const divGenderSeparation = division?.enableGenderSeparation || selectedTournament?.data?.enableGenderSeparation || false;
                 
                 return divGenderSeparation && (
                   <div style={{ marginTop: '0.75rem' }}>
@@ -558,53 +636,53 @@ const RecordingView = ({ state, dispatch, stands }) => {
                   <p className="empty-text">🔍 この立に割り当てられた選手がいません</p>
                 </div>
               ) : (
-                standArchers.map(archer => {
-                  const currentArrows = getCurrentArrowsPerStand();
-                  const { ceremony, rank } = getRankCategory(archer.rank);
-                  const archerRank = ranks[archer.archerId];
-                  const roundComplete = isRoundComplete(archer);
+                <div className="archers-grid">
+                  {standArchers.map(archer => {
+                    const currentArrows = getCurrentArrowsPerStand();
+                    const { ceremony, rank } = getRankCategory(archer.rank);
+                    const archerRank = ranks[archer.archerId];
+                    const roundComplete = isRoundComplete(archer);
 
-                  return (
-                    <div key={archer.archerId} className="archer-record">
-                      <div className="archer-info">
-                        <p><strong>🎯 {archer.standOrder}. {archer.name}</strong></p>
-                        <p className="text-sm" style={{color:'#6b7280'}}>🏛️ {archer.affiliation} | 🎖️ {ceremony}{rank}</p>
-                        <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                          <p className="text-sm" style={{ color: '#10b981', fontWeight: 600, margin: 0 }}>
-                            ✅ 的中: {getTotalHitCount(archer)}本
-                          </p>
-                          <p className="text-sm" style={{ color: '#2563eb', fontWeight: 600, margin: 0 }}>
-                            🏆 順位: {archerRank}位
-                          </p>
+                    return (
+                      <div key={archer.archerId} className="archer-record compact">
+                        <div className="archer-info compact">
+                          <div className="archer-header">
+                            <p className="archer-name"><strong>� {archer.standOrder}. {archer.name}</strong></p>
+                            <span className={`status ${roundComplete ? 'status-complete' : 'status-input'} compact`}>
+                              {roundComplete ? '✓' : '⏳'}
+                            </span>
+                          </div>
+                          <p className="archer-details">🏛️ {archer.affiliation} | 🎖️ {ceremony}{rank}</p>
+                          <div className="archer-stats">
+                            <span className="stat-item">✅ {getTotalHitCount(archer)}本</span>
+                            <span className="stat-item">🏆 {archerRank}位</span>
+                          </div>
+                        </div>
+                        <div className="arrows-grid compact" style={{ gridTemplateColumns: `repeat(${Math.min(currentArrows, 4)}, 1fr)` }}>
+                          {getCurrentStandResults(archer).map((result, arrowIdx) => (
+                            <div key={arrowIdx} className="arrow-input compact">
+                              <p className="arrow-label">{arrowIdx + 1}</p>
+                              {result === null ? (
+                                <div className="arrow-buttons compact">
+                                  <button onClick={() => handleRecord(archer.archerId, selectedStand, arrowIdx, 'o')} className="btn-circle btn-hit compact" disabled={roundComplete}>◯</button>
+                                  <button onClick={() => handleRecord(archer.archerId, selectedStand, arrowIdx, 'x')} className="btn-circle btn-miss compact" disabled={roundComplete}>×</button>
+                                  <button onClick={() => handleRecord(archer.archerId, selectedStand, arrowIdx, '?')} className="btn-circle btn-unknown compact" disabled={roundComplete}>?</button>
+                                </div>
+                              ) : (
+                                <div className="arrow-result compact">
+                                  <button disabled className={`btn-circle ${result === 'o' ? 'btn-hit' : result === 'x' ? 'btn-miss' : 'btn-unknown'} compact`}>
+                                    {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
+                                  </button>
+                                  <button onClick={() => handleUndo(archer.archerId, selectedStand, arrowIdx)} className="btn-fix compact">🔄</button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      <span className={`status ${roundComplete ? 'status-complete' : 'status-input'}`}>
-                        {roundComplete ? '✓ 完了' : '⏳ 入力中'}
-                      </span>
-                      <div className="arrows-grid" style={{ gridTemplateColumns: `repeat(${Math.min(currentArrows, 4)}, 1fr)` }}>
-                        {getCurrentStandResults(archer).map((result, arrowIdx) => (
-                          <div key={arrowIdx} className="arrow-input">
-                            <p>{arrowIdx + 1}本目</p>
-                            {result === null ? (
-                              <div className="arrow-buttons">
-                                <button onClick={() => handleRecord(archer.archerId, selectedStand, arrowIdx, 'o')} className="btn-circle btn-hit" disabled={roundComplete}>◯</button>
-                                <button onClick={() => handleRecord(archer.archerId, selectedStand, arrowIdx, 'x')} className="btn-circle btn-miss" disabled={roundComplete}>×</button>
-                                <button onClick={() => handleRecord(archer.archerId, selectedStand, arrowIdx, '?')} className="btn-circle btn-unknown" disabled={roundComplete}>?</button>
-                              </div>
-                            ) : (
-                              <div className="arrow-result">
-                                <button disabled className={`btn-circle ${result === 'o' ? 'btn-hit' : result === 'x' ? 'btn-miss' : 'btn-unknown'}`}>
-                                  {result === 'o' ? '◯' : result === 'x' ? '×' : '?'}
-                                </button>
-                                <button onClick={() => handleUndo(archer.archerId, selectedStand, arrowIdx)} className="btn-fix">🔄 修正</button>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
 
